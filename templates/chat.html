@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Чат</title>
+    <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+    <div class="chat-container">
+        <header>
+            <h2>Мессенджер</h2>
+            <p>Добро пожаловать, <span id="username"><%= username %></span>!</p>
+        </header>
+        
+        <div id="messages"></div>
+        
+        <form id="messageForm">
+            <input type="text" id="messageInput" placeholder="Введите сообщение..." autocomplete="off">
+            <button type="submit">Отправить</button>
+        </form>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="/chat.js"></script>
+</body>
+</html>
