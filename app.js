@@ -11,14 +11,36 @@ const app = express();
 const server = http.createServer(app);
 const io = socketIo(server);
 
-const JWT_SECRET = 'your-secret-key'; // Замени на случайный сложный ключ в реальном проекте!
+const JWT_SECRET = process.env.JWT_SECRET || 'fallback-secret-key-for-development';
 const PORT = process.env.PORT || 3000;
 
 // Middleware
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
-app.use(express.static('static'));
+
+// Обслуживание статических файлов
+app.use('/static', express.static(path.join(__dirname, 'static')));
+app.use(express.static(path.join(__dirname, 'static')));
+
+// Явно указываем пути для основных файлов
+app.get('/style.css', (req, res) => {
+    res.sendFile(path.join(__dirname, 'static', 'style.css'));
+});
+
+app.get('/auth.js', (req, res) => {
+    res.sendFile(path.join(__dirname, 'static', 'auth.js'));
+});
+
+app.get('/chat.js', (req, res) => {
+    res.sendFile(path.join(__dirname, 'static', 'chat.js'));
+});
+
+app.get('/socket.io/socket.io.js', (req, res) => {
+    res.sendFile(path.join(__dirname, 'node_modules', 'socket.io', 'client-dist', 'socket.io.js'));
+});
+
+// Настройка шаблонов
 app.set('views', path.join(__dirname, 'templates'));
 app.set('view engine', 'html');
 app.engine('html', require('ejs').renderFile);
