@@ -1,12 +1,13 @@
 {
-  "name": "xx",
+  "name": "my-messenger",
   "version": "1.0.0",
-  "description": "",
+  "description": "Real-time messenger with private messages",
   "main": "app.js",
   "scripts": {
-    "start": "node app.js"
+    "start": "node app.js",
+    "dev": "nodemon app.js"
   },
-  "keywords": [],
+  "keywords": ["messenger", "chat", "socket.io", "express"],
   "author": "",
   "license": "ISC",
   "dependencies": {
@@ -16,5 +17,8 @@
     "express": "^5.1.0",
     "jsonwebtoken": "^9.0.2",
     "socket.io": "^4.8.1"
+  },
+  "engines": {
+    "node": ">=18.0.0"
   }
 }
