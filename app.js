@@ -49,6 +49,7 @@ app.engine('html', require('ejs').renderFile);
 // Хранилище данных
 let users = [];
 let messages = [];
+let activeSockets = {}; // Для отслеживания активных пользователей
 
 async function loadUsers() {
     try {
@@ -124,7 +125,6 @@ app.post('/api/register', async (req, res) => {
     try {
         const { username, password, tags } = req.body;
         
-        // Проверяем, существует ли пользователь
         if (users.find(u => u.username === username)) {
             return res.status(400).json({ error: 'Username already exists' });
         }
@@ -173,6 +173,67 @@ app.post('/api/logout', (req, res) => {
     res.json({ success: true });
 });
 
+// Получение списка диалогов
+app.get('/api/conversations', authenticateToken, (req, res) => {
+    try {
+        const currentUser = req.user.username;
+        
+        // Находим всех пользователей, с которыми есть переписка
+        const conversationPartners = new Set();
+        
+        messages.forEach(msg => {
+            if (msg.type === 'private') {
+                if (msg.sender === currentUser) {
+                    conversationPartners.add(msg.receiver);
+                } else if (msg.receiver === currentUser) {
+                    conversationPartners.add(msg.sender);
+                }
+            }
+        });
+        
+        // Получаем информацию о пользователях
+        const conversations = Array.from(conversationPartners).map(partner => {
+            const user = users.find(u => u.username === partner);
+            const lastMessage = messages
+                .filter(msg => msg.type === 'private' && 
+                    ((msg.sender === currentUser && msg.receiver === partner) ||
+                     (msg.sender === partner && msg.receiver === currentUser)))
+                .sort((a, b) => new Date(b.date) - new Date(a.date))[0];
+            
+            const unreadCount = messages.filter(msg => 
+                msg.type === 'private' &&
+                msg.sender === partner &&
+                msg.receiver === currentUser &&
+                !msg.read
+            ).length;
+            
+            return {
+                username: partner,
+                tag: user ? user.tag : '#0000',
+                lastMessage: lastMessage ? {
+                    text: lastMessage.message,
+                    timestamp: lastMessage.timestamp,
+                    isOwn: lastMessage.sender === currentUser
+                } : null,
+                unreadCount,
+                isOnline: !!activeSockets[partner]
+            };
+        });
+        
+        // Сортируем по времени последнего сообщения
+        conversations.sort((a, b) => {
+            if (!a.lastMessage) return 1;
+            if (!b.lastMessage) return -1;
+            return new Date(b.lastMessage.timestamp) - new Date(a.lastMessage.timestamp);
+        });
+        
+        res.json(conversations);
+    } catch (error) {
+        console.error('Conversations error:', error);
+        res.status(500).json({ error: 'Failed to load conversations' });
+    }
+});
+
 // Поиск пользователей
 app.get('/api/users/search', authenticateToken, (req, res) => {
     try {
@@ -188,10 +249,9 @@ app.get('/api/users/search', authenticateToken, (req, res) => {
             user.tags.some(tag => tag.toLowerCase().includes(query.toLowerCase()))
         );
         
-        // Исключаем текущего пользователя
         const filteredResults = results
             .filter(user => user.username !== req.user.username)
-            .map(({ password, ...user }) => user); // Убираем пароль
+            .map(({ password, ...user }) => user);
         
         res.json(filteredResults);
     } catch (error) {
@@ -212,6 +272,18 @@ app.get('/api/messages/private/:username', authenticateToken, (req, res) => {
              (msg.sender === otherUser && msg.receiver === currentUser))
         );
         
+        // Помечаем сообщения как прочитанные
+        messages.forEach(msg => {
+            if (msg.type === 'private' && 
+                msg.sender === otherUser && 
+                msg.receiver === currentUser &&
+                !msg.read) {
+                msg.read = true;
+            }
+        });
+        
+        saveMessages();
+        
         res.json(privateMessages);
     } catch (error) {
         console.error('Messages error:', error);
@@ -222,6 +294,11 @@ app.get('/api/messages/private/:username', authenticateToken, (req, res) => {
 // Socket.io
 io.on('connection', (socket) => {
     console.log('User connected');
+
+    socket.on('user connected', (username) => {
+        activeSockets[username] = socket.id;
+        console.log(`User ${username} connected with socket ${socket.id}`);
+    });
 
     // Глобальные сообщения
     socket.on('chat message', (data) => {
@@ -252,21 +329,39 @@ io.on('connection', (socket) => {
                 message: data.message,
                 timestamp: new Date().toLocaleTimeString(),
                 type: 'private',
-                date: new Date().toISOString()
+                date: new Date().toISOString(),
+                read: false
             };
             
             messages.push(messageData);
             saveMessages();
             
-            // Отправляем конкретным пользователям
-            io.emit('private message', messageData);
+            // Отправляем отправителю
+            socket.emit('private message', messageData);
+            
+            // Отправляем получателю, если он онлайн
+            const receiverSocketId = activeSockets[data.receiver];
+            if (receiverSocketId) {
+                io.to(receiverSocketId).emit('private message', messageData);
+            }
+            
+            // Обновляем список диалогов для обоих пользователей
+            io.emit('conversations updated');
+            
         } catch (error) {
             console.error('Private message error:', error);
         }
     });
 
     socket.on('disconnect', () => {
-        console.log('User disconnected');
+        // Удаляем пользователя из активных
+        for (const [username, socketId] of Object.entries(activeSockets)) {
+            if (socketId === socket.id) {
+                delete activeSockets[username];
+                console.log(`User ${username} disconnected`);
+                break;
+            }
+        }
     });
 });
 

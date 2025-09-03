@@ -1,6 +1,7 @@
 class PrivateChat {
     constructor() {
         this.currentChat = null;
+        this.conversations = [];
         this.init();
     }
 
@@ -8,6 +9,11 @@ class PrivateChat {
         this.createUI();
         this.setupEventListeners();
         this.setupSocketListeners();
+        this.loadConversations();
+        
+        // Сообщаем серверу о подключении
+        const username = document.getElementById('username').textContent;
+        socket.emit('user connected', username);
     }
 
     createUI() {
@@ -15,16 +21,17 @@ class PrivateChat {
             <div class="private-chat-container">
                 <div class="private-chat-sidebar">
                     <div class="search-container">
-                        <input type="text" id="userSearch" placeholder="Поиск по имени, тегу или интересам...">
-                        <div id="searchResults"></div>
+                        <input type="text" id="userSearch" placeholder="Поиск пользователей...">
+                        <div id="searchResults" class="search-results"></div>
                     </div>
-                    <div id="chatList" class="chat-list">
-                        <div class="chat-item">Начните поиск чтобы найти пользователей</div>
+                    <div class="conversations-header">
+                        <h4>Диалоги</h4>
                     </div>
+                    <div id="conversationsList" class="conversations-list"></div>
                 </div>
                 <div class="private-chat-main">
                     <div id="privateHeader" class="private-header">
-                        <h3>Выберите чат</h3>
+                        <h3>Выберите диалог</h3>
                     </div>
                     <div id="privateMessages" class="private-messages"></div>
                     <form id="privateMessageForm" class="private-form" style="display: none;">
@@ -54,17 +61,73 @@ class PrivateChat {
 
     setupSocketListeners() {
         socket.on('private message', (data) => {
-            if ((data.receiver === document.getElementById('username').textContent && data.sender === this.currentChat) ||
-                (data.sender === document.getElementById('username').textContent && data.receiver === this.currentChat)) {
-                this.displayPrivateMessage(data);
+            this.handleIncomingMessage(data);
+        });
+
+        socket.on('conversations updated', () => {
+            this.loadConversations();
+        });
+    }
+
+    async loadConversations() {
+        try {
+            const response = await fetch('/api/conversations');
+            this.conversations = await response.json();
+            this.displayConversations();
+        } catch (error) {
+            console.error('Error loading conversations:', error);
+        }
+    }
+
+    displayConversations() {
+        const container = document.getElementById('conversationsList');
+        container.innerHTML = '';
+
+        if (this.conversations.length === 0) {
+            container.innerHTML = '<div class="no-conversations">Нет диалогов</div>';
+            return;
+        }
+
+        this.conversations.forEach(conversation => {
+            const conversationElement = document.createElement('div');
+            conversationElement.className = `conversation-item ${conversation.username === this.currentChat ? 'active' : ''}`;
+            
+            let lastMessageText = 'Нет сообщений';
+            if (conversation.lastMessage) {
+                lastMessageText = conversation.lastMessage.isOwn ? 
+                    `Вы: ${conversation.lastMessage.text}` : 
+                    conversation.lastMessage.text;
             }
+
+            conversationElement.innerHTML = `
+                <div class="conversation-info">
+                    <div class="conversation-header">
+                        <span class="username">${conversation.username}</span>
+                        <span class="tag">${conversation.tag}</span>
+                        ${conversation.isOnline ? '<span class="online-dot"></span>' : ''}
+                    </div>
+                    <div class="last-message">${lastMessageText}</div>
+                    ${conversation.lastMessage ? 
+                        `<div class="message-time">${conversation.lastMessage.timestamp}</div>` : ''}
+                </div>
+                ${conversation.unreadCount > 0 ? 
+                    `<span class="unread-count">${conversation.unreadCount}</span>` : ''}
+            `;
+
+            conversationElement.addEventListener('click', () => {
+                this.startChat(conversation.username);
+            });
+
+            container.appendChild(conversationElement);
         });
     }
 
     async searchUsers() {
         const query = document.getElementById('userSearch').value.trim();
+        const resultsContainer = document.getElementById('searchResults');
+        
         if (query.length < 2) {
-            document.getElementById('searchResults').innerHTML = '';
+            resultsContainer.style.display = 'none';
             return;
         }
 
@@ -80,6 +143,7 @@ class PrivateChat {
     displaySearchResults(users) {
         const resultsContainer = document.getElementById('searchResults');
         resultsContainer.innerHTML = '';
+        resultsContainer.style.display = 'block';
 
         if (users.length === 0) {
             resultsContainer.innerHTML = '<div class="search-result">Пользователи не найдены</div>';
@@ -90,29 +154,50 @@ class PrivateChat {
             const userElement = document.createElement('div');
             userElement.className = 'search-result';
             userElement.innerHTML = `
-                <span>${user.username} ${user.tag}</span>
-                <button onclick="privateChat.startChat('${user.username}')">Чат</button>
+                <div class="user-info">
+                    <span class="username">${user.username}</span>
+                    <span class="tag">${user.tag}</span>
+                </div>
+                <button onclick="privateChat.startChat('${user.username}')">Написать</button>
             `;
             resultsContainer.appendChild(userElement);
+        });
+
+        // Скрываем результаты при клике вне области
+        document.addEventListener('click', (e) => {
+            if (!resultsContainer.contains(e.target) && e.target.id !== 'userSearch') {
+                resultsContainer.style.display = 'none';
+            }
         });
     }
 
     async startChat(username) {
         this.currentChat = username;
         
+        // Скрываем результаты поиска
+        document.getElementById('searchResults').style.display = 'none';
+        document.getElementById('userSearch').value = '';
+        
+        // Обновляем заголовок
         document.getElementById('privateHeader').innerHTML = `
-            <h3>Чат с ${username}</h3>
-            <button class="header-btn" onclick="privateChat.closeChat()">✕</button>
+            <div class="chat-header-info">
+                <h3>${username}</h3>
+                <span class="user-status">В сети</span>
+            </div>
+            <button class="close-chat-btn" onclick="privateChat.closeChat()">✕</button>
         `;
         
+        // Показываем форму сообщения
         document.getElementById('privateMessageForm').style.display = 'flex';
-        document.getElementById('userSearch').value = '';
-        document.getElementById('searchResults').innerHTML = '';
         
+        // Загружаем историю сообщений
         try {
             const response = await fetch(`/api/messages/private/${username}`);
             const messages = await response.json();
             this.displayMessageHistory(messages);
+            
+            // Обновляем список диалогов
+            this.loadConversations();
         } catch (error) {
             console.error('Error loading messages:', error);
         }
@@ -120,9 +205,12 @@ class PrivateChat {
 
     closeChat() {
         this.currentChat = null;
-        document.getElementById('privateHeader').innerHTML = '<h3>Выберите чат</h3>';
+        document.getElementById('privateHeader').innerHTML = '<h3>Выберите диалог</h3>';
         document.getElementById('privateMessageForm').style.display = 'none';
         document.getElementById('privateMessages').innerHTML = '';
+        
+        // Обновляем список диалогов
+        this.loadConversations();
     }
 
     displayMessageHistory(messages) {
@@ -132,37 +220,58 @@ class PrivateChat {
         messages.sort((a, b) => new Date(a.date) - new Date(b.date));
         
         messages.forEach(message => {
-            this.displayPrivateMessage(message);
+            this.displayMessage(message);
         });
         
         container.scrollTop = container.scrollHeight;
     }
 
-    displayPrivateMessage(data) {
+    displayMessage(message) {
         const container = document.getElementById('privateMessages');
         const messageElement = document.createElement('div');
-        const isOwn = data.sender === document.getElementById('username').textContent;
+        const isOwn = message.sender === document.getElementById('username').textContent;
         
         messageElement.className = `private-message ${isOwn ? 'own' : ''}`;
         messageElement.innerHTML = `
-            <strong>${data.sender}</strong> 
-            <span>(${data.timestamp})</span>: 
-            ${data.message}
+            <div class="message-sender">${message.sender}</div>
+            <div class="message-text">${message.message}</div>
+            <div class="message-time">${message.timestamp}</div>
         `;
         
         container.appendChild(messageElement);
         container.scrollTop = container.scrollHeight;
     }
 
+    handleIncomingMessage(data) {
+        // Если это сообщение для текущего чата
+        if (this.currentChat && 
+            ((data.sender === this.currentChat && data.receiver === document.getElementById('username').textContent) ||
+             (data.receiver === this.currentChat && data.sender === document.getElementById('username').textContent))) {
+            this.displayMessage(data);
+        }
+        
+        // Всегда обновляем список диалогов при новом сообщении
+        this.loadConversations();
+    }
+
     sendPrivateMessage() {
         const input = document.getElementById('privateMessageInput');
         const message = input.value.trim();
+        const currentUser = document.getElementById('username').textContent;
         
         if (message && this.currentChat) {
             socket.emit('private message', {
-                sender: document.getElementById('username').textContent,
+                sender: currentUser,
                 receiver: this.currentChat,
                 message: message
+            });
+            
+            // Сразу отображаем свое сообщение
+            this.displayMessage({
+                sender: currentUser,
+                receiver: this.currentChat,
+                message: message,
+                timestamp: new Date().toLocaleTimeString()
             });
             
             input.value = '';
