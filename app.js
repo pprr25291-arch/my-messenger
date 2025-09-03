@@ -18,6 +18,9 @@ const PORT = process.env.PORT || 3000;
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
+
+// Обслуживание статических файлов
+app.use('/static', express.static(path.join(__dirname, 'static')));
 app.use(express.static(path.join(__dirname, 'static')));
 
 // Явно указываем пути для основных файлов
@@ -33,10 +36,6 @@ app.get('/chat.js', (req, res) => {
     res.sendFile(path.join(__dirname, 'static', 'chat.js'));
 });
 
-app.get('/private-chat.js', (req, res) => {
-    res.sendFile(path.join(__dirname, 'static', 'private-chat.js'));
-});
-
 app.get('/socket.io/socket.io.js', (req, res) => {
     res.sendFile(path.join(__dirname, 'node_modules', 'socket.io', 'client-dist', 'socket.io.js'));
 });
@@ -46,10 +45,9 @@ app.set('views', path.join(__dirname, 'templates'));
 app.set('view engine', 'html');
 app.engine('html', require('ejs').renderFile);
 
-// Хранилище данных
+// Хранилище данных (вместо MongoDB)
 let users = [];
-let messages = [];
-let activeSockets = {};
+loadUsers();
 
 async function loadUsers() {
     try {
@@ -57,39 +55,12 @@ async function loadUsers() {
         users = JSON.parse(data);
     } catch (error) {
         users = [];
-        await saveUsers();
-    }
-}
-
-async function loadMessages() {
-    try {
-        const data = await fs.readFile('messages.json', 'utf8');
-        messages = JSON.parse(data);
-    } catch (error) {
-        messages = [];
-        await saveMessages();
     }
 }
 
 async function saveUsers() {
-    try {
-        await fs.writeFile('users.json', JSON.stringify(users, null, 2));
-    } catch (error) {
-        console.error('Error saving users:', error);
-    }
+    await fs.writeFile('users.json', JSON.stringify(users, null, 2));
 }
-
-async function saveMessages() {
-    try {
-        await fs.writeFile('messages.json', JSON.stringify(messages, null, 2));
-    } catch (error) {
-        console.error('Error saving messages:', error);
-    }
-}
-
-// Загружаем данные при запуске
-loadUsers();
-loadMessages();
 
 // Проверка JWT токена
 function authenticateToken(req, res, next) {
@@ -123,237 +94,45 @@ app.get('/chat', authenticateToken, (req, res) => {
 // API Routes
 app.post('/api/register', async (req, res) => {
     try {
-        const { username, password, tags } = req.body;
-        
-        if (users.find(u => u.username === username)) {
-            return res.status(400).json({ error: 'Username already exists' });
-        }
-        
+        const { username, password } = req.body;
         const hashedPassword = await bcrypt.hash(password, 10);
-        const tag = '#' + Math.floor(1000 + Math.random() * 9000);
         
-        users.push({ 
-            username, 
-            password: hashedPassword, 
-            tag,
-            tags: tags ? tags.split(',').map(t => t.trim()) : []
-        });
-        
+        users.push({ username, password: hashedPassword });
         await saveUsers();
         
-        const token = jwt.sign({ username }, JWT_SECRET);
-        res.cookie('token', token, { httpOnly: true });
         res.json({ success: true });
     } catch (error) {
-        console.error('Registration error:', error);
         res.status(500).json({ error: 'Registration failed' });
     }
 });
 
 app.post('/api/login', async (req, res) => {
-    try {
-        const { username, password } = req.body;
-        const user = users.find(u => u.username === username);
-        
-        if (!user || !await bcrypt.compare(password, user.password)) {
-            return res.status(401).json({ error: 'Invalid credentials' });
-        }
-
-        const token = jwt.sign({ username }, JWT_SECRET);
-        res.cookie('token', token, { httpOnly: true });
-        res.json({ success: true });
-    } catch (error) {
-        console.error('Login error:', error);
-        res.status(500).json({ error: 'Login failed' });
+    const { username, password } = req.body;
+    const user = users.find(u => u.username === username);
+    
+    if (!user || !await bcrypt.compare(password, user.password)) {
+        return res.status(401).json({ error: 'Invalid credentials' });
     }
-});
 
-app.post('/api/logout', (req, res) => {
-    res.clearCookie('token');
+    const token = jwt.sign({ username }, JWT_SECRET);
+    res.cookie('token', token, { httpOnly: true });
     res.json({ success: true });
 });
 
-// Получение списка диалогов
-app.get('/api/conversations', authenticateToken, (req, res) => {
-    try {
-        const currentUser = req.user.username;
-        
-        const conversationPartners = new Set();
-        
-        messages.forEach(msg => {
-            if (msg.type === 'private') {
-                if (msg.sender === currentUser) {
-                    conversationPartners.add(msg.receiver);
-                } else if (msg.receiver === currentUser) {
-                    conversationPartners.add(msg.sender);
-                }
-            }
-        });
-        
-        const conversations = Array.from(conversationPartners).map(partner => {
-            const user = users.find(u => u.username === partner);
-            const lastMessage = messages
-                .filter(msg => msg.type === 'private' && 
-                    ((msg.sender === currentUser && msg.receiver === partner) ||
-                     (msg.sender === partner && msg.receiver === currentUser)))
-                .sort((a, b) => new Date(b.date) - new Date(a.date))[0];
-            
-            const unreadCount = messages.filter(msg => 
-                msg.type === 'private' &&
-                msg.sender === partner &&
-                msg.receiver === currentUser &&
-                !msg.read
-            ).length;
-            
-            return {
-                username: partner,
-                tag: user ? user.tag : '#0000',
-                lastMessage: lastMessage ? {
-                    text: lastMessage.message,
-                    timestamp: lastMessage.timestamp,
-                    isOwn: lastMessage.sender === currentUser
-                } : null,
-                unreadCount,
-                isOnline: !!activeSockets[partner]
-            };
-        });
-        
-        conversations.sort((a, b) => {
-            if (!a.lastMessage) return 1;
-            if (!b.lastMessage) return -1;
-            return new Date(b.lastMessage.timestamp) - new Date(a.lastMessage.timestamp);
-        });
-        
-        res.json(conversations);
-    } catch (error) {
-        console.error('Conversations error:', error);
-        res.status(500).json({ error: 'Failed to load conversations' });
-    }
-});
-
-// Поиск пользователей
-app.get('/api/users/search', authenticateToken, (req, res) => {
-    try {
-        const { query } = req.query;
-        
-        if (!query || query.length < 2) {
-            return res.json([]);
-        }
-        
-        const results = users.filter(user => 
-            user.username.toLowerCase().includes(query.toLowerCase()) ||
-            user.tag.toLowerCase().includes(query.toLowerCase()) ||
-            user.tags.some(tag => tag.toLowerCase().includes(query.toLowerCase()))
-        );
-        
-        const filteredResults = results
-            .filter(user => user.username !== req.user.username)
-            .map(({ password, ...user }) => user);
-        
-        res.json(filteredResults);
-    } catch (error) {
-        console.error('Search error:', error);
-        res.status(500).json({ error: 'Search failed' });
-    }
-});
-
-// История личных сообщений
-app.get('/api/messages/private/:username', authenticateToken, (req, res) => {
-    try {
-        const otherUser = req.params.username;
-        const currentUser = req.user.username;
-        
-        const privateMessages = messages.filter(msg => 
-            msg.type === 'private' &&
-            ((msg.sender === currentUser && msg.receiver === otherUser) ||
-             (msg.sender === otherUser && msg.receiver === currentUser))
-        );
-        
-        messages.forEach(msg => {
-            if (msg.type === 'private' && 
-                msg.sender === otherUser && 
-                msg.receiver === currentUser &&
-                !msg.read) {
-                msg.read = true;
-            }
-        });
-        
-        saveMessages();
-        
-        res.json(privateMessages);
-    } catch (error) {
-        console.error('Messages error:', error);
-        res.status(500).json({ error: 'Failed to load messages' });
-    }
-});
-
-// Socket.io
+// Socket.io для реального времени
 io.on('connection', (socket) => {
     console.log('User connected');
 
-    socket.on('user connected', (username) => {
-        activeSockets[username] = socket.id;
-        console.log(`User ${username} connected with socket ${socket.id}`);
-    });
-
-    // Глобальные сообщения
     socket.on('chat message', (data) => {
-        try {
-            const messageData = {
-                username: data.username,
-                message: data.message,
-                timestamp: new Date().toLocaleTimeString(),
-                type: 'global',
-                date: new Date().toISOString()
-            };
-            
-            messages.push(messageData);
-            saveMessages();
-            
-            io.emit('chat message', messageData);
-        } catch (error) {
-            console.error('Global message error:', error);
-        }
-    });
-
-    // Личные сообщения
-    socket.on('private message', (data) => {
-        try {
-            const messageData = {
-                sender: data.sender,
-                receiver: data.receiver,
-                message: data.message,
-                timestamp: new Date().toLocaleTimeString(),
-                type: 'private',
-                date: new Date().toISOString(),
-                read: false
-            };
-            
-            messages.push(messageData);
-            saveMessages();
-            
-            socket.emit('private message', messageData);
-            
-            const receiverSocketId = activeSockets[data.receiver];
-            if (receiverSocketId) {
-                io.to(receiverSocketId).emit('private message', messageData);
-            }
-            
-            io.emit('conversations updated');
-            
-        } catch (error) {
-            console.error('Private message error:', error);
-        }
+        io.emit('chat message', {
+            username: data.username,
+            message: data.message,
+            timestamp: new Date().toLocaleTimeString()
+        });
     });
 
     socket.on('disconnect', () => {
-        for (const [username, socketId] of Object.entries(activeSockets)) {
-            if (socketId === socket.id) {
-                delete activeSockets[username];
-                console.log(`User ${username} disconnected`);
-                break;
-            }
-        }
+        console.log('User disconnected');
     });
 });
 

@@ -8,31 +8,18 @@
     <div class="chat-container">
         <header>
             <h2>Мессенджер</h2>
-            <div>
-                <span>Добро пожаловать, <span id="username"><%= username %></span>!</span>
-                <div class="header-buttons">
-                    <button id="globalBtn" class="header-btn active" onclick="switchToGlobal()">Общий чат</button>
-                    <button id="privateBtn" class="header-btn" onclick="switchToPrivate()">Приватные сообщения</button>
-                    <button class="header-btn" onclick="logout()">Выйти</button>
-                </div>
-            </div>
+            <p>Добро пожаловать, <span id="username"><%= username %></span>!</p>
         </header>
         
-        <!-- Глобальный чат -->
-        <div id="globalChat">
-            <div id="messages"></div>
-            <form id="messageForm">
-                <input type="text" id="messageInput" placeholder="Введите сообщение..." autocomplete="off">
-                <button type="submit">Отправить</button>
-            </form>
-        </div>
+        <div id="messages"></div>
         
-        <!-- Приватный чат -->
-        <div id="privateChat" style="display: none;"></div>
+        <form id="messageForm">
+            <input type="text" id="messageInput" placeholder="Введите сообщение..." autocomplete="off">
+            <button type="submit">Отправить</button>
+        </form>
     </div>
 
     <script src="/socket.io/socket.io.js"></script>
     <script src="/chat.js"></script>
-    <script src="/private-chat.js"></script>
 </body>
 </html>

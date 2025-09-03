@@ -1,6 +1,4 @@
 node_modules/
 users.json
-messages.json
 .env
 .DS_Store
-*.log
