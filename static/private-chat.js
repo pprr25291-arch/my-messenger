@@ -11,7 +11,6 @@ class PrivateChat {
         this.setupSocketListeners();
         this.loadConversations();
         
-        // Сообщаем серверу о подключении
         const username = document.getElementById('username').textContent;
         socket.emit('user connected', username);
     }
@@ -163,7 +162,6 @@ class PrivateChat {
             resultsContainer.appendChild(userElement);
         });
 
-        // Скрываем результаты при клике вне области
         document.addEventListener('click', (e) => {
             if (!resultsContainer.contains(e.target) && e.target.id !== 'userSearch') {
                 resultsContainer.style.display = 'none';
@@ -174,11 +172,9 @@ class PrivateChat {
     async startChat(username) {
         this.currentChat = username;
         
-        // Скрываем результаты поиска
         document.getElementById('searchResults').style.display = 'none';
         document.getElementById('userSearch').value = '';
         
-        // Обновляем заголовок
         document.getElementById('privateHeader').innerHTML = `
             <div class="chat-header-info">
                 <h3>${username}</h3>
@@ -187,16 +183,12 @@ class PrivateChat {
             <button class="close-chat-btn" onclick="privateChat.closeChat()">✕</button>
         `;
         
-        // Показываем форму сообщения
         document.getElementById('privateMessageForm').style.display = 'flex';
         
-        // Загружаем историю сообщений
         try {
             const response = await fetch(`/api/messages/private/${username}`);
             const messages = await response.json();
             this.displayMessageHistory(messages);
-            
-            // Обновляем список диалогов
             this.loadConversations();
         } catch (error) {
             console.error('Error loading messages:', error);
@@ -208,8 +200,6 @@ class PrivateChat {
         document.getElementById('privateHeader').innerHTML = '<h3>Выберите диалог</h3>';
         document.getElementById('privateMessageForm').style.display = 'none';
         document.getElementById('privateMessages').innerHTML = '';
-        
-        // Обновляем список диалогов
         this.loadConversations();
     }
 
@@ -243,14 +233,11 @@ class PrivateChat {
     }
 
     handleIncomingMessage(data) {
-        // Если это сообщение для текущего чата
         if (this.currentChat && 
             ((data.sender === this.currentChat && data.receiver === document.getElementById('username').textContent) ||
              (data.receiver === this.currentChat && data.sender === document.getElementById('username').textContent))) {
             this.displayMessage(data);
         }
-        
-        // Всегда обновляем список диалогов при новом сообщении
         this.loadConversations();
     }
 
@@ -266,7 +253,6 @@ class PrivateChat {
                 message: message
             });
             
-            // Сразу отображаем свое сообщение
             this.displayMessage({
                 sender: currentUser,
                 receiver: this.currentChat,
@@ -291,5 +277,4 @@ class PrivateChat {
     }
 }
 
-// Инициализируем приватный чат
 const privateChat = new PrivateChat();

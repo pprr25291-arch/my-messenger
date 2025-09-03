@@ -49,7 +49,7 @@ app.engine('html', require('ejs').renderFile);
 // Хранилище данных
 let users = [];
 let messages = [];
-let activeSockets = {}; // Для отслеживания активных пользователей
+let activeSockets = {};
 
 async function loadUsers() {
     try {
@@ -178,7 +178,6 @@ app.get('/api/conversations', authenticateToken, (req, res) => {
     try {
         const currentUser = req.user.username;
         
-        // Находим всех пользователей, с которыми есть переписка
         const conversationPartners = new Set();
         
         messages.forEach(msg => {
@@ -191,7 +190,6 @@ app.get('/api/conversations', authenticateToken, (req, res) => {
             }
         });
         
-        // Получаем информацию о пользователях
         const conversations = Array.from(conversationPartners).map(partner => {
             const user = users.find(u => u.username === partner);
             const lastMessage = messages
@@ -220,7 +218,6 @@ app.get('/api/conversations', authenticateToken, (req, res) => {
             };
         });
         
-        // Сортируем по времени последнего сообщения
         conversations.sort((a, b) => {
             if (!a.lastMessage) return 1;
             if (!b.lastMessage) return -1;
@@ -272,7 +269,6 @@ app.get('/api/messages/private/:username', authenticateToken, (req, res) => {
              (msg.sender === otherUser && msg.receiver === currentUser))
         );
         
-        // Помечаем сообщения как прочитанные
         messages.forEach(msg => {
             if (msg.type === 'private' && 
                 msg.sender === otherUser && 
@@ -336,16 +332,13 @@ io.on('connection', (socket) => {
             messages.push(messageData);
             saveMessages();
             
-            // Отправляем отправителю
             socket.emit('private message', messageData);
             
-            // Отправляем получателю, если он онлайн
             const receiverSocketId = activeSockets[data.receiver];
             if (receiverSocketId) {
                 io.to(receiverSocketId).emit('private message', messageData);
             }
             
-            // Обновляем список диалогов для обоих пользователей
             io.emit('conversations updated');
             
         } catch (error) {
@@ -354,7 +347,6 @@ io.on('connection', (socket) => {
     });
 
     socket.on('disconnect', () => {
-        // Удаляем пользователя из активных
         for (const [username, socketId] of Object.entries(activeSockets)) {
             if (socketId === socket.id) {
                 delete activeSockets[username];
@@ -363,15 +355,6 @@ io.on('connection', (socket) => {
             }
         }
     });
-});
-
-// Обработка ошибок
-process.on('uncaughtException', (error) => {
-    console.error('Uncaught Exception:', error);
-});
-
-process.on('unhandledRejection', (reason, promise) => {
-    console.error('Unhandled Rejection at:', promise, 'reason:', reason);
 });
 
 server.listen(PORT, () => {
