@@ -126,15 +126,12 @@ class PrivateChat {
             }
         });
 
-        // Добавляем обработчик скролла после инициализации DOM
-        setTimeout(() => {
-            const messagesContainer = document.getElementById('privateMessages');
-            if (messagesContainer) {
-                messagesContainer.addEventListener('scroll', () => {
-                    this.handleScroll();
-                });
-            }
-        }, 1000);
+        const messagesContainer = document.getElementById('privateMessages');
+        if (messagesContainer) {
+            messagesContainer.addEventListener('scroll', () => {
+                this.handleScroll();
+            });
+        }
     }
 
     handleScroll() {
@@ -288,12 +285,12 @@ class PrivateChat {
         this.loadConversations();
     }
 
-    // НОВЫЙ МЕТОД: Принудительно показываем скроллбар
+    // Принудительно показываем скроллбар
     forceScrollbarVisibility() {
         const messagesContainer = document.getElementById('privateMessages');
         if (messagesContainer) {
             messagesContainer.style.overflowY = 'scroll';
-            messagesContainer.style.height = '400px'; // Фиксированная высота для скролла
+            messagesContainer.style.height = '400px';
         }
     }
 
@@ -301,7 +298,11 @@ class PrivateChat {
         this.currentChat = null;
         document.getElementById('chatHeader').style.display = 'block';
         document.getElementById('activeChat').style.display = 'none';
-        document.getElementById('privateMessages').innerHTML = '<div class="no-messages">📝 Начните общение первым!</div>';
+        
+        // Сохраняем поле ввода, только очищаем сообщения
+        const privateMessages = document.getElementById('privateMessages');
+        privateMessages.innerHTML = '<div class="no-messages">📝 Начните общение первым!</div>';
+        
         document.getElementById('privateMessageInput').value = '';
         this.hideScrollIndicator();
         
@@ -372,14 +373,44 @@ class PrivateChat {
         const currentUser = document.getElementById('username').textContent;
         
         if (message && this.currentChat) {
+            // Сохраняем сообщение перед отправкой
+            const tempMessage = message;
+            
             socket.emit('private message', {
                 sender: currentUser,
                 receiver: this.currentChat,
-                message: message
+                message: tempMessage
             });
             
+            // Очищаем поле ввода но сохраняем фокус
             input.value = '';
+            
+            // Гарантируем что поле ввода остается видимым
+            this.ensureInputVisibility();
+            
+            // Возвращаем фокус
             input.focus();
+        }
+    }
+
+    // Гарантируем видимость поля ввода
+    ensureInputVisibility() {
+        const inputContainer = document.querySelector('.message-input-container');
+        const privateChat = document.getElementById('privateChat');
+        const activeChat = document.getElementById('activeChat');
+        
+        if (inputContainer) {
+            inputContainer.style.display = 'flex';
+            inputContainer.style.visibility = 'visible';
+            inputContainer.style.opacity = '1';
+        }
+        
+        if (privateChat) {
+            privateChat.style.display = 'block';
+        }
+        
+        if (activeChat) {
+            activeChat.style.display = 'flex';
         }
     }
 

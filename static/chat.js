@@ -37,7 +37,6 @@ function isAtBottom(container) {
 }
 
 function formatMessageText(text) {
-    // Разбиваем текст на строки по 20 символов
     const words = text.split(' ');
     let lines = [];
     let currentLine = '';
@@ -65,7 +64,6 @@ document.addEventListener('DOMContentLoaded', function() {
     const messageInput = document.getElementById('messageInput');
     const messages = document.getElementById('messages');
 
-    // Загружаем историю и скроллим вниз
     setTimeout(() => {
         loadMessageHistory();
         scrollToBottom('messages');
@@ -133,7 +131,6 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('globalBtn').addEventListener('click', switchToGlobal);
     document.getElementById('privateBtn').addEventListener('click', switchToPrivate);
 
-    // Фокус на поле ввода при загрузке
     messageInput.focus();
     switchToGlobal();
 });
