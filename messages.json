@@ -1,1372 +1,442 @@
 [
   {
-    "username": "ssss",
-    "message": "sss",
-    "timestamp": "09:33:34",
+    "username": "ggg",
+    "message": "dd",
+    "timestamp": "08:20:21",
     "type": "global",
-    "date": "2025-09-03T04:33:34.391Z"
+    "date": "2025-09-08T03:20:21.654Z"
   },
   {
-    "username": "zz",
-    "message": "мм",
-    "timestamp": "09:24:25",
+    "username": "ggg",
+    "message": "dd",
+    "timestamp": "08:20:23",
     "type": "global",
-    "date": "2025-09-04T04:24:25.808Z"
+    "date": "2025-09-08T03:20:23.648Z"
   },
   {
-    "id": "1756959881697db3uh3qdd",
-    "sender": "zz",
-    "receiver": "gggg",
-    "message": "ffff",
-    "timestamp": "09:24:41",
-    "type": "private",
-    "date": "2025-09-04T04:24:41.697Z",
-    "read": false
-  },
-  {
-    "id": "1756959885530ltyqax4yv",
-    "sender": "zz",
-    "receiver": "gggg",
-    "message": "g",
-    "timestamp": "09:24:45",
-    "type": "private",
-    "date": "2025-09-04T04:24:45.530Z",
-    "read": false
-  },
-  {
-    "id": "1756959949701j5a3egc31",
-    "sender": "zz",
-    "receiver": "gggg",
-    "message": "ь",
-    "timestamp": "09:25:49",
-    "type": "private",
-    "date": "2025-09-04T04:25:49.701Z",
-    "read": false
-  },
-  {
-    "id": "1756959951693peikayqk1",
-    "sender": "zz",
-    "receiver": "gggg",
-    "message": "ь",
-    "timestamp": "09:25:51",
-    "type": "private",
-    "date": "2025-09-04T04:25:51.693Z",
-    "read": false
-  },
-  {
-    "id": "17569600916191904ocrgx",
-    "sender": "zz",
-    "receiver": "gggg",
-    "message": "s",
-    "timestamp": "09:28:11",
-    "type": "private",
-    "date": "2025-09-04T04:28:11.632Z",
-    "read": false
-  },
-  {
-    "id": "1756960094344geaz7gy8x",
-    "sender": "zz",
-    "receiver": "gggg",
-    "message": "s",
-    "timestamp": "09:28:14",
-    "type": "private",
-    "date": "2025-09-04T04:28:14.344Z",
-    "read": false
-  },
-  {
-    "id": "1756960496673jz7qfz8vr",
-    "sender": "zz",
-    "receiver": "gggg",
-    "message": "gg",
-    "timestamp": "09:34:56",
-    "type": "private",
-    "date": "2025-09-04T04:34:56.685Z",
-    "read": false
-  },
-  {
-    "id": "17569605021359ngf2ngri",
-    "sender": "zz",
-    "receiver": "gggg",
-    "message": "gg",
-    "timestamp": "09:35:02",
-    "type": "private",
-    "date": "2025-09-04T04:35:02.135Z",
-    "read": false
-  },
-  {
-    "id": "1756960504719wumkb1dgg",
-    "sender": "zz",
-    "receiver": "gggg",
-    "message": "gg",
-    "timestamp": "09:35:04",
-    "type": "private",
-    "date": "2025-09-04T04:35:04.719Z",
-    "read": false
-  },
-  {
-    "id": "1756960509543jely080hm",
-    "sender": "zz",
-    "receiver": "gggg",
-    "message": "gggggggggggg",
-    "timestamp": "09:35:09",
-    "type": "private",
-    "date": "2025-09-04T04:35:09.543Z",
-    "read": false
-  },
-  {
-    "id": "1756960511139fmwm0zmsg",
-    "sender": "zz",
-    "receiver": "gggg",
-    "message": "gggggggggggggggggg",
-    "timestamp": "09:35:11",
-    "type": "private",
-    "date": "2025-09-04T04:35:11.139Z",
-    "read": false
-  },
-  {
-    "id": "17569605132516m8w7kbyu",
-    "sender": "zz",
-    "receiver": "gggg",
-    "message": "gggggggg",
-    "timestamp": "09:35:13",
-    "type": "private",
-    "date": "2025-09-04T04:35:13.251Z",
-    "read": false
-  },
-  {
-    "id": "1756960515051ijagr13e1",
-    "sender": "zz",
-    "receiver": "gggg",
-    "message": "g",
-    "timestamp": "09:35:15",
-    "type": "private",
-    "date": "2025-09-04T04:35:15.051Z",
-    "read": false
-  },
-  {
-    "id": "1756960516339lakq674df",
-    "sender": "zz",
-    "receiver": "gggg",
-    "message": "g",
-    "timestamp": "09:35:16",
-    "type": "private",
-    "date": "2025-09-04T04:35:16.339Z",
-    "read": false
-  },
-  {
-    "id": "1756960708087c3ykwowao",
-    "sender": "zz",
-    "receiver": "gggg",
-    "message": "d",
-    "timestamp": "09:38:28",
-    "type": "private",
-    "date": "2025-09-04T04:38:28.087Z",
-    "read": false
-  },
-  {
-    "id": "1756960710999d8r37gg14",
-    "sender": "zz",
-    "receiver": "gggg",
-    "message": "d",
-    "timestamp": "09:38:30",
-    "type": "private",
-    "date": "2025-09-04T04:38:30.999Z",
-    "read": false
-  },
-  {
-    "id": "1756960760905dlnecgeg4",
-    "sender": "zz",
-    "receiver": "gggg",
-    "message": "a",
-    "timestamp": "09:39:20",
-    "type": "private",
-    "date": "2025-09-04T04:39:20.917Z",
-    "read": false
-  },
-  {
-    "username": "zz",
-    "message": "а",
-    "timestamp": "10:00:20",
-    "type": "global",
-    "date": "2025-09-04T05:00:20.382Z"
-  },
-  {
-    "username": "zz",
-    "message": "а",
-    "timestamp": "10:00:22",
-    "type": "global",
-    "date": "2025-09-04T05:00:22.093Z"
-  },
-  {
-    "id": "1756962026567fqozhihu4",
-    "sender": "zz",
-    "receiver": "gggg",
-    "message": "я",
-    "timestamp": "10:00:26",
-    "type": "private",
-    "date": "2025-09-04T05:00:26.567Z",
-    "read": false
-  },
-  {
-    "id": "17569620329581e85804tt",
-    "sender": "zz",
-    "receiver": "gggg",
-    "message": "м",
-    "timestamp": "10:00:32",
-    "type": "private",
-    "date": "2025-09-04T05:00:32.958Z",
-    "read": false
-  },
-  {
-    "id": "1756962034338wn4xubytl",
-    "sender": "zz",
-    "receiver": "gggg",
-    "message": "м",
-    "timestamp": "10:00:34",
-    "type": "private",
-    "date": "2025-09-04T05:00:34.338Z",
-    "read": false
-  },
-  {
-    "id": "1756962036042kk7mh91xs",
-    "sender": "zz",
-    "receiver": "gggg",
-    "message": "м",
-    "timestamp": "10:00:36",
-    "type": "private",
-    "date": "2025-09-04T05:00:36.042Z",
-    "read": false
-  },
-  {
-    "id": "1756967845776cb5gbq3qq",
-    "sender": "vv",
-    "receiver": "gggg",
-    "message": "333",
-    "timestamp": "11:37:25",
-    "type": "private",
-    "date": "2025-09-04T06:37:25.793Z",
-    "read": false
-  },
-  {
-    "id": "17569678499023n9820z0c",
-    "sender": "vv",
-    "receiver": "gggg",
-    "message": "33",
-    "timestamp": "11:37:29",
-    "type": "private",
-    "date": "2025-09-04T06:37:29.902Z",
-    "read": false
-  },
-  {
-    "id": "175696785191917sya9l2o",
-    "sender": "vv",
-    "receiver": "gggg",
-    "message": "33",
-    "timestamp": "11:37:31",
-    "type": "private",
-    "date": "2025-09-04T06:37:31.919Z",
-    "read": false
-  },
-  {
-    "sender": "ss",
-    "receiver": "gggg",
+    "sender": "ggg",
+    "receiver": "aaa",
     "message": "ss",
-    "timestamp": "08:08:40",
+    "timestamp": "08:20:31",
     "type": "private",
-    "date": "2025-09-05T03:08:40.429Z"
+    "date": "2025-09-08T03:20:31.712Z"
   },
   {
-    "sender": "ss",
-    "receiver": "gggg",
-    "message": "s",
-    "timestamp": "08:08:42",
-    "type": "private",
-    "date": "2025-09-05T03:08:42.976Z"
-  },
-  {
-    "sender": "ss",
-    "receiver": "gggg",
-    "message": "s",
-    "timestamp": "08:08:49",
-    "type": "private",
-    "date": "2025-09-05T03:08:49.344Z"
-  },
-  {
-    "sender": "ss",
-    "receiver": "gggg",
-    "message": "s",
-    "timestamp": "08:25:23",
-    "type": "private",
-    "date": "2025-09-05T03:25:23.889Z"
-  },
-  {
-    "sender": "ss",
-    "receiver": "gggg",
+    "sender": "ggg",
+    "receiver": "aaa",
     "message": "ss",
-    "timestamp": "08:48:43",
+    "timestamp": "08:20:33",
     "type": "private",
-    "date": "2025-09-05T03:48:43.783Z"
+    "date": "2025-09-08T03:20:33.592Z"
   },
   {
-    "sender": "ss",
-    "receiver": "gggg",
+    "sender": "ggg",
+    "receiver": "aaa",
     "message": "ss",
-    "timestamp": "08:48:45",
+    "timestamp": "08:20:35",
     "type": "private",
-    "date": "2025-09-05T03:48:45.607Z"
+    "date": "2025-09-08T03:20:35.267Z"
   },
   {
-    "username": "ss",
-    "message": "dd",
-    "timestamp": "08:48:56",
-    "type": "global",
-    "date": "2025-09-05T03:48:56.400Z"
-  },
-  {
-    "username": "ss",
-    "message": "dd",
-    "timestamp": "08:48:57",
-    "type": "global",
-    "date": "2025-09-05T03:48:57.803Z"
-  },
-  {
-    "username": "ss",
-    "message": "dd",
-    "timestamp": "08:48:59",
-    "type": "global",
-    "date": "2025-09-05T03:48:59.115Z"
-  },
-  {
-    "username": "ss",
-    "message": "dd",
-    "timestamp": "08:49:00",
-    "type": "global",
-    "date": "2025-09-05T03:49:00.563Z"
-  },
-  {
-    "username": "ss",
-    "message": "dd",
-    "timestamp": "08:49:02",
-    "type": "global",
-    "date": "2025-09-05T03:49:02.171Z"
-  },
-  {
-    "username": "ss",
-    "message": "dd",
-    "timestamp": "08:49:03",
-    "type": "global",
-    "date": "2025-09-05T03:49:03.923Z"
-  },
-  {
-    "username": "ss",
-    "message": "dddd",
-    "timestamp": "08:49:06",
-    "type": "global",
-    "date": "2025-09-05T03:49:06.467Z"
-  },
-  {
-    "username": "ss",
-    "message": "ddd",
-    "timestamp": "08:49:07",
-    "type": "global",
-    "date": "2025-09-05T03:49:07.587Z"
-  },
-  {
-    "username": "ss",
-    "message": "dddddd",
-    "timestamp": "08:49:09",
-    "type": "global",
-    "date": "2025-09-05T03:49:09.315Z"
-  },
-  {
-    "username": "ss",
-    "message": "аа",
-    "timestamp": "09:14:05",
-    "type": "global",
-    "date": "2025-09-05T04:14:05.458Z"
-  },
-  {
-    "username": "ss",
-    "message": "а",
-    "timestamp": "09:14:07",
-    "type": "global",
-    "date": "2025-09-05T04:14:07.002Z"
-  },
-  {
-    "username": "ss",
-    "message": "а",
-    "timestamp": "09:14:08",
-    "type": "global",
-    "date": "2025-09-05T04:14:08.546Z"
-  },
-  {
-    "username": "ss",
-    "message": "а",
-    "timestamp": "09:14:09",
-    "type": "global",
-    "date": "2025-09-05T04:14:09.850Z"
-  },
-  {
-    "username": "ss",
-    "message": "а",
-    "timestamp": "09:14:11",
-    "type": "global",
-    "date": "2025-09-05T04:14:11.294Z"
-  },
-  {
-    "username": "ss",
-    "message": "а",
-    "timestamp": "09:14:12",
-    "type": "global",
-    "date": "2025-09-05T04:14:12.926Z"
-  },
-  {
-    "username": "ss",
-    "message": "ggg",
-    "timestamp": "09:21:44",
-    "type": "global",
-    "date": "2025-09-05T04:21:44.465Z"
-  },
-  {
-    "username": "ss",
-    "message": "ggggggg",
-    "timestamp": "09:21:46",
-    "type": "global",
-    "date": "2025-09-05T04:21:46.162Z"
-  },
-  {
-    "username": "ss",
-    "message": "gggg",
-    "timestamp": "09:21:47",
-    "type": "global",
-    "date": "2025-09-05T04:21:47.895Z"
-  },
-  {
-    "username": "ss",
-    "message": "g",
-    "timestamp": "09:21:49",
-    "type": "global",
-    "date": "2025-09-05T04:21:49.215Z"
-  },
-  {
-    "username": "ss",
-    "message": "g",
-    "timestamp": "09:21:50",
-    "type": "global",
-    "date": "2025-09-05T04:21:50.499Z"
-  },
-  {
-    "username": "ss",
-    "message": "g",
-    "timestamp": "09:21:52",
-    "type": "global",
-    "date": "2025-09-05T04:21:52.883Z"
-  },
-  {
-    "username": "ss",
-    "message": "g",
-    "timestamp": "09:21:55",
-    "type": "global",
-    "date": "2025-09-05T04:21:55.379Z"
-  },
-  {
-    "sender": "ss",
-    "receiver": "zz",
-    "message": "пппп",
-    "timestamp": "09:23:06",
+    "sender": "ggg",
+    "receiver": "aaa",
+    "message": "aaa",
+    "timestamp": "08:20:36",
     "type": "private",
-    "date": "2025-09-05T04:23:06.526Z"
+    "date": "2025-09-08T03:20:36.867Z"
   },
   {
-    "username": "ss",
-    "message": "ыы",
-    "timestamp": "09:28:50",
-    "type": "global",
-    "date": "2025-09-05T04:28:50.865Z"
+    "sender": "ggg",
+    "receiver": "aaa",
+    "message": "ss",
+    "timestamp": "08:20:38",
+    "type": "private",
+    "date": "2025-09-08T03:20:38.899Z"
   },
   {
-    "username": "ss",
-    "message": "ыы",
-    "timestamp": "09:28:52",
-    "type": "global",
-    "date": "2025-09-05T04:28:52.241Z"
-  },
-  {
-    "username": "ss",
+    "username": "ggg",
     "message": "ыыы",
-    "timestamp": "09:28:53",
+    "timestamp": "08:20:57",
     "type": "global",
-    "date": "2025-09-05T04:28:53.825Z"
+    "date": "2025-09-08T03:20:57.939Z"
   },
   {
-    "username": "ss",
+    "username": "ggg",
     "message": "ыы",
-    "timestamp": "09:28:55",
+    "timestamp": "08:20:58",
     "type": "global",
-    "date": "2025-09-05T04:28:55.033Z"
+    "date": "2025-09-08T03:20:58.939Z"
   },
   {
-    "sender": "ss",
-    "receiver": "vv",
-    "message": "аа",
-    "timestamp": "09:29:16",
-    "type": "private",
-    "date": "2025-09-05T04:29:16.461Z"
-  },
-  {
-    "sender": "ss",
-    "receiver": "vv",
-    "message": "аа",
-    "timestamp": "09:29:17",
-    "type": "private",
-    "date": "2025-09-05T04:29:17.933Z"
-  },
-  {
-    "sender": "ss",
-    "receiver": "gggg",
-    "message": "ddd",
-    "timestamp": "09:44:41",
-    "type": "private",
-    "date": "2025-09-05T04:44:41.296Z"
-  },
-  {
-    "sender": "ss",
-    "receiver": "gggg",
-    "message": "d",
-    "timestamp": "09:44:44",
-    "type": "private",
-    "date": "2025-09-05T04:44:44.367Z"
-  },
-  {
-    "sender": "ss",
-    "receiver": "gggg",
-    "message": "d",
-    "timestamp": "09:44:45",
-    "type": "private",
-    "date": "2025-09-05T04:44:45.848Z"
-  },
-  {
-    "sender": "ss",
-    "receiver": "gggg",
-    "message": "d",
-    "timestamp": "09:44:49",
-    "type": "private",
-    "date": "2025-09-05T04:44:49.027Z"
-  },
-  {
-    "sender": "ss",
-    "receiver": "zz",
-    "message": "d",
-    "timestamp": "09:44:52",
-    "type": "private",
-    "date": "2025-09-05T04:44:52.547Z"
-  },
-  {
-    "sender": "ss",
-    "receiver": "vv",
-    "message": "d",
-    "timestamp": "09:44:55",
-    "type": "private",
-    "date": "2025-09-05T04:44:55.755Z"
-  },
-  {
-    "sender": "ss",
-    "receiver": "gggg",
-    "message": "d",
-    "timestamp": "09:45:01",
-    "type": "private",
-    "date": "2025-09-05T04:45:01.867Z"
-  },
-  {
-    "sender": "ss",
-    "receiver": "gggg",
-    "message": "попа",
-    "timestamp": "09:45:09",
-    "type": "private",
-    "date": "2025-09-05T04:45:09.107Z"
-  },
-  {
-    "sender": "ss",
-    "receiver": "gggg",
-    "message": "п",
-    "timestamp": "09:45:24",
-    "type": "private",
-    "date": "2025-09-05T04:45:24.260Z"
-  },
-  {
-    "username": "ss",
-    "message": "ыы",
-    "timestamp": "09:55:18",
-    "type": "global",
-    "date": "2025-09-05T04:55:18.836Z"
-  },
-  {
-    "username": "ss",
-    "message": "ыы",
-    "timestamp": "09:55:20",
-    "type": "global",
-    "date": "2025-09-05T04:55:20.457Z"
-  },
-  {
-    "sender": "ss",
-    "receiver": "gggg",
-    "message": "ыы",
-    "timestamp": "09:55:23",
-    "type": "private",
-    "date": "2025-09-05T04:55:23.897Z"
-  },
-  {
-    "sender": "ss",
-    "receiver": "gggg",
+    "username": "ggg",
     "message": "ы",
-    "timestamp": "09:55:25",
-    "type": "private",
-    "date": "2025-09-05T04:55:25.232Z"
-  },
-  {
-    "sender": "ss",
-    "receiver": "gggg",
-    "message": "ы",
-    "timestamp": "09:55:26",
-    "type": "private",
-    "date": "2025-09-05T04:55:26.500Z"
-  },
-  {
-    "sender": "ss",
-    "receiver": "gggg",
-    "message": "ы",
-    "timestamp": "09:55:28",
-    "type": "private",
-    "date": "2025-09-05T04:55:28.100Z"
-  },
-  {
-    "sender": "ss",
-    "receiver": "gggg",
-    "message": "с",
-    "timestamp": "09:55:30",
-    "type": "private",
-    "date": "2025-09-05T04:55:30.076Z"
-  },
-  {
-    "sender": "ss",
-    "receiver": "gggg",
-    "message": "м",
-    "timestamp": "09:55:34",
-    "type": "private",
-    "date": "2025-09-05T04:55:34.308Z"
-  },
-  {
-    "username": "ss",
-    "message": "с",
-    "timestamp": "10:08:14",
+    "timestamp": "08:21:01",
     "type": "global",
-    "date": "2025-09-05T05:08:14.760Z"
+    "date": "2025-09-08T03:21:01.995Z"
   },
   {
-    "username": "ss",
-    "message": "ссс",
-    "timestamp": "10:08:16",
+    "sender": "ggg",
+    "receiver": "aaa",
+    "message": "ии",
+    "timestamp": "08:26:10",
+    "type": "private",
+    "date": "2025-09-08T03:26:10.952Z"
+  },
+  {
+    "username": "ggg",
+    "message": "яя",
+    "timestamp": "08:31:19",
     "type": "global",
-    "date": "2025-09-05T05:08:16.680Z"
+    "date": "2025-09-08T03:31:19.193Z"
   },
   {
-    "username": "ss",
-    "message": "сс",
-    "timestamp": "10:08:18",
-    "type": "global",
-    "date": "2025-09-05T05:08:18.592Z"
-  },
-  {
-    "sender": "ss",
-    "receiver": "gggg",
-    "message": "м",
-    "timestamp": "10:08:23",
+    "sender": "ggg",
+    "receiver": "aaa",
+    "message": "яя",
+    "timestamp": "08:31:24",
     "type": "private",
-    "date": "2025-09-05T05:08:23.480Z"
+    "date": "2025-09-08T03:31:24.264Z"
   },
   {
-    "sender": "ss",
-    "receiver": "gggg",
-    "message": "м",
-    "timestamp": "10:08:24",
+    "sender": "ggg",
+    "receiver": "aaa",
+    "message": "яя",
+    "timestamp": "08:31:25",
     "type": "private",
-    "date": "2025-09-05T05:08:24.939Z"
+    "date": "2025-09-08T03:31:25.424Z"
   },
   {
-    "sender": "ss",
-    "receiver": "gggg",
-    "message": "ч",
-    "timestamp": "10:08:28",
+    "sender": "ggg",
+    "receiver": "aaa",
+    "message": "яя",
+    "timestamp": "08:31:25",
     "type": "private",
-    "date": "2025-09-05T05:08:28.699Z"
+    "date": "2025-09-08T03:31:25.761Z"
   },
   {
-    "sender": "ss",
-    "receiver": "gggg",
-    "message": "ч",
-    "timestamp": "10:08:30",
+    "sender": "ggg",
+    "receiver": "aaa",
+    "message": "яя",
+    "timestamp": "08:31:25",
     "type": "private",
-    "date": "2025-09-05T05:08:30.867Z"
+    "date": "2025-09-08T03:31:25.892Z"
   },
   {
-    "sender": "ss",
-    "receiver": "gggg",
-    "message": "ч",
-    "timestamp": "10:08:32",
+    "sender": "ggg",
+    "receiver": "aaa",
+    "message": "яя",
+    "timestamp": "08:31:27",
     "type": "private",
-    "date": "2025-09-05T05:08:32.467Z"
+    "date": "2025-09-08T03:31:27.987Z"
   },
   {
-    "sender": "ss",
-    "receiver": "gggg",
-    "message": "я",
-    "timestamp": "10:08:35",
+    "sender": "ggg",
+    "receiver": "aaa",
+    "message": "яя",
+    "timestamp": "08:31:28",
     "type": "private",
-    "date": "2025-09-05T05:08:35.171Z"
+    "date": "2025-09-08T03:31:28.188Z"
   },
   {
-    "sender": "ss",
-    "receiver": "gggg",
-    "message": "я",
-    "timestamp": "10:08:36",
+    "sender": "ggg",
+    "receiver": "aaa",
+    "message": "яя",
+    "timestamp": "08:31:28",
     "type": "private",
-    "date": "2025-09-05T05:08:36.571Z"
+    "date": "2025-09-08T03:31:28.372Z"
   },
   {
-    "sender": "ss",
-    "receiver": "zz",
-    "message": "я",
-    "timestamp": "10:08:39",
+    "sender": "ggg",
+    "receiver": "aaa",
+    "message": "яя",
+    "timestamp": "08:31:28",
     "type": "private",
-    "date": "2025-09-05T05:08:39.851Z"
+    "date": "2025-09-08T03:31:28.539Z"
   },
   {
-    "sender": "ss",
-    "receiver": "zz",
-    "message": "я",
-    "timestamp": "10:08:41",
+    "sender": "ggg",
+    "receiver": "aaa",
+    "message": "яя",
+    "timestamp": "08:31:28",
     "type": "private",
-    "date": "2025-09-05T05:08:41.803Z"
+    "date": "2025-09-08T03:31:28.732Z"
   },
   {
-    "username": "ss",
-    "message": "чс",
-    "timestamp": "10:17:08",
-    "type": "global",
-    "date": "2025-09-05T05:17:08.120Z"
-  },
-  {
-    "username": "ss",
-    "message": "с",
-    "timestamp": "10:17:09",
-    "type": "global",
-    "date": "2025-09-05T05:17:09.810Z"
-  },
-  {
-    "sender": "ss",
-    "receiver": "gggg",
-    "message": "с",
-    "timestamp": "10:17:13",
+    "sender": "ggg",
+    "receiver": "aaa",
+    "message": "яя",
+    "timestamp": "08:31:28",
     "type": "private",
-    "date": "2025-09-05T05:17:13.889Z"
+    "date": "2025-09-08T03:31:28.899Z"
   },
   {
-    "sender": "ss",
-    "receiver": "gggg",
-    "message": "ссс",
-    "timestamp": "10:17:18",
+    "sender": "ggg",
+    "receiver": "aaa",
+    "message": "яя",
+    "timestamp": "08:31:29",
     "type": "private",
-    "date": "2025-09-05T05:17:18.881Z"
+    "date": "2025-09-08T03:31:29.083Z"
   },
   {
-    "sender": "ss",
-    "receiver": "gggg",
-    "message": "с",
-    "timestamp": "10:17:20",
+    "sender": "ggg",
+    "receiver": "aaa",
+    "message": "яя",
+    "timestamp": "08:31:29",
     "type": "private",
-    "date": "2025-09-05T05:17:20.796Z"
+    "date": "2025-09-08T03:31:29.275Z"
   },
   {
-    "sender": "ss",
-    "receiver": "zz",
-    "message": "с",
-    "timestamp": "10:17:23",
+    "sender": "ggg",
+    "receiver": "aaa",
+    "message": "яя",
+    "timestamp": "08:31:29",
     "type": "private",
-    "date": "2025-09-05T05:17:23.084Z"
+    "date": "2025-09-08T03:31:29.435Z"
   },
   {
-    "sender": "ss",
-    "receiver": "zz",
-    "message": "с",
-    "timestamp": "10:17:24",
+    "sender": "ggg",
+    "receiver": "aaa",
+    "message": "яя",
+    "timestamp": "08:31:29",
     "type": "private",
-    "date": "2025-09-05T05:17:24.524Z"
+    "date": "2025-09-08T03:31:29.579Z"
   },
   {
-    "sender": "ss",
-    "receiver": "zz",
-    "message": "с",
-    "timestamp": "10:17:26",
+    "sender": "ggg",
+    "receiver": "aaa",
+    "message": "яя",
+    "timestamp": "08:31:29",
     "type": "private",
-    "date": "2025-09-05T05:17:26.012Z"
+    "date": "2025-09-08T03:31:29.764Z"
   },
   {
-    "sender": "ss",
-    "receiver": "zz",
-    "message": "т",
-    "timestamp": "10:24:29",
+    "sender": "ggg",
+    "receiver": "aaa",
+    "message": "яя",
+    "timestamp": "08:31:29",
     "type": "private",
-    "date": "2025-09-05T05:24:29.850Z"
+    "date": "2025-09-08T03:31:29.939Z"
   },
   {
-    "username": "ss",
-    "message": "сс",
-    "timestamp": "10:28:41",
-    "type": "global",
-    "date": "2025-09-05T05:28:41.150Z"
+    "sender": "ggg",
+    "receiver": "aaa",
+    "message": "яя",
+    "timestamp": "08:31:30",
+    "type": "private",
+    "date": "2025-09-08T03:31:30.131Z"
   },
   {
-    "sender": "ss",
-    "receiver": "zz",
+    "sender": "ggg",
+    "receiver": "aaa",
+    "message": "яя",
+    "timestamp": "08:31:30",
+    "type": "private",
+    "date": "2025-09-08T03:31:30.299Z"
+  },
+  {
+    "sender": "ggg",
+    "receiver": "aaa",
+    "message": "яя",
+    "timestamp": "08:31:30",
+    "type": "private",
+    "date": "2025-09-08T03:31:30.483Z"
+  },
+  {
+    "sender": "ggg",
+    "receiver": "aaa",
+    "message": "яя",
+    "timestamp": "08:31:30",
+    "type": "private",
+    "date": "2025-09-08T03:31:30.667Z"
+  },
+  {
+    "sender": "ggg",
+    "receiver": "aaa",
+    "message": "яя",
+    "timestamp": "08:31:30",
+    "type": "private",
+    "date": "2025-09-08T03:31:30.891Z"
+  },
+  {
+    "sender": "ggg",
+    "receiver": "aaa",
+    "message": "яя",
+    "timestamp": "08:31:31",
+    "type": "private",
+    "date": "2025-09-08T03:31:31.075Z"
+  },
+  {
+    "sender": "ggg",
+    "receiver": "aaa",
+    "message": "яя",
+    "timestamp": "08:31:31",
+    "type": "private",
+    "date": "2025-09-08T03:31:31.283Z"
+  },
+  {
+    "sender": "ggg",
+    "receiver": "aaa",
+    "message": "яя",
+    "timestamp": "08:31:31",
+    "type": "private",
+    "date": "2025-09-08T03:31:31.803Z"
+  },
+  {
+    "sender": "ggg",
+    "receiver": "aaa",
+    "message": "яя",
+    "timestamp": "08:31:32",
+    "type": "private",
+    "date": "2025-09-08T03:31:32.108Z"
+  },
+  {
+    "sender": "ggg",
+    "receiver": "aaa",
+    "message": "яя",
+    "timestamp": "08:31:32",
+    "type": "private",
+    "date": "2025-09-08T03:31:32.315Z"
+  },
+  {
+    "sender": "ggg",
+    "receiver": "aaa",
+    "message": "яя",
+    "timestamp": "08:31:32",
+    "type": "private",
+    "date": "2025-09-08T03:31:32.516Z"
+  },
+  {
+    "sender": "ggg",
+    "receiver": "aaa",
+    "message": "яя",
+    "timestamp": "08:31:32",
+    "type": "private",
+    "date": "2025-09-08T03:31:32.732Z"
+  },
+  {
+    "sender": "ggg",
+    "receiver": "aaa",
+    "message": "яя",
+    "timestamp": "08:31:32",
+    "type": "private",
+    "date": "2025-09-08T03:31:32.915Z"
+  },
+  {
+    "sender": "ggg",
+    "receiver": "aaa",
+    "message": "яя",
+    "timestamp": "08:31:33",
+    "type": "private",
+    "date": "2025-09-08T03:31:33.116Z"
+  },
+  {
+    "sender": "ggg",
+    "receiver": "aaa",
+    "message": "яя",
+    "timestamp": "08:31:33",
+    "type": "private",
+    "date": "2025-09-08T03:31:33.331Z"
+  },
+  {
+    "sender": "ggg",
+    "receiver": "aaa",
+    "message": "яя",
+    "timestamp": "08:31:33",
+    "type": "private",
+    "date": "2025-09-08T03:31:33.523Z"
+  },
+  {
+    "sender": "ggg",
+    "receiver": "aaa",
+    "message": "яя",
+    "timestamp": "08:31:33",
+    "type": "private",
+    "date": "2025-09-08T03:31:33.724Z"
+  },
+  {
+    "sender": "ggg",
+    "receiver": "aaa",
+    "message": "яя",
+    "timestamp": "08:31:33",
+    "type": "private",
+    "date": "2025-09-08T03:31:33.916Z"
+  },
+  {
+    "sender": "ggg",
+    "receiver": "aaa",
+    "message": "яя",
+    "timestamp": "08:31:34",
+    "type": "private",
+    "date": "2025-09-08T03:31:34.099Z"
+  },
+  {
+    "sender": "ggg",
+    "receiver": "aaa",
+    "message": "яя",
+    "timestamp": "08:31:34",
+    "type": "private",
+    "date": "2025-09-08T03:31:34.251Z"
+  },
+  {
+    "sender": "ggg",
+    "receiver": "aaa",
     "message": "ччч",
-    "timestamp": "10:28:44",
+    "timestamp": "08:31:37",
     "type": "private",
-    "date": "2025-09-05T05:28:44.109Z"
+    "date": "2025-09-08T03:31:37.691Z"
   },
   {
-    "username": "ss",
-    "message": "ыы",
-    "timestamp": "10:30:18",
-    "type": "global",
-    "date": "2025-09-05T05:30:18.518Z"
-  },
-  {
-    "sender": "ss",
-    "receiver": "gggg",
-    "message": "ыы",
-    "timestamp": "10:30:21",
-    "type": "private",
-    "date": "2025-09-05T05:30:21.763Z"
-  },
-  {
-    "username": "ss",
-    "message": "и",
-    "timestamp": "10:33:51",
-    "type": "global",
-    "date": "2025-09-05T05:33:51.854Z"
-  },
-  {
-    "sender": "ss",
-    "receiver": "gggg",
-    "message": "и",
-    "timestamp": "10:33:55",
-    "type": "private",
-    "date": "2025-09-05T05:33:55.374Z"
-  },
-  {
-    "username": "ss",
-    "message": "о",
-    "timestamp": "10:39:48",
-    "type": "global",
-    "date": "2025-09-05T05:39:48.403Z"
-  },
-  {
-    "username": "ss",
-    "message": "о",
-    "timestamp": "10:39:50",
-    "type": "global",
-    "date": "2025-09-05T05:39:50.818Z"
-  },
-  {
-    "sender": "ss",
-    "receiver": "gggg",
-    "message": "о",
-    "timestamp": "10:39:54",
-    "type": "private",
-    "date": "2025-09-05T05:39:54.914Z"
-  },
-  {
-    "sender": "ss",
-    "receiver": "zz",
-    "message": "о",
-    "timestamp": "10:39:59",
-    "type": "private",
-    "date": "2025-09-05T05:39:59.275Z"
-  },
-  {
-    "sender": "ss",
-    "receiver": "gggg",
-    "message": "о",
-    "timestamp": "10:40:09",
-    "type": "private",
-    "date": "2025-09-05T05:40:09.582Z"
-  },
-  {
-    "username": "ss",
-    "message": "ы",
-    "timestamp": "10:53:29",
-    "type": "global",
-    "date": "2025-09-05T05:53:29.109Z"
-  },
-  {
-    "username": "ss",
-    "message": "ыыы",
-    "timestamp": "10:53:30",
-    "type": "global",
-    "date": "2025-09-05T05:53:30.698Z"
-  },
-  {
-    "username": "ss",
-    "message": "ы",
-    "timestamp": "10:53:31",
-    "type": "global",
-    "date": "2025-09-05T05:53:31.714Z"
-  },
-  {
-    "username": "ss",
-    "message": "ы",
-    "timestamp": "10:53:32",
-    "type": "global",
-    "date": "2025-09-05T05:53:32.722Z"
-  },
-  {
-    "username": "ss",
-    "message": "ы",
-    "timestamp": "10:53:34",
-    "type": "global",
-    "date": "2025-09-05T05:53:34.093Z"
-  },
-  {
-    "username": "ss",
-    "message": "ы",
-    "timestamp": "10:53:35",
-    "type": "global",
-    "date": "2025-09-05T05:53:35.629Z"
-  },
-  {
-    "sender": "ss",
-    "receiver": "zz",
-    "message": "ы",
-    "timestamp": "10:53:44",
-    "type": "private",
-    "date": "2025-09-05T05:53:44.253Z"
-  },
-  {
-    "sender": "ss",
-    "receiver": "vv",
-    "message": "ы",
-    "timestamp": "10:53:51",
-    "type": "private",
-    "date": "2025-09-05T05:53:51.117Z"
-  },
-  {
-    "sender": "ss",
-    "receiver": "vv",
-    "message": "ы",
-    "timestamp": "10:53:52",
-    "type": "private",
-    "date": "2025-09-05T05:53:52.725Z"
-  },
-  {
-    "sender": "ss",
-    "receiver": "vv",
-    "message": "ы",
-    "timestamp": "10:53:53",
-    "type": "private",
-    "date": "2025-09-05T05:53:53.997Z"
-  },
-  {
-    "sender": "ss",
-    "receiver": "vv",
-    "message": "ы",
-    "timestamp": "10:53:55",
-    "type": "private",
-    "date": "2025-09-05T05:53:55.429Z"
-  },
-  {
-    "username": "ss",
-    "message": "ооо",
-    "timestamp": "11:23:33",
-    "type": "global",
-    "date": "2025-09-05T06:23:33.972Z"
-  },
-  {
-    "username": "ss",
-    "message": "ооооооооооооооо",
-    "timestamp": "11:23:36",
-    "type": "global",
-    "date": "2025-09-05T06:23:36.084Z"
-  },
-  {
-    "username": "ss",
-    "message": "оооо",
-    "timestamp": "11:23:37",
-    "type": "global",
-    "date": "2025-09-05T06:23:37.620Z"
-  },
-  {
-    "username": "ss",
-    "message": "о",
-    "timestamp": "11:23:39",
-    "type": "global",
-    "date": "2025-09-05T06:23:39.060Z"
-  },
-  {
-    "username": "ss",
-    "message": "о",
-    "timestamp": "11:23:40",
-    "type": "global",
-    "date": "2025-09-05T06:23:40.096Z"
-  },
-  {
-    "username": "ss",
-    "message": "о",
-    "timestamp": "11:23:41",
-    "type": "global",
-    "date": "2025-09-05T06:23:41.632Z"
-  },
-  {
-    "username": "ss",
+    "username": "ggg",
     "message": "вв",
-    "timestamp": "11:24:13",
+    "timestamp": "08:38:26",
     "type": "global",
-    "date": "2025-09-05T06:24:13.124Z"
+    "date": "2025-09-08T03:38:26.450Z"
   },
   {
-    "username": "ss",
+    "username": "ggg",
     "message": "в",
-    "timestamp": "11:24:14",
+    "timestamp": "08:38:31",
     "type": "global",
-    "date": "2025-09-05T06:24:14.196Z"
+    "date": "2025-09-08T03:38:31.417Z"
   },
   {
-    "sender": "ss",
-    "receiver": "gggg",
+    "sender": "ggg",
+    "receiver": "aaa",
     "message": "в",
-    "timestamp": "11:24:17",
+    "timestamp": "08:38:35",
     "type": "private",
-    "date": "2025-09-05T06:24:17.940Z"
+    "date": "2025-09-08T03:38:35.728Z"
   },
   {
-    "username": "ss",
-    "message": "тт",
-    "timestamp": "11:29:52",
-    "type": "global",
-    "date": "2025-09-05T06:29:52.678Z"
-  },
-  {
-    "username": "ss",
-    "message": "т",
-    "timestamp": "11:29:53",
-    "type": "global",
-    "date": "2025-09-05T06:29:53.694Z"
-  },
-  {
-    "username": "ss",
-    "message": "т",
-    "timestamp": "11:29:54",
-    "type": "global",
-    "date": "2025-09-05T06:29:54.758Z"
-  },
-  {
-    "username": "ss",
-    "message": "т",
-    "timestamp": "11:29:56",
-    "type": "global",
-    "date": "2025-09-05T06:29:56.214Z"
-  },
-  {
-    "username": "ss",
-    "message": "т",
-    "timestamp": "11:29:57",
-    "type": "global",
-    "date": "2025-09-05T06:29:57.250Z"
-  },
-  {
-    "username": "ss",
-    "message": "т",
-    "timestamp": "11:29:58",
-    "type": "global",
-    "date": "2025-09-05T06:29:58.617Z"
-  },
-  {
-    "username": "ss",
-    "message": "т",
-    "timestamp": "11:29:59",
-    "type": "global",
-    "date": "2025-09-05T06:29:59.762Z"
-  },
-  {
-    "username": "ss",
-    "message": "т",
-    "timestamp": "11:30:01",
-    "type": "global",
-    "date": "2025-09-05T06:30:01.057Z"
-  },
-  {
-    "username": "ss",
-    "message": "т",
-    "timestamp": "11:30:02",
-    "type": "global",
-    "date": "2025-09-05T06:30:02.226Z"
-  },
-  {
-    "sender": "ss",
-    "receiver": "gggg",
-    "message": "т",
-    "timestamp": "11:30:09",
+    "sender": "ggg",
+    "receiver": "aaa",
+    "message": "в",
+    "timestamp": "08:38:36",
     "type": "private",
-    "date": "2025-09-05T06:30:09.561Z"
+    "date": "2025-09-08T03:38:36.985Z"
   },
   {
-    "sender": "ss",
-    "receiver": "gggg",
-    "message": "тттттттттттттттттттттттттттттттттттттттттттттттттттттттттттттттттттттттттттттттттттттттттттттттттттттттттттттттттттттттттттттттттттттттттттттттт",
-    "timestamp": "11:30:17",
+    "sender": "ggg",
+    "receiver": "aaa",
+    "message": "в",
+    "timestamp": "08:38:48",
     "type": "private",
-    "date": "2025-09-05T06:30:17.170Z"
+    "date": "2025-09-08T03:38:48.868Z"
   },
   {
-    "username": "ss",
-    "message": "п",
-    "timestamp": "11:30:54",
-    "type": "global",
-    "date": "2025-09-05T06:30:54.890Z"
-  },
-  {
-    "sender": "ss",
-    "receiver": "vv",
-    "message": "л",
-    "timestamp": "11:31:37",
+    "sender": "ggg",
+    "receiver": "aaa",
+    "message": "я",
+    "timestamp": "08:38:52",
     "type": "private",
-    "date": "2025-09-05T06:31:37.282Z"
+    "date": "2025-09-08T03:38:52.101Z"
   },
   {
-    "sender": "ss",
-    "receiver": "vv",
-    "message": "л",
-    "timestamp": "11:31:39",
+    "sender": "ggg",
+    "receiver": "aaa",
+    "message": "м",
+    "timestamp": "08:46:33",
     "type": "private",
-    "date": "2025-09-05T06:31:39.090Z"
-  },
-  {
-    "username": "ss",
-    "message": "упрваоллдъ",
-    "timestamp": "11:39:23",
-    "type": "global",
-    "date": "2025-09-05T06:39:23.488Z"
-  },
-  {
-    "username": "ss",
-    "message": "аа",
-    "timestamp": "11:39:24",
-    "type": "global",
-    "date": "2025-09-05T06:39:24.496Z"
-  },
-  {
-    "username": "ss",
-    "message": "а",
-    "timestamp": "11:39:24",
-    "type": "global",
-    "date": "2025-09-05T06:39:24.984Z"
-  },
-  {
-    "username": "ss",
-    "message": "а",
-    "timestamp": "11:39:25",
-    "type": "global",
-    "date": "2025-09-05T06:39:25.344Z"
-  },
-  {
-    "username": "ss",
-    "message": "а",
-    "timestamp": "11:39:25",
-    "type": "global",
-    "date": "2025-09-05T06:39:25.644Z"
-  },
-  {
-    "username": "ss",
-    "message": "а",
-    "timestamp": "11:39:25",
-    "type": "global",
-    "date": "2025-09-05T06:39:25.948Z"
-  },
-  {
-    "username": "ss",
-    "message": "а",
-    "timestamp": "11:39:26",
-    "type": "global",
-    "date": "2025-09-05T06:39:26.228Z"
-  },
-  {
-    "username": "ss",
-    "message": "а",
-    "timestamp": "11:39:26",
-    "type": "global",
-    "date": "2025-09-05T06:39:26.452Z"
-  },
-  {
-    "username": "ss",
-    "message": "а",
-    "timestamp": "11:39:26",
-    "type": "global",
-    "date": "2025-09-05T06:39:26.716Z"
-  },
-  {
-    "username": "ss",
-    "message": "а",
-    "timestamp": "11:39:26",
-    "type": "global",
-    "date": "2025-09-05T06:39:26.891Z"
-  },
-  {
-    "username": "ss",
-    "message": "а",
-    "timestamp": "11:39:27",
-    "type": "global",
-    "date": "2025-09-05T06:39:27.060Z"
-  },
-  {
-    "username": "ss",
-    "message": "а",
-    "timestamp": "11:39:27",
-    "type": "global",
-    "date": "2025-09-05T06:39:27.228Z"
-  },
-  {
-    "username": "ss",
-    "message": "а",
-    "timestamp": "11:39:27",
-    "type": "global",
-    "date": "2025-09-05T06:39:27.539Z"
-  },
-  {
-    "username": "ss",
-    "message": "а",
-    "timestamp": "11:39:27",
-    "type": "global",
-    "date": "2025-09-05T06:39:27.844Z"
-  },
-  {
-    "username": "ss",
-    "message": "а",
-    "timestamp": "11:39:27",
-    "type": "global",
-    "date": "2025-09-05T06:39:27.995Z"
-  },
-  {
-    "username": "ss",
-    "message": "а",
-    "timestamp": "11:39:28",
-    "type": "global",
-    "date": "2025-09-05T06:39:28.155Z"
-  },
-  {
-    "username": "ss",
-    "message": "а",
-    "timestamp": "11:39:28",
-    "type": "global",
-    "date": "2025-09-05T06:39:28.299Z"
-  },
-  {
-    "username": "ss",
-    "message": "а",
-    "timestamp": "11:39:28",
-    "type": "global",
-    "date": "2025-09-05T06:39:28.451Z"
-  },
-  {
-    "username": "ss",
-    "message": "а",
-    "timestamp": "11:39:28",
-    "type": "global",
-    "date": "2025-09-05T06:39:28.739Z"
-  },
-  {
-    "username": "ss",
-    "message": "а",
-    "timestamp": "11:39:29",
-    "type": "global",
-    "date": "2025-09-05T06:39:29.028Z"
-  },
-  {
-    "username": "ss",
-    "message": "а",
-    "timestamp": "11:39:29",
-    "type": "global",
-    "date": "2025-09-05T06:39:29.332Z"
-  },
-  {
-    "username": "ss",
-    "message": "а",
-    "timestamp": "11:39:29",
-    "type": "global",
-    "date": "2025-09-05T06:39:29.475Z"
-  },
-  {
-    "username": "ss",
-    "message": "а",
-    "timestamp": "11:39:29",
-    "type": "global",
-    "date": "2025-09-05T06:39:29.643Z"
-  },
-  {
-    "username": "ss",
-    "message": "а",
-    "timestamp": "11:39:29",
-    "type": "global",
-    "date": "2025-09-05T06:39:29.795Z"
-  },
-  {
-    "username": "ss",
-    "message": "а",
-    "timestamp": "11:39:29",
-    "type": "global",
-    "date": "2025-09-05T06:39:29.971Z"
-  },
-  {
-    "username": "ss",
-    "message": "а",
-    "timestamp": "11:39:30",
-    "type": "global",
-    "date": "2025-09-05T06:39:30.123Z"
-  },
-  {
-    "username": "ss",
-    "message": "а",
-    "timestamp": "11:39:30",
-    "type": "global",
-    "date": "2025-09-05T06:39:30.275Z"
-  },
-  {
-    "username": "ss",
-    "message": "а",
-    "timestamp": "11:39:31",
-    "type": "global",
-    "date": "2025-09-05T06:39:31.516Z"
-  },
-  {
-    "sender": "ss",
-    "receiver": "gggg",
-    "message": "пппппппппппппппппппппппппппппппппппппппппппппппппппппппппппппппппппппппппппппппппппппппппппппппппппппппппппппппппппппппппппппппппппппппппппппппппппппппппп",
-    "timestamp": "11:39:42",
-    "type": "private",
-    "date": "2025-09-05T06:39:42.779Z"
-  },
-  {
-    "sender": "ss",
-    "receiver": "gggg",
-    "message": "1",
-    "timestamp": "11:40:24",
-    "type": "private",
-    "date": "2025-09-05T06:40:24.428Z"
-  },
-  {
-    "sender": "ss",
-    "receiver": "gggg",
-    "message": "111",
-    "timestamp": "11:40:26",
-    "type": "private",
-    "date": "2025-09-05T06:40:26.460Z"
+    "date": "2025-09-08T03:46:33.401Z"
   }
 ]

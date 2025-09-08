@@ -171,7 +171,7 @@ app.post('/api/logout', (req, res) => {
     res.json({ success: true });
 });
 
-app.get('/api/messages/global', authenticateToken, (req, res) => {
+app.get('/api/messages/global', authenticateToken, (req, res) => {  // ИСПРАВЛЕННАЯ СТРОКА 174
     try {
         const globalMessages = messages.filter(msg => msg.type === 'global');
         res.json(globalMessages);

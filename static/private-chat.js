@@ -16,22 +16,21 @@ class PrivateChat {
     scrollToBottom() {
         const privateMessages = document.getElementById('privateMessages');
         if (privateMessages) {
-            // Прокручиваем не до самого низа, а чуть выше
-            privateMessages.scrollTop = privateMessages.scrollHeight - 100;
+            privateMessages.scrollTop = privateMessages.scrollHeight;
             this.isScrolledToBottom = true;
+            this.hideScrollIndicator();
         }
     }
 
     isAtBottom(container) {
         if (!container) return false;
-        const threshold = 100; // Увеличиваем порог для приватного чата
+        const threshold = 50;
         const position = container.scrollTop + container.clientHeight;
         const height = container.scrollHeight;
         return position >= height - threshold;
     }
 
     formatMessageText(text) {
-        // Разбиваем текст на строки по 20 символов
         const words = text.split(' ');
         let lines = [];
         let currentLine = '';
@@ -86,7 +85,15 @@ class PrivateChat {
                         </div>
                         
                         <div class="chat-messages-wrapper">
-                            <div id="privateMessages" class="private-messages"></div>
+                            <div id="privateMessages" class="private-messages">
+                                <div class="no-messages">📝 Начните общение первым!</div>
+                            </div>
+                            <div class="scroll-indicator" id="scrollIndicator" style="display: none;">
+                                <button type="button" onclick="privateChat.scrollToBottom()">
+                                    <span class="scroll-arrow">⬇️</span>
+                                    <span class="scroll-text">Новые сообщения</span>
+                                </button>
+                            </div>
                         </div>
                         
                         <div class="message-input-container">
@@ -119,18 +126,45 @@ class PrivateChat {
             }
         });
 
-        const messagesContainer = document.getElementById('privateMessages');
-        if (messagesContainer) {
-            messagesContainer.addEventListener('scroll', () => {
-                this.handleScroll();
-            });
-        }
+        // Добавляем обработчик скролла после инициализации DOM
+        setTimeout(() => {
+            const messagesContainer = document.getElementById('privateMessages');
+            if (messagesContainer) {
+                messagesContainer.addEventListener('scroll', () => {
+                    this.handleScroll();
+                });
+            }
+        }, 1000);
     }
 
     handleScroll() {
         const container = document.getElementById('privateMessages');
+        const scrollIndicator = document.getElementById('scrollIndicator');
+        
         if (container) {
             this.isScrolledToBottom = this.isAtBottom(container);
+            
+            if (scrollIndicator) {
+                if (this.isScrolledToBottom) {
+                    scrollIndicator.style.display = 'none';
+                } else {
+                    scrollIndicator.style.display = 'block';
+                }
+            }
+        }
+    }
+
+    showScrollIndicator() {
+        const scrollIndicator = document.getElementById('scrollIndicator');
+        if (scrollIndicator && !this.isScrolledToBottom) {
+            scrollIndicator.style.display = 'block';
+        }
+    }
+
+    hideScrollIndicator() {
+        const scrollIndicator = document.getElementById('scrollIndicator');
+        if (scrollIndicator) {
+            scrollIndicator.style.display = 'none';
         }
     }
 
@@ -246,17 +280,30 @@ class PrivateChat {
             console.error('Error loading messages:', error);
         }
         
+        // Принудительно включаем скроллбар
+        this.forceScrollbarVisibility();
+        
         // Фокус на поле ввода
         document.getElementById('privateMessageInput').focus();
         this.loadConversations();
+    }
+
+    // НОВЫЙ МЕТОД: Принудительно показываем скроллбар
+    forceScrollbarVisibility() {
+        const messagesContainer = document.getElementById('privateMessages');
+        if (messagesContainer) {
+            messagesContainer.style.overflowY = 'scroll';
+            messagesContainer.style.height = '400px'; // Фиксированная высота для скролла
+        }
     }
 
     closeCurrentChat() {
         this.currentChat = null;
         document.getElementById('chatHeader').style.display = 'block';
         document.getElementById('activeChat').style.display = 'none';
-        document.getElementById('privateMessages').innerHTML = '';
+        document.getElementById('privateMessages').innerHTML = '<div class="no-messages">📝 Начните общение первым!</div>';
         document.getElementById('privateMessageInput').value = '';
+        this.hideScrollIndicator();
         
         this.loadConversations();
     }
@@ -267,7 +314,6 @@ class PrivateChat {
         
         if (messages.length === 0) {
             container.innerHTML = '<div class="no-messages">📝 Начните общение первым!</div>';
-            setTimeout(() => this.scrollToBottom(), 100);
             return;
         }
         
@@ -278,6 +324,12 @@ class PrivateChat {
 
     displayMessage(message, shouldScroll = true) {
         const container = document.getElementById('privateMessages');
+        
+        const noMessagesElement = container.querySelector('.no-messages');
+        if (noMessagesElement) {
+            noMessagesElement.remove();
+        }
+        
         const messageElement = document.createElement('div');
         const isOwn = message.sender === document.getElementById('username').textContent;
         
@@ -299,6 +351,8 @@ class PrivateChat {
         
         if (shouldScroll && this.isScrolledToBottom) {
             setTimeout(() => this.scrollToBottom(), 50);
+        } else if (shouldScroll) {
+            this.showScrollIndicator();
         }
     }
 
