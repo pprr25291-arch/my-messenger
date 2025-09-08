@@ -3,6 +3,16 @@ class PrivateChat {
         this.currentChat = null;
         this.conversations = [];
         this.isScrolledToBottom = true;
+        this.callWindow = null;
+        this.localStream = null;
+        this.remoteStream = null;
+        this.peerConnection = null;
+        this.currentCallId = null;
+        this.isMuted = false;
+        this.isVideoEnabled = true;
+        this.timerInterval = null;
+        this.callStartTime = null;
+        this.incomingCallOffer = null;
         this.init();
     }
 
@@ -11,6 +21,7 @@ class PrivateChat {
         this.setupEventListeners();
         this.setupSocketListeners();
         this.loadConversations();
+        this.setupCallHandlers();
     }
 
     scrollToBottom() {
@@ -28,29 +39,6 @@ class PrivateChat {
         const position = container.scrollTop + container.clientHeight;
         const height = container.scrollHeight;
         return position >= height - threshold;
-    }
-
-    formatMessageText(text) {
-        const words = text.split(' ');
-        let lines = [];
-        let currentLine = '';
-
-        words.forEach(word => {
-            if ((currentLine + word).length > 20) {
-                if (currentLine) {
-                    lines.push(currentLine);
-                }
-                currentLine = word;
-            } else {
-                currentLine = currentLine ? currentLine + ' ' + word : word;
-            }
-        });
-
-        if (currentLine) {
-            lines.push(currentLine);
-        }
-
-        return lines.join('<br>');
     }
 
     createUI() {
@@ -81,6 +69,14 @@ class PrivateChat {
                                     <span class="user-status">online</span>
                                 </div>
                             </div>
+                            <div class="call-buttons">
+                                <button type="button" class="call-btn video-call" title="Видеозвонок">
+                                    📹
+                                </button>
+                                <button type="button" class="call-btn voice-call" title="Голосовой звонок">
+                                    📞
+                                </button>
+                            </div>
                             <button type="button" class="close-chat">✕</button>
                         </div>
                         
@@ -103,9 +99,62 @@ class PrivateChat {
                     </div>
                 </div>
             </div>
+            
+            <!-- Окно звонка -->
+            <div id="callWindow" class="call-window" style="display: none;">
+                <div class="call-header">
+                    <h4>Звонок пользователю: <span id="callUserName"></span></h4>
+                    <div class="call-timer" id="callTimer">00:00</div>
+                </div>
+                
+                <div class="video-container">
+                    <video id="localVideo" autoplay muted playsinline></video>
+                    <video id="remoteVideo" autoplay playsinline></video>
+                </div>
+                
+                <div class="call-controls">
+                    <button type="button" class="call-control mute-btn" onclick="privateChat.toggleMute()">
+                        🔇
+                    </button>
+                    <button type="button" class="call-control end-call-btn" onclick="privateChat.endCall()">
+                        📞
+                    </button>
+                    <button type="button" class="call-control video-btn" onclick="privateChat.toggleVideo()">
+                        📹
+                    </button>
+                    <button type="button" class="call-control fullscreen-btn" onclick="privateChat.toggleFullscreen()">
+                        ⛶
+                    </button>
+                </div>
+                
+                <div class="call-status" id="callStatus">
+                    Установка соединения...
+                </div>
+            </div>
+            
+            <!-- Окно входящего звонка -->
+            <div id="incomingCallWindow" class="incoming-call-window" style="display: none;">
+                <div class="incoming-call-content">
+                    <h4>Входящий звонок от: <span id="incomingCallUser"></span></h4>
+                    <div class="incoming-call-buttons">
+                        <button type="button" class="accept-call-btn" onclick="privateChat.acceptCall()">
+                            📞 Принять
+                        </button>
+                        <button type="button" class="reject-call-btn" onclick="privateChat.rejectCall()">
+                            ❌ Отклонить
+                        </button>
+                    </div>
+                </div>
+            </div>
         `;
 
         document.getElementById('privateChat').innerHTML = privateChatHTML;
+        
+        const privateMessages = document.getElementById('privateMessages');
+        if (privateMessages) {
+            privateMessages.style.overflowY = 'scroll';
+            privateMessages.style.height = '400px';
+        }
     }
 
     setupEventListeners() {
@@ -132,42 +181,329 @@ class PrivateChat {
                 this.handleScroll();
             });
         }
+
+        // Новые обработчики для кнопок звонка
+        document.querySelector('.video-call').addEventListener('click', () => {
+            this.startCall(true);
+        });
+
+        document.querySelector('.voice-call').addEventListener('click', () => {
+            this.startCall(false);
+        });
     }
 
-    handleScroll() {
-        const container = document.getElementById('privateMessages');
-        const scrollIndicator = document.getElementById('scrollIndicator');
-        
-        if (container) {
-            this.isScrolledToBottom = this.isAtBottom(container);
+    setupCallHandlers() {
+        this.callWindow = document.getElementById('callWindow');
+        this.incomingCallWindow = document.getElementById('incomingCallWindow');
+    }
+
+    async startCall(isVideoCall) {
+        if (!this.currentChat) return;
+
+        try {
+            this.currentCallId = this.generateUUID();
+            this.showCallWindow(isVideoCall);
             
-            if (scrollIndicator) {
-                if (this.isScrolledToBottom) {
-                    scrollIndicator.style.display = 'none';
-                } else {
-                    scrollIndicator.style.display = 'block';
+            // Получаем медиапоток
+            this.localStream = await navigator.mediaDevices.getUserMedia({
+                video: isVideoCall,
+                audio: true
+            });
+
+            const localVideo = document.getElementById('localVideo');
+            localVideo.srcObject = this.localStream;
+
+            // Создаем peer connection
+            await this.createPeerConnection();
+
+            // Добавляем локальный поток
+            this.localStream.getTracks().forEach(track => {
+                this.peerConnection.addTrack(track, this.localStream);
+            });
+
+            // Создаем offer
+            const offer = await this.peerConnection.createOffer();
+            await this.peerConnection.setLocalDescription(offer);
+
+            // Отправляем offer через Socket.io
+            socket.emit('call-user', {
+                from: document.getElementById('username').textContent,
+                to: this.currentChat,
+                offer: offer,
+                callId: this.currentCallId
+            });
+
+        } catch (error) {
+            console.error('Error starting call:', error);
+            this.showCallStatus('Ошибка при запуске звонка');
+        }
+    }
+
+    async createPeerConnection() {
+        const configuration = {
+            iceServers: [
+                { urls: 'stun:stun.l.google.com:19302' },
+                { urls: 'stun:stun1.l.google.com:19302' }
+            ]
+        };
+
+        this.peerConnection = new RTCPeerConnection(configuration);
+
+        // Обработчики ICE кандидатов
+        this.peerConnection.onicecandidate = (event) => {
+            if (event.candidate) {
+                socket.emit('ice-candidate', {
+                    callId: this.currentCallId,
+                    candidate: event.candidate,
+                    targetUser: this.currentChat
+                });
+            }
+        };
+
+        // Обработчик удаленного потока
+        this.peerConnection.ontrack = (event) => {
+            const remoteVideo = document.getElementById('remoteVideo');
+            if (event.streams && event.streams[0]) {
+                remoteVideo.srcObject = event.streams[0];
+                this.remoteStream = event.streams[0];
+                this.showCallStatus('Соединение установлено');
+            }
+        };
+
+        this.peerConnection.onconnectionstatechange = () => {
+            switch (this.peerConnection.connectionState) {
+                case 'connected':
+                    this.showCallStatus('Соединение установлено');
+                    this.startCallTimer();
+                    break;
+                case 'disconnected':
+                case 'failed':
+                    this.showCallStatus('Соединение прервано');
+                    this.endCall();
+                    break;
+            }
+        };
+    }
+
+    showCallWindow(isVideoCall) {
+        document.getElementById('callUserName').textContent = this.currentChat;
+        this.callWindow.style.display = 'block';
+        
+        if (!isVideoCall) {
+            document.querySelector('.video-container').style.display = 'none';
+        }
+    }
+
+    hideCallWindow() {
+        this.callWindow.style.display = 'none';
+        document.querySelector('.video-container').style.display = 'block';
+    }
+
+    showIncomingCallWindow(from) {
+        document.getElementById('incomingCallUser').textContent = from;
+        this.incomingCallWindow.style.display = 'block';
+    }
+
+    hideIncomingCallWindow() {
+        this.incomingCallWindow.style.display = 'none';
+    }
+
+    async acceptCall() {
+        try {
+            this.hideIncomingCallWindow();
+            this.showCallWindow(true);
+            
+            // Получаем медиапоток
+            this.localStream = await navigator.mediaDevices.getUserMedia({
+                video: true,
+                audio: true
+            });
+
+            const localVideo = document.getElementById('localVideo');
+            localVideo.srcObject = this.localStream;
+
+            // Создаем peer connection
+            await this.createPeerConnection();
+
+            // Добавляем локальный поток
+            this.localStream.getTracks().forEach(track => {
+                this.peerConnection.addTrack(track, this.localStream);
+            });
+
+            // Устанавливаем удаленное описание
+            await this.peerConnection.setRemoteDescription(
+                new RTCSessionDescription(this.incomingCallOffer)
+            );
+
+            // Создаем answer
+            const answer = await this.peerConnection.createAnswer();
+            await this.peerConnection.setLocalDescription(answer);
+
+            // Отправляем answer
+            socket.emit('accept-call', {
+                callId: this.currentCallId,
+                answer: answer
+            });
+
+        } catch (error) {
+            console.error('Error accepting call:', error);
+            this.showCallStatus('Ошибка при принятии звонка');
+        }
+    }
+
+    rejectCall() {
+        socket.emit('reject-call', {
+            callId: this.currentCallId
+        });
+        this.hideIncomingCallWindow();
+        this.currentCallId = null;
+    }
+
+    async endCall() {
+        if (this.peerConnection) {
+            this.peerConnection.close();
+            this.peerConnection = null;
+        }
+
+        if (this.localStream) {
+            this.localStream.getTracks().forEach(track => track.stop());
+            this.localStream = null;
+        }
+
+        if (this.currentCallId) {
+            socket.emit('end-call', {
+                callId: this.currentCallId
+            });
+        }
+
+        this.hideCallWindow();
+        this.stopCallTimer();
+        this.currentCallId = null;
+        this.isMuted = false;
+        this.isVideoEnabled = true;
+    }
+
+    toggleMute() {
+        if (this.localStream) {
+            const audioTracks = this.localStream.getAudioTracks();
+            audioTracks.forEach(track => {
+                track.enabled = !track.enabled;
+            });
+            this.isMuted = !this.isMuted;
+            
+            const muteBtn = document.querySelector('.mute-btn');
+            muteBtn.textContent = this.isMuted ? '🔇' : '🔊';
+        }
+    }
+
+    toggleVideo() {
+        if (this.localStream) {
+            const videoTracks = this.localStream.getVideoTracks();
+            videoTracks.forEach(track => {
+                track.enabled = !track.enabled;
+            });
+            this.isVideoEnabled = !this.isVideoEnabled;
+            
+            const videoBtn = document.querySelector('.video-btn');
+            videoBtn.textContent = this.isVideoEnabled ? '📹' : '📷 off';
+        }
+    }
+
+    toggleFullscreen() {
+        const videoContainer = document.querySelector('.video-container');
+        if (videoContainer) {
+            if (!document.fullscreenElement) {
+                if (videoContainer.requestFullscreen) {
+                    videoContainer.requestFullscreen();
+                } else if (videoContainer.mozRequestFullScreen) {
+                    videoContainer.mozRequestFullScreen();
+                } else if (videoContainer.webkitRequestFullscreen) {
+                    videoContainer.webkitRequestFullscreen();
+                } else if (videoContainer.msRequestFullscreen) {
+                    videoContainer.msRequestFullscreen();
+                }
+            } else {
+                if (document.exitFullscreen) {
+                    document.exitFullscreen();
+                } else if (document.mozCancelFullScreen) {
+                    document.mozCancelFullScreen();
+                } else if (document.webkitExitFullscreen) {
+                    document.webkitExitFullscreen();
+                } else if (document.msExitFullscreen) {
+                    document.msExitFullscreen();
                 }
             }
         }
     }
 
-    showScrollIndicator() {
-        const scrollIndicator = document.getElementById('scrollIndicator');
-        if (scrollIndicator && !this.isScrolledToBottom) {
-            scrollIndicator.style.display = 'block';
+    showCallStatus(status) {
+        const statusElement = document.getElementById('callStatus');
+        if (statusElement) {
+            statusElement.textContent = status;
         }
     }
 
-    hideScrollIndicator() {
-        const scrollIndicator = document.getElementById('scrollIndicator');
-        if (scrollIndicator) {
-            scrollIndicator.style.display = 'none';
+    startCallTimer() {
+        this.callStartTime = new Date();
+        this.timerInterval = setInterval(() => {
+            const elapsed = Math.floor((new Date() - this.callStartTime) / 1000);
+            const minutes = Math.floor(elapsed / 60).toString().padStart(2, '0');
+            const seconds = (elapsed % 60).toString().padStart(2, '0');
+            document.getElementById('callTimer').textContent = `${minutes}:${seconds}`;
+        }, 1000);
+    }
+
+    stopCallTimer() {
+        if (this.timerInterval) {
+            clearInterval(this.timerInterval);
+            this.timerInterval = null;
         }
+        document.getElementById('callTimer').textContent = '00:00';
     }
 
     setupSocketListeners() {
         socket.on('private message', (data) => this.handleIncomingMessage(data));
         socket.on('conversations updated', () => this.loadConversations());
+
+        // Новые обработчики звонков
+        socket.on('incoming-call', (data) => {
+            this.currentCallId = data.callId;
+            this.incomingCallOffer = data.offer;
+            this.showIncomingCallWindow(data.from);
+        });
+
+        socket.on('call-accepted', async (data) => {
+            await this.peerConnection.setRemoteDescription(
+                new RTCSessionDescription(data.answer)
+            );
+        });
+
+        socket.on('call-rejected', (data) => {
+            this.showCallStatus('Звонок отклонен');
+            setTimeout(() => this.endCall(), 2000);
+        });
+
+        socket.on('call-ended', (data) => {
+            this.showCallStatus('Собеседник завершил звонок');
+            setTimeout(() => this.endCall(), 2000);
+        });
+
+        socket.on('ice-candidate', async (data) => {
+            if (this.peerConnection) {
+                try {
+                    await this.peerConnection.addIceCandidate(
+                        new RTCIceCandidate(data.candidate)
+                    );
+                } catch (error) {
+                    console.error('Error adding ICE candidate:', error);
+                }
+            }
+        });
+
+        socket.on('call-failed', (data) => {
+            this.showCallStatus('Ошибка звонка: ' + data.reason);
+            setTimeout(() => this.endCall(), 2000);
+        });
     }
 
     async loadConversations() {
@@ -277,21 +613,8 @@ class PrivateChat {
             console.error('Error loading messages:', error);
         }
         
-        // Принудительно включаем скроллбар
-        this.forceScrollbarVisibility();
-        
-        // Фокус на поле ввода
         document.getElementById('privateMessageInput').focus();
         this.loadConversations();
-    }
-
-    // Принудительно показываем скроллбар
-    forceScrollbarVisibility() {
-        const messagesContainer = document.getElementById('privateMessages');
-        if (messagesContainer) {
-            messagesContainer.style.overflowY = 'scroll';
-            messagesContainer.style.height = '400px';
-        }
     }
 
     closeCurrentChat() {
@@ -299,7 +622,6 @@ class PrivateChat {
         document.getElementById('chatHeader').style.display = 'block';
         document.getElementById('activeChat').style.display = 'none';
         
-        // Сохраняем поле ввода, только очищаем сообщения
         const privateMessages = document.getElementById('privateMessages');
         privateMessages.innerHTML = '<div class="no-messages">📝 Начните общение первым!</div>';
         
@@ -357,6 +679,29 @@ class PrivateChat {
         }
     }
 
+    formatMessageText(text) {
+        const words = text.split(' ');
+        let lines = [];
+        let currentLine = '';
+
+        words.forEach(word => {
+            if ((currentLine + word).length > 20) {
+                if (currentLine) {
+                    lines.push(currentLine);
+                }
+                currentLine = word;
+            } else {
+                currentLine = currentLine ? currentLine + ' ' + word : word;
+            }
+        });
+
+        if (currentLine) {
+            lines.push(currentLine);
+        }
+
+        return lines.join('<br>');
+    }
+
     handleIncomingMessage(data) {
         if (this.currentChat && 
             ((data.sender === this.currentChat && data.receiver === document.getElementById('username').textContent) ||
@@ -373,44 +718,45 @@ class PrivateChat {
         const currentUser = document.getElementById('username').textContent;
         
         if (message && this.currentChat) {
-            // Сохраняем сообщение перед отправкой
-            const tempMessage = message;
-            
             socket.emit('private message', {
                 sender: currentUser,
                 receiver: this.currentChat,
-                message: tempMessage
+                message: message
             });
             
-            // Очищаем поле ввода но сохраняем фокус
             input.value = '';
-            
-            // Гарантируем что поле ввода остается видимым
-            this.ensureInputVisibility();
-            
-            // Возвращаем фокус
             input.focus();
         }
     }
 
-    // Гарантируем видимость поля ввода
-    ensureInputVisibility() {
-        const inputContainer = document.querySelector('.message-input-container');
-        const privateChat = document.getElementById('privateChat');
-        const activeChat = document.getElementById('activeChat');
+    handleScroll() {
+        const container = document.getElementById('privateMessages');
+        const scrollIndicator = document.getElementById('scrollIndicator');
         
-        if (inputContainer) {
-            inputContainer.style.display = 'flex';
-            inputContainer.style.visibility = 'visible';
-            inputContainer.style.opacity = '1';
+        if (container) {
+            this.isScrolledToBottom = this.isAtBottom(container);
+            
+            if (scrollIndicator) {
+                if (this.isScrolledToBottom) {
+                    scrollIndicator.style.display = 'none';
+                } else {
+                    scrollIndicator.style.display = 'block';
+                }
+            }
         }
-        
-        if (privateChat) {
-            privateChat.style.display = 'block';
+    }
+
+    showScrollIndicator() {
+        const scrollIndicator = document.getElementById('scrollIndicator');
+        if (scrollIndicator && !this.isScrolledToBottom) {
+            scrollIndicator.style.display = 'block';
         }
-        
-        if (activeChat) {
-            activeChat.style.display = 'flex';
+    }
+
+    hideScrollIndicator() {
+        const scrollIndicator = document.getElementById('scrollIndicator');
+        if (scrollIndicator) {
+            scrollIndicator.style.display = 'none';
         }
     }
 
@@ -424,6 +770,14 @@ class PrivateChat {
             clearTimeout(timeout);
             timeout = setTimeout(later, wait);
         };
+    }
+
+    generateUUID() {
+        return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+            const r = Math.random() * 16 | 0;
+            const v = c === 'x' ? r : (r & 0x3 | 0x8);
+            return v.toString(16);
+        });
     }
 }
 

@@ -399,11 +399,64 @@ header {
     color: white;
 }
 
+.conversation-item.empty {
+    justify-content: center;
+    color: #6c757d;
+    font-style: italic;
+}
+
+.conv-avatar {
+    font-size: 20px;
+}
+
+.conv-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.conv-name {
+    font-weight: bold;
+    margin-bottom: 4px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.conv-preview {
+    font-size: 12px;
+    color: #6c757d;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.conv-time {
+    font-size: 11px;
+    color: #adb5bd;
+}
+
 .private-chat-main {
     flex: 1;
     display: flex;
     flex-direction: column;
     overflow: hidden;
+}
+
+.chat-header {
+    padding: 20px;
+    text-align: center;
+    background: #f8f9fa;
+    border-bottom: 2px solid #e9ecef;
+}
+
+.chat-header h3 {
+    margin: 0 0 10px 0;
+    color: #2c3e50;
+}
+
+.chat-header p {
+    margin: 0;
+    color: #6c757d;
 }
 
 #activeChat {
@@ -422,7 +475,51 @@ header {
     align-items: center;
 }
 
-/* СТИЛИ ДЛЯ СКРОЛЛБАРА ПРИВАТНЫХ СООБЩЕНИЙ - ОБНОВЛЕННЫЕ */
+.chat-user-info {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.user-avatar {
+    font-size: 24px;
+}
+
+.user-status {
+    font-size: 12px;
+    color: #28a745;
+    font-weight: bold;
+}
+
+/* Стили для кнопок звонка */
+.call-buttons {
+    display: flex;
+    gap: 10px;
+    margin-left: auto;
+}
+
+.call-btn {
+    padding: 8px 12px;
+    background: linear-gradient(45deg, #28a745, #20c997);
+    border: none;
+    border-radius: 50%;
+    color: white;
+    cursor: pointer;
+    font-size: 16px;
+    transition: all 0.3s ease;
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.call-btn:hover {
+    transform: scale(1.1);
+    background: linear-gradient(45deg, #218838, #1e9e8a);
+}
+
+/* СТИЛИ ДЛЯ СКРОЛЛБАРА ПРИВАТНЫХ СООБЩЕНИЙ */
 .private-messages {
     flex: 1;
     overflow-y: scroll !important;
@@ -516,18 +613,6 @@ header {
     white-space: nowrap;
 }
 
-@keyframes bounce {
-    0%, 20%, 50%, 80%, 100% {
-        transform: translateX(-50%) translateY(0);
-    }
-    40% {
-        transform: translateX(-50%) translateY(-5px);
-    }
-    60% {
-        transform: translateX(-50%) translateY(-3px);
-    }
-}
-
 .private-message {
     display: flex;
     max-width: 70%;
@@ -547,6 +632,8 @@ header {
 .message-content {
     padding: 12px 16px;
     border-radius: 18px;
+    max-width: 100%;
+    word-wrap: break-word;
 }
 
 .private-message.own .message-content {
@@ -557,6 +644,14 @@ header {
 .private-message.other .message-content {
     background: #e3f2fd;
     color: #2c3e50;
+}
+
+.no-messages {
+    text-align: center;
+    color: #6c757d;
+    font-style: italic;
+    padding: 40px;
+    font-size: 16px;
 }
 
 .message-input-container {
@@ -584,6 +679,231 @@ header {
     border-radius: 8px;
     cursor: pointer;
     font-weight: bold;
+}
+
+/* Окно звонка */
+.call-window {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 500px;
+    max-width: 90%;
+    background: white;
+    border-radius: 15px;
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+    z-index: 1000;
+    padding: 25px;
+    display: none;
+}
+
+.call-header {
+    text-align: center;
+    margin-bottom: 20px;
+    padding-bottom: 15px;
+    border-bottom: 1px solid #e9ecef;
+}
+
+.call-header h4 {
+    margin: 0 0 10px 0;
+    color: #2c3e50;
+    font-size: 18px;
+}
+
+.call-timer {
+    font-size: 20px;
+    font-weight: bold;
+    color: #667eea;
+    font-family: 'Courier New', monospace;
+}
+
+.video-container {
+    position: relative;
+    width: 100%;
+    height: 300px;
+    margin-bottom: 20px;
+    border-radius: 12px;
+    overflow: hidden;
+    background: #000;
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+}
+
+#localVideo {
+    position: absolute;
+    bottom: 15px;
+    right: 15px;
+    width: 120px;
+    height: 90px;
+    border: 2px solid white;
+    border-radius: 8px;
+    z-index: 10;
+    object-fit: cover;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+#remoteVideo {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    background: #000;
+}
+
+.call-controls {
+    display: flex;
+    justify-content: center;
+    gap: 15px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+}
+
+.call-control {
+    width: 55px;
+    height: 55px;
+    border-radius: 50%;
+    border: none;
+    font-size: 20px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.3s ease;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.call-control:hover {
+    transform: scale(1.1);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.mute-btn {
+    background: #6c757d;
+}
+
+.mute-btn:hover {
+    background: #5a6268;
+}
+
+.end-call-btn {
+    background: #dc3545;
+    transform: scale(1.1);
+}
+
+.end-call-btn:hover {
+    background: #c82333;
+    transform: scale(1.15);
+}
+
+.video-btn {
+    background: #17a2b8;
+}
+
+.video-btn:hover {
+    background: #138496;
+}
+
+.fullscreen-btn {
+    background: #6f42c1;
+}
+
+.fullscreen-btn:hover {
+    background: #5a2d9c;
+}
+
+.call-status {
+    text-align: center;
+    color: #6c757d;
+    font-style: italic;
+    font-size: 14px;
+    padding: 10px;
+    background: #f8f9fa;
+    border-radius: 8px;
+    margin-top: 10px;
+}
+
+/* Окно входящего звонка */
+.incoming-call-window {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 350px;
+    background: white;
+    border-radius: 15px;
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+    z-index: 1001;
+    padding: 25px;
+    text-align: center;
+    display: none;
+}
+
+.incoming-call-content h4 {
+    margin: 0 0 25px 0;
+    color: #2c3e50;
+    font-size: 18px;
+    font-weight: bold;
+}
+
+.incoming-call-buttons {
+    display: flex;
+    justify-content: center;
+    gap: 15px;
+}
+
+.accept-call-btn, .reject-call-btn {
+    padding: 12px 25px;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: bold;
+    transition: all 0.3s ease;
+    font-size: 14px;
+    min-width: 100px;
+}
+
+.accept-call-btn {
+    background: linear-gradient(45deg, #28a745, #20c997);
+    color: white;
+}
+
+.accept-call-btn:hover {
+    background: linear-gradient(45deg, #218838, #1e9e8a);
+    transform: scale(1.05);
+}
+
+.reject-call-btn {
+    background: linear-gradient(45deg, #dc3545, #c82333);
+    color: white;
+}
+
+.reject-call-btn:hover {
+    background: linear-gradient(45deg, #c82333, #a71e2a);
+    transform: scale(1.05);
+}
+
+/* Затемнение фона для окон звонков */
+.call-window::before, .incoming-call-window::before {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: rgba(0, 0, 0, 0.7);
+    z-index: -1;
+}
+
+.close-chat {
+    padding: 8px 12px;
+    background: #dc3545;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 14px;
+}
+
+.close-chat:hover {
+    background: #c82333;
 }
 
 a {
@@ -641,6 +961,47 @@ a:hover {
     }
 }
 
+@keyframes bounce {
+    0%, 20%, 50%, 80%, 100% {
+        transform: translateX(-50%) translateY(0);
+    }
+    40% {
+        transform: translateX(-50%) translateY(-5px);
+    }
+    60% {
+        transform: translateX(-50%) translateY(-3px);
+    }
+}
+
+/* Стили для полноэкранного режима */
+:fullscreen .video-container {
+    width: 100vw;
+    height: 100vh;
+    border-radius: 0;
+}
+
+:fullscreen #localVideo {
+    width: 160px;
+    height: 120px;
+    bottom: 20px;
+    right: 20px;
+}
+
+:fullscreen #remoteVideo {
+    object-fit: contain;
+}
+
+:fullscreen .call-controls {
+    position: fixed;
+    bottom: 30px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 1000;
+    background: rgba(0, 0, 0, 0.7);
+    padding: 15px;
+    border-radius: 25px;
+}
+
 /* Responsive design */
 @media (max-width: 768px) {
     .chat-container {
@@ -666,6 +1027,11 @@ a:hover {
         padding: 15px;
     }
     
+    .header-buttons {
+        flex-wrap: wrap;
+        justify-content: center;
+    }
+    
     /* Adjust scrollbar for mobile */
     #messages::-webkit-scrollbar,
     .private-messages::-webkit-scrollbar,
@@ -677,6 +1043,38 @@ a:hover {
     
     .private-messages {
         height: 300px !important;
+    }
+    
+    .call-window {
+        width: 95%;
+        padding: 15px;
+    }
+    
+    .video-container {
+        height: 250px;
+    }
+    
+    #localVideo {
+        width: 80px;
+        height: 60px;
+    }
+    
+    .call-controls {
+        gap: 10px;
+    }
+    
+    .call-control {
+        width: 45px;
+        height: 45px;
+        font-size: 16px;
+    }
+    
+    .incoming-call-buttons {
+        flex-direction: column;
+    }
+    
+    .incoming-call-window {
+        width: 90%;
     }
 }
 
@@ -700,5 +1098,141 @@ a:hover {
     #messages::-webkit-scrollbar,
     .private-messages::-webkit-scrollbar {
         width: 4px;
+    }
+    
+    .call-window {
+        width: 98%;
+        padding: 10px;
+    }
+    
+    .video-container {
+        height: 200px;
+    }
+    
+    #localVideo {
+        width: 60px;
+        height: 45px;
+        bottom: 10px;
+        right: 10px;
+    }
+    
+    .call-control {
+        width: 40px;
+        height: 40px;
+        font-size: 14px;
+    }
+    
+    .call-header h4 {
+        font-size: 16px;
+    }
+    
+    .call-timer {
+        font-size: 16px;
+    }
+}
+
+/* Loading states */
+.loading {
+    opacity: 0.7;
+    pointer-events: none;
+}
+
+.loading::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 20px;
+    height: 20px;
+    margin: -10px 0 0 -10px;
+    border: 2px solid #f3f3f3;
+    border-top: 2px solid #667eea;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* Error states */
+.error {
+    color: #dc3545;
+    background: #f8d7da;
+    border: 1px solid #f5c6cb;
+    padding: 10px;
+    border-radius: 5px;
+    margin: 10px 0;
+}
+
+.success {
+    color: #155724;
+    background: #d4edda;
+    border: 1px solid #c3e6cb;
+    padding: 10px;
+    border-radius: 5px;
+    margin: 10px 0;
+}
+
+/* Tooltips */
+[title] {
+    position: relative;
+}
+
+[title]:hover::after {
+    content: attr(title);
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 5px 10px;
+    background: #333;
+    color: white;
+    border-radius: 4px;
+    font-size: 12px;
+    white-space: nowrap;
+    z-index: 1000;
+}
+
+/* Focus states for accessibility */
+button:focus,
+input:focus,
+.call-control:focus {
+    outline: 2px solid #667eea;
+    outline-offset: 2px;
+}
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+    .message.own {
+        background: #d1ecf1;
+        border: 2px solid #bee5eb;
+    }
+    
+    .message {
+        background: #e3f2fd;
+        border: 2px solid #bbdefb;
+    }
+    
+    .call-control {
+        border: 2px solid currentColor;
+    }
+}
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+    * {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+    }
+    
+    .message {
+        animation: none;
+    }
+    
+    .scroll-indicator {
+        animation: none;
     }
 }

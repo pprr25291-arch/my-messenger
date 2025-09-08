@@ -6,6 +6,7 @@ const jwt = require('jsonwebtoken');
 const cookieParser = require('cookie-parser');
 const fs = require('fs').promises;
 const path = require('path');
+const { v4: uuidv4 } = require('uuid');
 
 const app = express();
 const server = http.createServer(app);
@@ -37,6 +38,10 @@ app.get('/private-chat.js', (req, res) => {
     res.sendFile(path.join(__dirname, 'static', 'private-chat.js'));
 });
 
+app.get('/webrtc.js', (req, res) => {
+    res.sendFile(path.join(__dirname, 'static', 'webrtc.js'));
+});
+
 app.get('/socket.io/socket.io.js', (req, res) => {
     res.sendFile(path.join(__dirname, 'node_modules', 'socket.io', 'client-dist', 'socket.io.js'));
 });
@@ -50,6 +55,8 @@ app.engine('html', require('ejs').renderFile);
 let users = [];
 let messages = [];
 const userSockets = new Map();
+let activeCalls = new Map();
+let callOffers = new Map();
 
 // Data management functions
 async function loadUsers() {
@@ -171,7 +178,7 @@ app.post('/api/logout', (req, res) => {
     res.json({ success: true });
 });
 
-app.get('/api/messages/global', authenticateToken, (req, res) => {  // ИСПРАВЛЕННАЯ СТРОКА 174
+app.get('/api/messages/global', authenticateToken, (req, res) => {
     try {
         const globalMessages = messages.filter(msg => msg.type === 'global');
         res.json(globalMessages);
@@ -312,6 +319,143 @@ io.on('connection', (socket) => {
             io.emit('conversations updated');
         } catch (error) {
             console.error('Private message error:', error);
+        }
+    });
+
+    // Обработчики звонков
+    socket.on('call-user', (data) => {
+        try {
+            const { from, to, offer, callId } = data;
+            const receiverSocketId = userSockets.get(to);
+            
+            if (receiverSocketId) {
+                callOffers.set(callId, { from, to, offer });
+                
+                io.to(receiverSocketId).emit('incoming-call', {
+                    from,
+                    callId,
+                    offer
+                });
+                
+                socket.emit('call-initiated', { callId });
+            } else {
+                socket.emit('call-failed', { 
+                    reason: 'Пользователь недоступен' 
+                });
+            }
+        } catch (error) {
+            console.error('Call error:', error);
+            socket.emit('call-failed', { 
+                reason: 'Ошибка вызова' 
+            });
+        }
+    });
+
+    socket.on('accept-call', (data) => {
+        try {
+            const { callId, answer } = data;
+            const callData = callOffers.get(callId);
+            
+            if (callData) {
+                const callerSocketId = userSockets.get(callData.from);
+                
+                if (callerSocketId) {
+                    io.to(callerSocketId).emit('call-accepted', {
+                        callId,
+                        answer
+                    });
+                    
+                    activeCalls.set(callId, {
+                        participants: [callData.from, callData.to],
+                        startTime: new Date()
+                    });
+                }
+            }
+        } catch (error) {
+            console.error('Accept call error:', error);
+        }
+    });
+
+    socket.on('reject-call', (data) => {
+        try {
+            const { callId } = data;
+            const callData = callOffers.get(callId);
+            
+            if (callData) {
+                const callerSocketId = userSockets.get(callData.from);
+                
+                if (callerSocketId) {
+                    io.to(callerSocketId).emit('call-rejected', {
+                        callId,
+                        reason: 'Вызов отклонен'
+                    });
+                }
+                
+                callOffers.delete(callId);
+            }
+        } catch (error) {
+            console.error('Reject call error:', error);
+        }
+    });
+
+    socket.on('end-call', (data) => {
+        try {
+            const { callId } = data;
+            const callData = activeCalls.get(callId) || callOffers.get(callId);
+            
+            if (callData) {
+                // Уведомляем всех участников о завершении звонка
+                if (callData.participants) {
+                    callData.participants.forEach(participant => {
+                        const participantSocketId = userSockets.get(participant);
+                        if (participantSocketId) {
+                            io.to(participantSocketId).emit('call-ended', {
+                                callId,
+                                reason: 'Собеседник завершил звонок'
+                            });
+                        }
+                    });
+                } else {
+                    // Для звонков, которые еще не были приняты
+                    const callerSocketId = userSockets.get(callData.from);
+                    const receiverSocketId = userSockets.get(callData.to);
+                    
+                    if (callerSocketId) {
+                        io.to(callerSocketId).emit('call-ended', {
+                            callId,
+                            reason: 'Звонок завершен'
+                        });
+                    }
+                    
+                    if (receiverSocketId) {
+                        io.to(receiverSocketId).emit('call-ended', {
+                            callId,
+                            reason: 'Звонок завершен'
+                        });
+                    }
+                }
+                
+                activeCalls.delete(callId);
+                callOffers.delete(callId);
+            }
+        } catch (error) {
+            console.error('End call error:', error);
+        }
+    });
+
+    socket.on('ice-candidate', (data) => {
+        try {
+            const { callId, candidate, targetUser } = data;
+            const targetSocketId = userSockets.get(targetUser);
+            
+            if (targetSocketId) {
+                io.to(targetSocketId).emit('ice-candidate', {
+                    callId,
+                    candidate
+                });
+            }
+        } catch (error) {
+            console.error('ICE candidate error:', error);
         }
     });
 
