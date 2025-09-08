@@ -10,7 +10,16 @@ const { v4: uuidv4 } = require('uuid');
 
 const app = express();
 const server = http.createServer(app);
-const io = socketIo(server);
+
+// Настройки CORS для Socket.io
+const io = socketIo(server, {
+    cors: {
+        origin: "*",
+        methods: ["GET", "POST"],
+        credentials: true
+    },
+    transports: ['websocket', 'polling'] // Явно указываем транспорты
+});
 
 const JWT_SECRET = process.env.JWT_SECRET || 'fallback-secret-key-for-development';
 const PORT = process.env.PORT || 3000;
@@ -20,6 +29,14 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 app.use(express.static(path.join(__dirname, 'static')));
+
+// CORS middleware
+app.use((req, res, next) => {
+    res.header('Access-Control-Allow-Origin', '*');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE');
+    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    next();
+});
 
 // Serve static files
 app.get('/style.css', (req, res) => {
@@ -234,20 +251,30 @@ app.get('/api/conversations', authenticateToken, (req, res) => {
 app.get('/api/users/search', authenticateToken, (req, res) => {
     try {
         const { query } = req.query;
-        if (!query || query.length < 2) return res.json([]);
+        const currentUser = req.user.username;
         
-        const results = users.filter(user => 
-            user.username.toLowerCase().includes(query.toLowerCase())
-        );
+        console.log('Search query:', query, 'from user:', currentUser);
         
-        const filteredResults = results
-            .filter(user => user.username !== req.user.username)
+        if (!query || query.trim().length < 2) {
+            return res.json([]);
+        }
+        
+        const searchTerm = query.toLowerCase().trim();
+        
+        const results = users
+            .filter(user => 
+                user.username && 
+                user.username.toLowerCase().includes(searchTerm) &&
+                user.username !== currentUser
+            )
             .map(({ password, ...user }) => user);
         
-        res.json(filteredResults);
+        console.log('Search results:', results.map(u => u.username));
+        
+        res.json(results);
     } catch (error) {
         console.error('Search error:', error);
-        res.status(500).json({ error: 'Search failed' });
+        res.status(500).json({ error: 'Failed to search users' });
     }
 });
 
@@ -269,11 +296,29 @@ app.get('/api/messages/private/:username', authenticateToken, (req, res) => {
     }
 });
 
-// Socket.io
+// Health check endpoint
+app.get('/health', (req, res) => {
+    res.json({ status: 'OK', timestamp: new Date().toISOString() });
+});
+
+// Socket.io connection handling
 io.on('connection', (socket) => {
-    console.log('User connected');
+    console.log('User connected:', socket.id);
+
+    // Обработка ошибок подключения
+    socket.on('error', (error) => {
+        console.error('Socket error:', error);
+    });
+
+    socket.on('disconnect', (reason) => {
+        console.log('User disconnected:', socket.id, 'Reason:', reason);
+        if (socket.username) {
+            userSockets.delete(socket.username);
+        }
+    });
 
     socket.on('user authenticated', (username) => {
+        console.log('User authenticated:', username, 'Socket ID:', socket.id);
         userSockets.set(username, socket.id);
         socket.username = username;
     });
@@ -294,6 +339,7 @@ io.on('connection', (socket) => {
             io.emit('chat message', messageData);
         } catch (error) {
             console.error('Global message error:', error);
+            socket.emit('error', { message: 'Failed to send message' });
         }
     });
 
@@ -320,287 +366,33 @@ io.on('connection', (socket) => {
             io.emit('conversations updated');
         } catch (error) {
             console.error('Private message error:', error);
+            socket.emit('error', { message: 'Failed to send private message' });
         }
     });
 
-    // Обработчики звонков
-    socket.on('call-user', (data) => {
-        try {
-            const { from, to, offer, callId } = data;
-            const receiverSocketId = userSockets.get(to);
-            
-            if (receiverSocketId) {
-                callOffers.set(callId, { from, to, offer });
-                
-                io.to(receiverSocketId).emit('incoming-call', {
-                    from,
-                    callId,
-                    offer
-                });
-                
-                socket.emit('call-initiated', { callId });
-            } else {
-                socket.emit('call-failed', { 
-                    reason: 'Пользователь недоступен' 
-                });
-            }
-        } catch (error) {
-            console.error('Call error:', error);
-            socket.emit('call-failed', { 
-                reason: 'Ошибка вызова' 
-            });
-        }
-    });
-
-    socket.on('accept-call', (data) => {
-        try {
-            const { callId, answer } = data;
-            const callData = callOffers.get(callId);
-            
-            if (callData) {
-                const callerSocketId = userSockets.get(callData.from);
-                
-                if (callerSocketId) {
-                    io.to(callerSocketId).emit('call-accepted', {
-                        callId,
-                        answer
-                    });
-                    
-                    activeCalls.set(callId, {
-                        participants: [callData.from, callData.to],
-                        startTime: new Date()
-                    });
-                }
-            }
-        } catch (error) {
-            console.error('Accept call error:', error);
-        }
-    });
-
-    socket.on('reject-call', (data) => {
-        try {
-            const { callId } = data;
-            const callData = callOffers.get(callId);
-            
-            if (callData) {
-                const callerSocketId = userSockets.get(callData.from);
-                
-                if (callerSocketId) {
-                    io.to(callerSocketId).emit('call-rejected', {
-                        callId,
-                        reason: 'Вызов отклонен'
-                    });
-                }
-                
-                callOffers.delete(callId);
-            }
-        } catch (error) {
-            console.error('Reject call error:', error);
-        }
-    });
-
-    socket.on('end-call', (data) => {
-        try {
-            const { callId } = data;
-            const callData = activeCalls.get(callId) || callOffers.get(callId);
-            
-            if (callData) {
-                // Уведомляем всех участников о завершении звонка
-                if (callData.participants) {
-                    callData.participants.forEach(participant => {
-                        const participantSocketId = userSockets.get(participant);
-                        if (participantSocketId) {
-                            io.to(participantSocketId).emit('call-ended', {
-                                callId,
-                                reason: 'Собеседник завершил звонок'
-                            });
-                        }
-                    });
-                } else {
-                    // Для звонков, которые еще не были приняты
-                    const callerSocketId = userSockets.get(callData.from);
-                    const receiverSocketId = userSockets.get(callData.to);
-                    
-                    if (callerSocketId) {
-                        io.to(callerSocketId).emit('call-ended', {
-                            callId,
-                            reason: 'Звонок завершен'
-                        });
-                    }
-                    
-                    if (receiverSocketId) {
-                        io.to(receiverSocketId).emit('call-ended', {
-                            callId,
-                            reason: 'Звонок завершен'
-                        });
-                    }
-                }
-                
-                activeCalls.delete(callId);
-                callOffers.delete(callId);
-            }
-        } catch (error) {
-            console.error('End call error:', error);
-        }
-    });
-
-    socket.on('ice-candidate', (data) => {
-        try {
-            const { callId, candidate, targetUser } = data;
-            const targetSocketId = userSockets.get(targetUser);
-            
-            if (targetSocketId) {
-                io.to(targetSocketId).emit('ice-candidate', {
-                    callId,
-                    candidate
-                });
-            }
-        } catch (error) {
-            console.error('ICE candidate error:', error);
-        }
-    });
-
-    // Обработчики трансляции экрана
-    socket.on('start-screen-share', (data) => {
-        try {
-            const { from, to, offer, screenShareId } = data;
-            const receiverSocketId = userSockets.get(to);
-            
-            if (receiverSocketId) {
-                screenSharingSessions.set(screenShareId, { from, to });
-                
-                io.to(receiverSocketId).emit('screen-share-offer', {
-                    from,
-                    screenShareId,
-                    offer
-                });
-                
-                socket.emit('screen-share-started', { screenShareId });
-            } else {
-                socket.emit('screen-share-failed', { 
-                    reason: 'Пользователь недоступен' 
-                });
-            }
-        } catch (error) {
-            console.error('Screen share error:', error);
-            socket.emit('screen-share-failed', { 
-                reason: 'Ошибка трансляции экрана' 
-            });
-        }
-    });
-
-    socket.on('accept-screen-share', (data) => {
-        try {
-            const { screenShareId, answer } = data;
-            const screenShareData = screenSharingSessions.get(screenShareId);
-            
-            if (screenShareData) {
-                const sharerSocketId = userSockets.get(screenShareData.from);
-                
-                if (sharerSocketId) {
-                    io.to(sharerSocketId).emit('screen-share-accepted', {
-                        screenShareId,
-                        answer
-                    });
-                }
-            }
-        } catch (error) {
-            console.error('Accept screen share error:', error);
-        }
-    });
-
-    socket.on('reject-screen-share', (data) => {
-        try {
-            const { screenShareId } = data;
-            const screenShareData = screenSharingSessions.get(screenShareId);
-            
-            if (screenShareData) {
-                const sharerSocketId = userSockets.get(screenShareData.from);
-                
-                if (sharerSocketId) {
-                    io.to(sharerSocketId).emit('screen-share-rejected', {
-                        screenShareId,
-                        reason: 'Трансляция отклонена'
-                    });
-                }
-                
-                screenSharingSessions.delete(screenShareId);
-            }
-        } catch (error) {
-            console.error('Reject screen share error:', error);
-        }
-    });
-
-    socket.on('end-screen-share', (data) => {
-        try {
-            const { screenShareId } = data;
-            const screenShareData = screenSharingSessions.get(screenShareId);
-            
-            if (screenShareData) {
-                const receiverSocketId = userSockets.get(screenShareData.to);
-                const sharerSocketId = userSockets.get(screenShareData.from);
-                
-                if (receiverSocketId) {
-                    io.to(receiverSocketId).emit('screen-share-ended', {
-                        screenShareId,
-                        reason: 'Трансляция завершена'
-                    });
-                }
-                
-                if (sharerSocketId) {
-                    io.to(sharerSocketId).emit('screen-share-ended', {
-                        screenShareId,
-                        reason: 'Трансляция завершена'
-                    });
-                }
-                
-                screenSharingSessions.delete(screenShareId);
-            }
-        } catch (error) {
-            console.error('End screen share error:', error);
-        }
-    });
-
-    socket.on('screen-share-ice-candidate', (data) => {
-        try {
-            const { screenShareId, candidate, targetUser } = data;
-            const targetSocketId = userSockets.get(targetUser);
-            
-            if (targetSocketId) {
-                io.to(targetSocketId).emit('screen-share-ice-candidate', {
-                    screenShareId,
-                    candidate
-                });
-            }
-        } catch (error) {
-            console.error('Screen share ICE candidate error:', error);
-        }
-    });
-
-    socket.on('disconnect', () => {
-        if (socket.username) {
-            userSockets.delete(socket.username);
-            
-            // Завершаем все активные сессии трансляции экрана при отключении
-            for (const [screenShareId, session] of screenSharingSessions.entries()) {
-                if (session.from === socket.username || session.to === socket.username) {
-                    const otherUser = session.from === socket.username ? session.to : session.from;
-                    const otherSocketId = userSockets.get(otherUser);
-                    
-                    if (otherSocketId) {
-                        io.to(otherSocketId).emit('screen-share-ended', {
-                            screenShareId,
-                            reason: 'Пользователь отключился'
-                        });
-                    }
-                    
-                    screenSharingSessions.delete(screenShareId);
-                }
-            }
+    // Ping-pong для поддержания соединения
+    socket.on('ping', (cb) => {
+        if (typeof cb === 'function') {
+            cb('pong');
         }
     });
 });
 
-server.listen(PORT, () => {
+// Обработка ошибок сервера
+server.on('error', (error) => {
+    console.error('Server error:', error);
+});
+
+// Graceful shutdown
+process.on('SIGINT', () => {
+    console.log('Shutting down gracefully...');
+    server.close(() => {
+        console.log('Server closed');
+        process.exit(0);
+    });
+});
+
+server.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running on port ${PORT}`);
+    console.log(`Health check available at: http://localhost:${PORT}/health`);
 });

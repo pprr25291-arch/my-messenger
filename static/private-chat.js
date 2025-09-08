@@ -13,22 +13,33 @@ class PrivateChat {
         this.timerInterval = null;
         this.callStartTime = null;
         this.incomingCallOffer = null;
-        this.screenShareStream = null;
-        this.screenShareConnection = null;
-        this.isScreenSharing = false;
-        this.screenShareId = null;
-        this.init();
+        
+        // Отложенная инициализация
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', () => this.init());
+        } else {
+            setTimeout(() => this.init(), 100);
+        }
     }
 
     init() {
-        this.createUI();
-        this.setupEventListeners();
-        this.setupSocketListeners();
-        this.loadConversations();
-        this.setupCallHandlers();
+        try {
+            this.createUI();
+            this.setupEventListeners();
+            this.setupSocketListeners();
+            this.loadConversations();
+        } catch (error) {
+            console.error('Error initializing PrivateChat:', error);
+        }
     }
 
     createUI() {
+        const privateChatContainer = document.getElementById('privateChat');
+        if (!privateChatContainer) {
+            console.error('Private chat container not found');
+            return;
+        }
+
         const privateChatHTML = `
             <div class="private-chat-container">
                 <div class="private-chat-sidebar">
@@ -63,9 +74,6 @@ class PrivateChat {
                                 <button type="button" class="call-btn voice-call" title="Голосовой звонок">
                                     📞
                                 </button>
-                                <button type="button" class="call-btn screen-share" title="Трансляция экрана">
-                                    🖥️
-                                </button>
                             </div>
                             <button type="button" class="close-chat">✕</button>
                         </div>
@@ -75,7 +83,7 @@ class PrivateChat {
                                 <div class="no-messages">📝 Начните общение первым!</div>
                             </div>
                             <div class="scroll-indicator" id="scrollIndicator" style="display: none;">
-                                <button type="button" onclick="privateChat.scrollToBottom()">
+                                <button type="button" onclick="window.privateChatInstance.scrollToBottom()">
                                     <span class="scroll-arrow">⬇️</span>
                                     <span class="scroll-text">Новые сообщения</span>
                                 </button>
@@ -89,479 +97,445 @@ class PrivateChat {
                     </div>
                 </div>
             </div>
-            
-            <!-- Окно звонка -->
-            <div id="callWindow" class="call-window" style="display: none;">
-                <div class="call-header">
-                    <h4>Звонок пользователю: <span id="callUserName"></span></h4>
-                    <div class="call-timer" id="callTimer">00:00</div>
-                </div>
-                
-                <div class="video-container">
-                    <video id="localVideo" autoplay muted playsinline></video>
-                    <video id="remoteVideo" autoplay playsinline></video>
-                </div>
-                
-                <div class="call-controls">
-                    <button type="button" class="call-control mute-btn" onclick="privateChat.toggleMute()">
-                        🔇
-                    </button>
-                    <button type="button" class="call-control end-call-btn" onclick="privateChat.endCall()">
-                        📞
-                    </button>
-                    <button type="button" class="call-control video-btn" onclick="privateChat.toggleVideo()">
-                        📹
-                    </button>
-                    <button type="button" class="call-control fullscreen-btn" onclick="privateChat.toggleFullscreen()">
-                        ⛶
-                    </button>
-                    <button type="button" class="call-control screen-share-btn" onclick="privateChat.startScreenShare()">
-                        🖥️
-                    </button>
-                </div>
-                
-                <div class="call-status" id="callStatus">
-                    Установка соединения...
-                </div>
-            </div>
-            
-            <!-- Окно входящего звонка -->
-            <div id="incomingCallWindow" class="incoming-call-window" style="display: none;">
-                <div class="incoming-call-content">
-                    <h4>Входящий звонок от: <span id="incomingCallUser"></span></h4>
-                    <div class="incoming-call-buttons">
-                        <button type="button" class="accept-call-btn" onclick="privateChat.acceptCall()">
-                            📞 Принять
-                        </button>
-                        <button type="button" class="reject-call-btn" onclick="privateChat.rejectCall()">
-                            ❌ Отклонить
-                        </button>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Окно трансляции экрана -->
-            <div id="screenShareWindow" class="screen-share-window" style="display: none;">
-                <div class="screen-share-header">
-                    <h4>Трансляция экрана пользователю: <span id="screenShareUser"></span></h4>
-                    <div class="screen-share-status" id="screenShareStatus">
-                        Запрос отправлен...
-                    </div>
-                </div>
-                
-                <div class="screen-share-controls">
-                    <button type="button" class="screen-share-control stop-share-btn" onclick="privateChat.stopScreenShare()">
-                        🖥️ Остановить трансляцию
-                    </button>
-                </div>
-            </div>
-
-            <!-- Окно входящей трансляции экрана -->
-            <div id="incomingScreenShareWindow" class="incoming-screen-share-window" style="display: none;">
-                <div class="incoming-screen-share-content">
-                    <h4>Входящая трансляция экрана от: <span id="incomingScreenShareUser"></span></h4>
-                    <div class="incoming-screen-share-buttons">
-                        <button type="button" class="accept-screen-share-btn" onclick="privateChat.acceptScreenShare()">
-                            🖥️ Принять
-                        </button>
-                        <button type="button" class="reject-screen-share-btn" onclick="privateChat.rejectScreenShare()">
-                            ❌ Отклонить
-                        </button>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Окно просмотра трансляции экрана -->
-            <div id="screenViewWindow" class="screen-view-window" style="display: none;">
-                <div class="screen-view-header">
-                    <h4>Трансляция экрана от: <span id="screenViewUser"></span></h4>
-                    <button type="button" class="close-screen-view" onclick="privateChat.closeScreenView()">
-                        ✕
-                    </button>
-                </div>
-                
-                <div class="screen-view-container">
-                    <video id="screenViewVideo" autoplay playsinline></video>
-                </div>
-                
-                <div class="screen-view-controls">
-                    <button type="button" class="screen-view-control fullscreen-btn" onclick="privateChat.toggleScreenFullscreen()">
-                        ⛶
-                    </button>
-                </div>
-            </div>
         `;
 
-        document.getElementById('privateChat').innerHTML = privateChatHTML;
-        
-        const privateMessages = document.getElementById('privateMessages');
-        if (privateMessages) {
-            privateMessages.style.overflowY = 'scroll';
-            privateMessages.style.height = '400px';
-        }
+        privateChatContainer.innerHTML = privateChatHTML;
     }
 
     setupEventListeners() {
-        const userSearch = document.getElementById('userSearch');
-        userSearch.addEventListener('input', this.debounce(this.searchUsers.bind(this), 300));
-
-        const messageInput = document.getElementById('privateMessageInput');
-        messageInput.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') this.sendPrivateMessage();
-        });
-
-        document.querySelector('.send-button').addEventListener('click', () => this.sendPrivateMessage());
-        document.querySelector('.close-chat').addEventListener('click', () => this.closeCurrentChat());
-
-        document.addEventListener('click', (e) => {
-            if (!e.target.closest('.search-container')) {
-                document.getElementById('searchResults').style.display = 'none';
+        setTimeout(() => {
+            // Поиск пользователей
+            const userSearch = document.getElementById('userSearch');
+            if (userSearch) {
+                userSearch.addEventListener('input', this.debounce(() => {
+                    this.searchUsers();
+                }, 300));
             }
-        });
 
-        const messagesContainer = document.getElementById('privateMessages');
-        if (messagesContainer) {
-            messagesContainer.addEventListener('scroll', () => {
-                this.handleScroll();
+            // Отправка сообщений
+            const messageInput = document.getElementById('privateMessageInput');
+            if (messageInput) {
+                messageInput.addEventListener('keypress', (e) => {
+                    if (e.key === 'Enter') this.sendPrivateMessage();
+                });
+            }
+
+            const sendButton = document.querySelector('.send-button');
+            if (sendButton) {
+                sendButton.addEventListener('click', () => this.sendPrivateMessage());
+            }
+
+            // Закрытие чата
+            const closeChat = document.querySelector('.close-chat');
+            if (closeChat) {
+                closeChat.addEventListener('click', () => this.closeCurrentChat());
+            }
+
+            // Кнопки звонка
+            const videoCallBtn = document.querySelector('.video-call');
+            if (videoCallBtn) {
+                videoCallBtn.addEventListener('click', () => this.startCall(true));
+            }
+
+            const voiceCallBtn = document.querySelector('.voice-call');
+            if (voiceCallBtn) {
+                voiceCallBtn.addEventListener('click', () => this.startCall(false));
+            }
+
+            // Клик вне области поиска
+            document.addEventListener('click', (e) => {
+                const searchContainer = document.querySelector('.search-container');
+                if (searchContainer && !e.target.closest('.search-container')) {
+                    const resultsContainer = document.getElementById('searchResults');
+                    if (resultsContainer) {
+                        resultsContainer.style.display = 'none';
+                    }
+                }
             });
-        }
 
-        // Новые обработчики для кнопок звонка и трансляции
-        document.querySelector('.video-call').addEventListener('click', () => {
-            this.startCall(true);
-        });
+            // Скролл сообщений
+            const messagesContainer = document.getElementById('privateMessages');
+            if (messagesContainer) {
+                messagesContainer.addEventListener('scroll', () => {
+                    this.handleScroll();
+                });
+            }
 
-        document.querySelector('.voice-call').addEventListener('click', () => {
-            this.startCall(false);
-        });
-
-        document.querySelector('.screen-share').addEventListener('click', () => {
-            this.startScreenShare();
-        });
+        }, 200);
     }
 
-    setupCallHandlers() {
-        this.callWindow = document.getElementById('callWindow');
-        this.incomingCallWindow = document.getElementById('incomingCallWindow');
-        this.screenShareWindow = document.getElementById('screenShareWindow');
-        this.incomingScreenShareWindow = document.getElementById('incomingScreenShareWindow');
-        this.screenViewWindow = document.getElementById('screenViewWindow');
-    }
-
-    // ========== ФУНКЦИОНАЛ ТРАНСЛЯЦИИ ЭКРАНА ==========
-
-    async startScreenShare() {
-        if (!this.currentChat) {
-            alert('Выберите пользователя для трансляции экрана');
+    async searchUsers() {
+        const query = document.getElementById('userSearch').value.trim();
+        const resultsContainer = document.getElementById('searchResults');
+        
+        if (!resultsContainer) return;
+        
+        resultsContainer.innerHTML = '';
+        resultsContainer.style.display = 'none';
+        
+        if (query.length < 2) {
             return;
         }
 
         try {
-            // Запрашиваем доступ к экрану :cite[1]:cite[4]:cite[7]
-            this.screenShareStream = await navigator.mediaDevices.getDisplayMedia({
-                video: {
-                    cursor: "always",
-                    displaySurface: "monitor"
-                },
-                audio: true
-            });
-
-            // Создаем уникальный ID для сессии трансляции
-            this.screenShareId = this.generateUUID();
+            console.log('Searching for:', query);
+            const response = await fetch(`/api/users/search?query=${encodeURIComponent(query)}`);
             
-            // Создаем peer connection для трансляции экрана
-            await this.createScreenShareConnection();
-
-            // Добавляем треки экрана в соединение
-            this.screenShareStream.getTracks().forEach(track => {
-                this.screenShareConnection.addTrack(track, this.screenShareStream);
-            });
-
-            // Создаем offer
-            const offer = await this.screenShareConnection.createOffer();
-            await this.screenShareConnection.setLocalDescription(offer);
-
-            // Отправляем offer через Socket.io
-            socket.emit('start-screen-share', {
-                from: document.getElementById('username').textContent,
-                to: this.currentChat,
-                offer: offer,
-                screenShareId: this.screenShareId
-            });
-
-            // Показываем окно управления трансляцией
-            this.showScreenShareWindow();
-
-            // Обработчик завершения трансляции пользователем
-            this.screenShareStream.getTracks().forEach(track => {
-                track.onended = () => {
-                    this.stopScreenShare();
-                };
-            });
-
-        } catch (error) {
-            console.error('Error starting screen share:', error);
-            if (error.name !== 'NotAllowedError') {
-                alert('Ошибка при запуске трансляции экрана: ' + error.message);
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
             }
+            
+            const users = await response.json();
+            console.log('Found users:', users);
+            
+            this.displaySearchResults(users);
+        } catch (error) {
+            console.error('Search error:', error);
+            this.displaySearchError(error);
         }
     }
 
-    async createScreenShareConnection() {
-        const configuration = {
-            iceServers: [
-                { urls: 'stun:stun.l.google.com:19302' },
-                { urls: 'stun:stun1.l.google.com:19302' }
-            ]
-        };
+    displaySearchResults(users) {
+        const resultsContainer = document.getElementById('searchResults');
+        if (!resultsContainer) return;
+        
+        resultsContainer.innerHTML = '';
+        
+        if (users.length === 0) {
+            resultsContainer.innerHTML = `
+                <div class="search-result">
+                    <div class="search-user-info">
+                        <span class="search-avatar">😢</span>
+                        <span class="search-username">Никого не найдено</span>
+                    </div>
+                </div>
+            `;
+        } else {
+            users.forEach(user => {
+                const userElement = document.createElement('div');
+                userElement.className = 'search-result';
+                userElement.innerHTML = `
+                    <div class="search-user-info">
+                        <span class="search-avatar">👤</span>
+                        <span class="search-username">${user.username}</span>
+                    </div>
+                    <button type="button" class="start-chat-btn">💬 Написать</button>
+                `;
 
-        this.screenShareConnection = new RTCPeerConnection(configuration);
+                userElement.querySelector('.start-chat-btn').addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    this.startChat(user.username);
+                });
 
-        // Обработчики ICE кандидатов
-        this.screenShareConnection.onicecandidate = (event) => {
-            if (event.candidate) {
-                socket.emit('screen-share-ice-candidate', {
-                    screenShareId: this.screenShareId,
-                    candidate: event.candidate,
-                    targetUser: this.currentChat
+                resultsContainer.appendChild(userElement);
+            });
+        }
+        
+        resultsContainer.style.display = 'block';
+    }
+
+    displaySearchError(error) {
+        const resultsContainer = document.getElementById('searchResults');
+        if (!resultsContainer) return;
+        
+        resultsContainer.innerHTML = `
+            <div class="search-result error">
+                <div class="search-user-info">
+                    <span class="search-avatar">⚠️</span>
+                    <span class="search-username">Ошибка поиска</span>
+                </div>
+                <div class="error-details">${error.message}</div>
+            </div>
+        `;
+        resultsContainer.style.display = 'block';
+    }
+
+    async startChat(username) {
+        this.currentChat = username;
+        
+        const searchResults = document.getElementById('searchResults');
+        const userSearch = document.getElementById('userSearch');
+        if (searchResults) searchResults.style.display = 'none';
+        if (userSearch) userSearch.value = '';
+        
+        const chatHeader = document.getElementById('chatHeader');
+        const activeChat = document.getElementById('activeChat');
+        if (chatHeader) chatHeader.style.display = 'none';
+        if (activeChat) activeChat.style.display = 'flex';
+        
+        const currentChatUser = document.getElementById('currentChatUser');
+        if (currentChatUser) currentChatUser.textContent = username;
+        
+        try {
+            const response = await fetch(`/api/messages/private/${username}`);
+            const messages = await response.json();
+            this.displayMessageHistory(messages);
+        } catch (error) {
+            console.error('Error loading messages:', error);
+        }
+        
+        const messageInput = document.getElementById('privateMessageInput');
+        if (messageInput) messageInput.focus();
+        
+        this.loadConversations();
+    }
+
+    closeCurrentChat() {
+        this.currentChat = null;
+        
+        const chatHeader = document.getElementById('chatHeader');
+        const activeChat = document.getElementById('activeChat');
+        if (chatHeader) chatHeader.style.display = 'block';
+        if (activeChat) activeChat.style.display = 'none';
+        
+        const privateMessages = document.getElementById('privateMessages');
+        if (privateMessages) privateMessages.innerHTML = '<div class="no-messages">📝 Начните общение первым!</div>';
+        
+        const messageInput = document.getElementById('privateMessageInput');
+        if (messageInput) messageInput.value = '';
+        
+        this.hideScrollIndicator();
+        this.loadConversations();
+    }
+
+    async loadConversations() {
+        try {
+            const response = await fetch('/api/conversations');
+            this.conversations = await response.json();
+            this.displayConversations();
+        } catch (error) {
+            console.error('Error loading conversations:', error);
+        }
+    }
+
+    displayConversations() {
+        const container = document.getElementById('conversationsList');
+        if (!container) return;
+        
+        container.innerHTML = '';
+
+        if (this.conversations.length === 0) {
+            container.innerHTML = '<div class="conversation-item empty">Нет диалогов</div>';
+            return;
+        }
+
+        this.conversations.forEach(conversation => {
+            const convElement = document.createElement('div');
+            convElement.className = `conversation-item ${conversation.username === this.currentChat ? 'active' : ''}`;
+            
+            const lastMsg = conversation.lastMessage;
+            const preview = lastMsg ? (lastMsg.isOwn ? `Вы: ${lastMsg.text}` : lastMsg.text) : 'Нет сообщений';
+            const shortPreview = preview.length > 25 ? preview.substring(0, 25) + '...' : preview;
+
+            convElement.innerHTML = `
+                <div class="conv-avatar">👤</div>
+                <div class="conv-info">
+                    <div class="conv-name">${conversation.username}</div>
+                    <div class="conv-preview">${shortPreview}</div>
+                </div>
+                ${lastMsg ? `<div class="conv-time">${lastMsg.timestamp}</div>` : ''}
+            `;
+
+            convElement.addEventListener('click', () => this.startChat(conversation.username));
+            container.appendChild(convElement);
+        });
+    }
+
+    displayMessageHistory(messages) {
+        const container = document.getElementById('privateMessages');
+        if (!container) return;
+        
+        container.innerHTML = '';
+        
+        if (messages.length === 0) {
+            container.innerHTML = '<div class="no-messages">📝 Начните общение первым!</div>';
+            return;
+        }
+        
+        messages.sort((a, b) => new Date(a.date) - new Date(b.date));
+        messages.forEach(message => this.displayMessage(message, false));
+        setTimeout(() => this.scrollToBottom(), 100);
+    }
+
+    displayMessage(message, shouldScroll = true) {
+        const container = document.getElementById('privateMessages');
+        if (!container) return;
+        
+        const noMessagesElement = container.querySelector('.no-messages');
+        if (noMessagesElement) {
+            noMessagesElement.remove();
+        }
+        
+        const messageElement = document.createElement('div');
+        const currentUsername = document.getElementById('username')?.textContent;
+        const isOwn = message.sender === currentUsername;
+        
+        messageElement.className = `private-message ${isOwn ? 'own' : 'other'}`;
+        
+        const formattedMessage = this.formatMessageText(message.message);
+        
+        messageElement.innerHTML = `
+            <div class="message-content">
+                <div class="message-header">
+                    <strong>${isOwn ? 'Вы' : message.sender}</strong>
+                    <span class="message-time">${message.timestamp}</span>
+                </div>
+                <div class="message-text">${formattedMessage}</div>
+            </div>
+        `;
+        
+        container.appendChild(messageElement);
+        
+        if (shouldScroll && this.isScrolledToBottom) {
+            setTimeout(() => this.scrollToBottom(), 50);
+        } else if (shouldScroll) {
+            this.showScrollIndicator();
+        }
+    }
+
+    formatMessageText(text) {
+        const words = text.split(' ');
+        let lines = [];
+        let currentLine = '';
+
+        words.forEach(word => {
+            if ((currentLine + word).length > 20) {
+                if (currentLine) {
+                    lines.push(currentLine);
+                }
+                currentLine = word;
+            } else {
+                currentLine = currentLine ? currentLine + ' ' + word : word;
+            }
+        });
+
+        if (currentLine) {
+            lines.push(currentLine);
+        }
+
+        return lines.join('<br>');
+    }
+
+    sendPrivateMessage() {
+        const input = document.getElementById('privateMessageInput');
+        const currentUsername = document.getElementById('username')?.textContent;
+        
+        if (!input || !currentUsername || !this.currentChat) return;
+        
+        const message = input.value.trim();
+        
+        if (message && this.currentChat) {
+            if (window.socket) {
+                window.socket.emit('private message', {
+                    sender: currentUsername,
+                    receiver: this.currentChat,
+                    message: message
                 });
             }
-        };
-
-        // Обработчик удаленного потока
-        this.screenShareConnection.ontrack = (event) => {
-            if (event.streams && event.streams[0]) {
-                const screenViewVideo = document.getElementById('screenViewVideo');
-                screenViewVideo.srcObject = event.streams[0];
-                this.showScreenViewWindow();
-            }
-        };
-
-        this.screenShareConnection.onconnectionstatechange = () => {
-            const statusElement = document.getElementById('screenShareStatus');
-            if (statusElement) {
-                switch (this.screenShareConnection.connectionState) {
-                    case 'connected':
-                        statusElement.textContent = 'Трансляция активна';
-                        break;
-                    case 'disconnected':
-                    case 'failed':
-                        statusElement.textContent = 'Соединение прервано';
-                        this.stopScreenShare();
-                        break;
-                }
-            }
-        };
-    }
-
-    async acceptScreenShare() {
-        try {
-            this.hideIncomingScreenShareWindow();
             
-            // Создаем peer connection для приема трансляции
-            await this.createScreenShareConnection();
-
-            // Устанавливаем удаленное описание
-            await this.screenShareConnection.setRemoteDescription(
-                new RTCSessionDescription(this.incomingScreenShareOffer)
-            );
-
-            // Создаем answer
-            const answer = await this.screenShareConnection.createAnswer();
-            await this.screenShareConnection.setLocalDescription(answer);
-
-            // Отправляем answer
-            socket.emit('accept-screen-share', {
-                screenShareId: this.screenShareId,
-                answer: answer
-            });
-
-        } catch (error) {
-            console.error('Error accepting screen share:', error);
-            alert('Ошибка при принятии трансляции экрана');
+            input.value = '';
+            input.focus();
         }
     }
 
-    rejectScreenShare() {
-        socket.emit('reject-screen-share', {
-            screenShareId: this.screenShareId
-        });
-        this.hideIncomingScreenShareWindow();
-        this.screenShareId = null;
-    }
-
-    async stopScreenShare() {
-        if (this.screenShareConnection) {
-            this.screenShareConnection.close();
-            this.screenShareConnection = null;
+    scrollToBottom() {
+        const privateMessages = document.getElementById('privateMessages');
+        if (privateMessages) {
+            privateMessages.scrollTop = privateMessages.scrollHeight;
+            this.isScrolledToBottom = true;
+            this.hideScrollIndicator();
         }
-
-        if (this.screenShareStream) {
-            this.screenShareStream.getTracks().forEach(track => track.stop());
-            this.screenShareStream = null;
-        }
-
-        if (this.screenShareId) {
-            socket.emit('end-screen-share', {
-                screenShareId: this.screenShareId
-            });
-        }
-
-        this.hideScreenShareWindow();
-        this.hideScreenViewWindow();
-        this.screenShareId = null;
-        this.isScreenSharing = false;
     }
 
-    closeScreenView() {
-        this.hideScreenViewWindow();
+    isAtBottom(container) {
+        if (!container) return false;
+        const threshold = 50;
+        const position = container.scrollTop + container.clientHeight;
+        const height = container.scrollHeight;
+        return position >= height - threshold;
     }
 
-    // ========== ОТОБРАЖЕНИЕ ОКОН ТРАНСЛЯЦИИ ==========
-
-    showScreenShareWindow() {
-        document.getElementById('screenShareUser').textContent = this.currentChat;
-        document.getElementById('screenShareWindow').style.display = 'block';
-        this.isScreenSharing = true;
-    }
-
-    hideScreenShareWindow() {
-        document.getElementById('screenShareWindow').style.display = 'none';
-        this.isScreenSharing = false;
-    }
-
-    showIncomingScreenShareWindow(from) {
-        document.getElementById('incomingScreenShareUser').textContent = from;
-        document.getElementById('incomingScreenShareWindow').style.display = 'block';
-    }
-
-    hideIncomingScreenShareWindow() {
-        document.getElementById('incomingScreenShareWindow').style.display = 'none';
-    }
-
-    showScreenViewWindow() {
-        document.getElementById('screenViewUser').textContent = this.currentChat;
-        document.getElementById('screenViewWindow').style.display = 'block';
-    }
-
-    hideScreenViewWindow() {
-        const screenViewVideo = document.getElementById('screenViewVideo');
-        if (screenViewVideo) {
-            screenViewVideo.srcObject = null;
-        }
-        document.getElementById('screenViewWindow').style.display = 'none';
-    }
-
-    toggleScreenFullscreen() {
-        const screenViewContainer = document.querySelector('.screen-view-container');
-        if (screenViewContainer) {
-            if (!document.fullscreenElement) {
-                if (screenViewContainer.requestFullscreen) {
-                    screenViewContainer.requestFullscreen();
-                }
-            } else {
-                if (document.exitFullscreen) {
-                    document.exitFullscreen();
+    handleScroll() {
+        const container = document.getElementById('privateMessages');
+        const scrollIndicator = document.getElementById('scrollIndicator');
+        
+        if (container) {
+            this.isScrolledToBottom = this.isAtBottom(container);
+            
+            if (scrollIndicator) {
+                if (this.isScrolledToBottom) {
+                    scrollIndicator.style.display = 'none';
+                } else {
+                    scrollIndicator.style.display = 'block';
                 }
             }
         }
     }
 
-    // ========== ОБРАБОТЧИКИ SOCKET.IO ДЛЯ ТРАНСЛЯЦИИ ==========
+    showScrollIndicator() {
+        const scrollIndicator = document.getElementById('scrollIndicator');
+        if (scrollIndicator && !this.isScrolledToBottom) {
+            scrollIndicator.style.display = 'block';
+        }
+    }
+
+    hideScrollIndicator() {
+        const scrollIndicator = document.getElementById('scrollIndicator');
+        if (scrollIndicator) {
+            scrollIndicator.style.display = 'none';
+        }
+    }
 
     setupSocketListeners() {
-        socket.on('private message', (data) => this.handleIncomingMessage(data));
-        socket.on('conversations updated', () => this.loadConversations());
-
-        // Обработчики звонков
-        socket.on('incoming-call', (data) => {
-            this.currentCallId = data.callId;
-            this.incomingCallOffer = data.offer;
-            this.showIncomingCallWindow(data.from);
+        if (!window.socket) return;
+        
+        window.socket.on('private message', (data) => {
+            this.handleIncomingMessage(data);
         });
 
-        socket.on('call-accepted', async (data) => {
-            await this.peerConnection.setRemoteDescription(
-                new RTCSessionDescription(data.answer)
-            );
-        });
-
-        socket.on('call-rejected', (data) => {
-            this.showCallStatus('Звонок отклонен');
-            setTimeout(() => this.endCall(), 2000);
-        });
-
-        socket.on('call-ended', (data) => {
-            this.showCallStatus('Собеседник завершил звонок');
-            setTimeout(() => this.endCall(), 2000);
-        });
-
-        socket.on('ice-candidate', async (data) => {
-            if (this.peerConnection) {
-                try {
-                    await this.peerConnection.addIceCandidate(
-                        new RTCIceCandidate(data.candidate)
-                    );
-                } catch (error) {
-                    console.error('Error adding ICE candidate:', error);
-                }
-            }
-        });
-
-        // Новые обработчики для трансляции экрана
-        socket.on('screen-share-offer', (data) => {
-            this.screenShareId = data.screenShareId;
-            this.incomingScreenShareOffer = data.offer;
-            this.showIncomingScreenShareWindow(data.from);
-        });
-
-        socket.on('screen-share-accepted', async (data) => {
-            await this.screenShareConnection.setRemoteDescription(
-                new RTCSessionDescription(data.answer)
-            );
-        });
-
-        socket.on('screen-share-rejected', (data) => {
-            document.getElementById('screenShareStatus').textContent = 'Трансляция отклонена';
-            setTimeout(() => this.stopScreenShare(), 2000);
-        });
-
-        socket.on('screen-share-ended', (data) => {
-            if (this.isScreenSharing) {
-                document.getElementById('screenShareStatus').textContent = 'Трансляция завершена';
-                setTimeout(() => this.stopScreenShare(), 2000);
-            } else {
-                this.hideScreenViewWindow();
-            }
-        });
-
-        socket.on('screen-share-ice-candidate', async (data) => {
-            if (this.screenShareConnection) {
-                try {
-                    await this.screenShareConnection.addIceCandidate(
-                        new RTCIceCandidate(data.candidate)
-                    );
-                } catch (error) {
-                    console.error('Error adding screen share ICE candidate:', error);
-                }
-            }
-        });
-
-        socket.on('call-failed', (data) => {
-            this.showCallStatus('Ошибка звонка: ' + data.reason);
-            setTimeout(() => this.endCall(), 2000);
+        window.socket.on('conversations updated', () => {
+            this.loadConversations();
         });
     }
 
-    // ... остальные существующие методы (scrollToBottom, isAtBottom, loadConversations, etc.) ...
+    handleIncomingMessage(data) {
+        if (this.currentChat && 
+            ((data.sender === this.currentChat && data.receiver === document.getElementById('username')?.textContent) ||
+             (data.receiver === this.currentChat && data.sender === document.getElementById('username')?.textContent))) {
+            this.displayMessage(data, true);
+        }
+        
+        this.loadConversations();
+    }
 
-    generateUUID() {
-        return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-            const r = Math.random() * 16 | 0;
-            const v = c === 'x' ? r : (r & 0x3 | 0x8);
-            return v.toString(16);
-        });
+    debounce(func, wait) {
+        let timeout;
+        return function executedFunction(...args) {
+            const later = () => {
+                clearTimeout(timeout);
+                func(...args);
+            };
+            clearTimeout(timeout);
+            timeout = setTimeout(later, wait);
+        };
+    }
+
+    // Методы для звонков (упрощенные)
+    async startCall(isVideoCall) {
+        console.log('Starting call:', isVideoCall);
+        // Реализация звонков будет здесь
     }
 }
 
-const privateChat = new PrivateChat();
+// Глобальная переменная для доступа к экземпляру
+let privateChatInstance = null;
+
+// Инициализация после загрузки страницы
+document.addEventListener('DOMContentLoaded', function() {
+    try {
+        privateChatInstance = new PrivateChat();
+        window.privateChatInstance = privateChatInstance;
+    } catch (error) {
+        console.error('Failed to initialize PrivateChat:', error);
+    }
+});

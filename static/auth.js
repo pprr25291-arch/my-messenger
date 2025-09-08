@@ -16,8 +16,11 @@ document.addEventListener('DOMContentLoaded', function() {
                 });
 
                 const result = await response.json();
-                if (result.success) window.location.href = '/chat';
-                else alert('Ошибка входа: ' + (result.error || 'Неизвестная ошибка'));
+                if (result.success) {
+                    window.location.href = '/chat';
+                } else {
+                    alert('Ошибка входа: ' + (result.error || 'Неизвестная ошибка'));
+                }
             } catch (error) {
                 alert('Ошибка сети. Попробуйте еще раз.');
             }
@@ -38,8 +41,11 @@ document.addEventListener('DOMContentLoaded', function() {
                 });
 
                 const result = await response.json();
-                if (result.success) window.location.href = '/chat';
-                else alert('Ошибка регистрации: ' + (result.error || 'Неизвестная ошибка'));
+                if (result.success) {
+                    window.location.href = '/chat';
+                } else {
+                    alert('Ошибка регистрации: ' + (result.error || 'Неизвестная ошибка'));
+                }
             } catch (error) {
                 alert('Ошибка сети. Попробуйте еще раз.');
             }
