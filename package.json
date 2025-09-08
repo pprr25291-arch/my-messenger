@@ -1,20 +1,13 @@
 {
   "name": "my-messenger",
   "version": "1.0.0",
-  "description": "Real-time messenger with private messages and video calls",
+  "description": "Real-time messenger with private messages, video calls and screen sharing",
   "main": "app.js",
   "scripts": {
     "start": "node app.js",
     "dev": "nodemon app.js"
   },
-  "keywords": [
-    "messenger",
-    "chat",
-    "socket.io",
-    "express",
-    "webrtc",
-    "video-call"
-  ],
+  "keywords": ["messenger", "chat", "socket.io", "express", "webrtc", "video-call", "screen-share"],
   "author": "",
   "license": "ISC",
   "dependencies": {

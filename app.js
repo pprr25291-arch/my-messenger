@@ -57,6 +57,7 @@ let messages = [];
 const userSockets = new Map();
 let activeCalls = new Map();
 let callOffers = new Map();
+let screenSharingSessions = new Map();
 
 // Data management functions
 async function loadUsers() {
@@ -459,8 +460,144 @@ io.on('connection', (socket) => {
         }
     });
 
+    // Обработчики трансляции экрана
+    socket.on('start-screen-share', (data) => {
+        try {
+            const { from, to, offer, screenShareId } = data;
+            const receiverSocketId = userSockets.get(to);
+            
+            if (receiverSocketId) {
+                screenSharingSessions.set(screenShareId, { from, to });
+                
+                io.to(receiverSocketId).emit('screen-share-offer', {
+                    from,
+                    screenShareId,
+                    offer
+                });
+                
+                socket.emit('screen-share-started', { screenShareId });
+            } else {
+                socket.emit('screen-share-failed', { 
+                    reason: 'Пользователь недоступен' 
+                });
+            }
+        } catch (error) {
+            console.error('Screen share error:', error);
+            socket.emit('screen-share-failed', { 
+                reason: 'Ошибка трансляции экрана' 
+            });
+        }
+    });
+
+    socket.on('accept-screen-share', (data) => {
+        try {
+            const { screenShareId, answer } = data;
+            const screenShareData = screenSharingSessions.get(screenShareId);
+            
+            if (screenShareData) {
+                const sharerSocketId = userSockets.get(screenShareData.from);
+                
+                if (sharerSocketId) {
+                    io.to(sharerSocketId).emit('screen-share-accepted', {
+                        screenShareId,
+                        answer
+                    });
+                }
+            }
+        } catch (error) {
+            console.error('Accept screen share error:', error);
+        }
+    });
+
+    socket.on('reject-screen-share', (data) => {
+        try {
+            const { screenShareId } = data;
+            const screenShareData = screenSharingSessions.get(screenShareId);
+            
+            if (screenShareData) {
+                const sharerSocketId = userSockets.get(screenShareData.from);
+                
+                if (sharerSocketId) {
+                    io.to(sharerSocketId).emit('screen-share-rejected', {
+                        screenShareId,
+                        reason: 'Трансляция отклонена'
+                    });
+                }
+                
+                screenSharingSessions.delete(screenShareId);
+            }
+        } catch (error) {
+            console.error('Reject screen share error:', error);
+        }
+    });
+
+    socket.on('end-screen-share', (data) => {
+        try {
+            const { screenShareId } = data;
+            const screenShareData = screenSharingSessions.get(screenShareId);
+            
+            if (screenShareData) {
+                const receiverSocketId = userSockets.get(screenShareData.to);
+                const sharerSocketId = userSockets.get(screenShareData.from);
+                
+                if (receiverSocketId) {
+                    io.to(receiverSocketId).emit('screen-share-ended', {
+                        screenShareId,
+                        reason: 'Трансляция завершена'
+                    });
+                }
+                
+                if (sharerSocketId) {
+                    io.to(sharerSocketId).emit('screen-share-ended', {
+                        screenShareId,
+                        reason: 'Трансляция завершена'
+                    });
+                }
+                
+                screenSharingSessions.delete(screenShareId);
+            }
+        } catch (error) {
+            console.error('End screen share error:', error);
+        }
+    });
+
+    socket.on('screen-share-ice-candidate', (data) => {
+        try {
+            const { screenShareId, candidate, targetUser } = data;
+            const targetSocketId = userSockets.get(targetUser);
+            
+            if (targetSocketId) {
+                io.to(targetSocketId).emit('screen-share-ice-candidate', {
+                    screenShareId,
+                    candidate
+                });
+            }
+        } catch (error) {
+            console.error('Screen share ICE candidate error:', error);
+        }
+    });
+
     socket.on('disconnect', () => {
-        if (socket.username) userSockets.delete(socket.username);
+        if (socket.username) {
+            userSockets.delete(socket.username);
+            
+            // Завершаем все активные сессии трансляции экрана при отключении
+            for (const [screenShareId, session] of screenSharingSessions.entries()) {
+                if (session.from === socket.username || session.to === socket.username) {
+                    const otherUser = session.from === socket.username ? session.to : session.from;
+                    const otherSocketId = userSockets.get(otherUser);
+                    
+                    if (otherSocketId) {
+                        io.to(otherSocketId).emit('screen-share-ended', {
+                            screenShareId,
+                            reason: 'Пользователь отключился'
+                        });
+                    }
+                    
+                    screenSharingSessions.delete(screenShareId);
+                }
+            }
+        }
     });
 });
 

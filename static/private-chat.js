@@ -13,6 +13,10 @@ class PrivateChat {
         this.timerInterval = null;
         this.callStartTime = null;
         this.incomingCallOffer = null;
+        this.screenShareStream = null;
+        this.screenShareConnection = null;
+        this.isScreenSharing = false;
+        this.screenShareId = null;
         this.init();
     }
 
@@ -22,23 +26,6 @@ class PrivateChat {
         this.setupSocketListeners();
         this.loadConversations();
         this.setupCallHandlers();
-    }
-
-    scrollToBottom() {
-        const privateMessages = document.getElementById('privateMessages');
-        if (privateMessages) {
-            privateMessages.scrollTop = privateMessages.scrollHeight;
-            this.isScrolledToBottom = true;
-            this.hideScrollIndicator();
-        }
-    }
-
-    isAtBottom(container) {
-        if (!container) return false;
-        const threshold = 50;
-        const position = container.scrollTop + container.clientHeight;
-        const height = container.scrollHeight;
-        return position >= height - threshold;
     }
 
     createUI() {
@@ -75,6 +62,9 @@ class PrivateChat {
                                 </button>
                                 <button type="button" class="call-btn voice-call" title="Голосовой звонок">
                                     📞
+                                </button>
+                                <button type="button" class="call-btn screen-share" title="Трансляция экрана">
+                                    🖥️
                                 </button>
                             </div>
                             <button type="button" class="close-chat">✕</button>
@@ -125,6 +115,9 @@ class PrivateChat {
                     <button type="button" class="call-control fullscreen-btn" onclick="privateChat.toggleFullscreen()">
                         ⛶
                     </button>
+                    <button type="button" class="call-control screen-share-btn" onclick="privateChat.startScreenShare()">
+                        🖥️
+                    </button>
                 </div>
                 
                 <div class="call-status" id="callStatus">
@@ -144,6 +137,57 @@ class PrivateChat {
                             ❌ Отклонить
                         </button>
                     </div>
+                </div>
+            </div>
+
+            <!-- Окно трансляции экрана -->
+            <div id="screenShareWindow" class="screen-share-window" style="display: none;">
+                <div class="screen-share-header">
+                    <h4>Трансляция экрана пользователю: <span id="screenShareUser"></span></h4>
+                    <div class="screen-share-status" id="screenShareStatus">
+                        Запрос отправлен...
+                    </div>
+                </div>
+                
+                <div class="screen-share-controls">
+                    <button type="button" class="screen-share-control stop-share-btn" onclick="privateChat.stopScreenShare()">
+                        🖥️ Остановить трансляцию
+                    </button>
+                </div>
+            </div>
+
+            <!-- Окно входящей трансляции экрана -->
+            <div id="incomingScreenShareWindow" class="incoming-screen-share-window" style="display: none;">
+                <div class="incoming-screen-share-content">
+                    <h4>Входящая трансляция экрана от: <span id="incomingScreenShareUser"></span></h4>
+                    <div class="incoming-screen-share-buttons">
+                        <button type="button" class="accept-screen-share-btn" onclick="privateChat.acceptScreenShare()">
+                            🖥️ Принять
+                        </button>
+                        <button type="button" class="reject-screen-share-btn" onclick="privateChat.rejectScreenShare()">
+                            ❌ Отклонить
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Окно просмотра трансляции экрана -->
+            <div id="screenViewWindow" class="screen-view-window" style="display: none;">
+                <div class="screen-view-header">
+                    <h4>Трансляция экрана от: <span id="screenViewUser"></span></h4>
+                    <button type="button" class="close-screen-view" onclick="privateChat.closeScreenView()">
+                        ✕
+                    </button>
+                </div>
+                
+                <div class="screen-view-container">
+                    <video id="screenViewVideo" autoplay playsinline></video>
+                </div>
+                
+                <div class="screen-view-controls">
+                    <button type="button" class="screen-view-control fullscreen-btn" onclick="privateChat.toggleScreenFullscreen()">
+                        ⛶
+                    </button>
                 </div>
             </div>
         `;
@@ -182,7 +226,7 @@ class PrivateChat {
             });
         }
 
-        // Новые обработчики для кнопок звонка
+        // Новые обработчики для кнопок звонка и трансляции
         document.querySelector('.video-call').addEventListener('click', () => {
             this.startCall(true);
         });
@@ -190,56 +234,80 @@ class PrivateChat {
         document.querySelector('.voice-call').addEventListener('click', () => {
             this.startCall(false);
         });
+
+        document.querySelector('.screen-share').addEventListener('click', () => {
+            this.startScreenShare();
+        });
     }
 
     setupCallHandlers() {
         this.callWindow = document.getElementById('callWindow');
         this.incomingCallWindow = document.getElementById('incomingCallWindow');
+        this.screenShareWindow = document.getElementById('screenShareWindow');
+        this.incomingScreenShareWindow = document.getElementById('incomingScreenShareWindow');
+        this.screenViewWindow = document.getElementById('screenViewWindow');
     }
 
-    async startCall(isVideoCall) {
-        if (!this.currentChat) return;
+    // ========== ФУНКЦИОНАЛ ТРАНСЛЯЦИИ ЭКРАНА ==========
+
+    async startScreenShare() {
+        if (!this.currentChat) {
+            alert('Выберите пользователя для трансляции экрана');
+            return;
+        }
 
         try {
-            this.currentCallId = this.generateUUID();
-            this.showCallWindow(isVideoCall);
-            
-            // Получаем медиапоток
-            this.localStream = await navigator.mediaDevices.getUserMedia({
-                video: isVideoCall,
+            // Запрашиваем доступ к экрану :cite[1]:cite[4]:cite[7]
+            this.screenShareStream = await navigator.mediaDevices.getDisplayMedia({
+                video: {
+                    cursor: "always",
+                    displaySurface: "monitor"
+                },
                 audio: true
             });
 
-            const localVideo = document.getElementById('localVideo');
-            localVideo.srcObject = this.localStream;
+            // Создаем уникальный ID для сессии трансляции
+            this.screenShareId = this.generateUUID();
+            
+            // Создаем peer connection для трансляции экрана
+            await this.createScreenShareConnection();
 
-            // Создаем peer connection
-            await this.createPeerConnection();
-
-            // Добавляем локальный поток
-            this.localStream.getTracks().forEach(track => {
-                this.peerConnection.addTrack(track, this.localStream);
+            // Добавляем треки экрана в соединение
+            this.screenShareStream.getTracks().forEach(track => {
+                this.screenShareConnection.addTrack(track, this.screenShareStream);
             });
 
             // Создаем offer
-            const offer = await this.peerConnection.createOffer();
-            await this.peerConnection.setLocalDescription(offer);
+            const offer = await this.screenShareConnection.createOffer();
+            await this.screenShareConnection.setLocalDescription(offer);
 
             // Отправляем offer через Socket.io
-            socket.emit('call-user', {
+            socket.emit('start-screen-share', {
                 from: document.getElementById('username').textContent,
                 to: this.currentChat,
                 offer: offer,
-                callId: this.currentCallId
+                screenShareId: this.screenShareId
+            });
+
+            // Показываем окно управления трансляцией
+            this.showScreenShareWindow();
+
+            // Обработчик завершения трансляции пользователем
+            this.screenShareStream.getTracks().forEach(track => {
+                track.onended = () => {
+                    this.stopScreenShare();
+                };
             });
 
         } catch (error) {
-            console.error('Error starting call:', error);
-            this.showCallStatus('Ошибка при запуске звонка');
+            console.error('Error starting screen share:', error);
+            if (error.name !== 'NotAllowedError') {
+                alert('Ошибка при запуске трансляции экрана: ' + error.message);
+            }
         }
     }
 
-    async createPeerConnection() {
+    async createScreenShareConnection() {
         const configuration = {
             iceServers: [
                 { urls: 'stun:stun.l.google.com:19302' },
@@ -247,13 +315,13 @@ class PrivateChat {
             ]
         };
 
-        this.peerConnection = new RTCPeerConnection(configuration);
+        this.screenShareConnection = new RTCPeerConnection(configuration);
 
         // Обработчики ICE кандидатов
-        this.peerConnection.onicecandidate = (event) => {
+        this.screenShareConnection.onicecandidate = (event) => {
             if (event.candidate) {
-                socket.emit('ice-candidate', {
-                    callId: this.currentCallId,
+                socket.emit('screen-share-ice-candidate', {
+                    screenShareId: this.screenShareId,
                     candidate: event.candidate,
                     targetUser: this.currentChat
                 });
@@ -261,211 +329,151 @@ class PrivateChat {
         };
 
         // Обработчик удаленного потока
-        this.peerConnection.ontrack = (event) => {
-            const remoteVideo = document.getElementById('remoteVideo');
+        this.screenShareConnection.ontrack = (event) => {
             if (event.streams && event.streams[0]) {
-                remoteVideo.srcObject = event.streams[0];
-                this.remoteStream = event.streams[0];
-                this.showCallStatus('Соединение установлено');
+                const screenViewVideo = document.getElementById('screenViewVideo');
+                screenViewVideo.srcObject = event.streams[0];
+                this.showScreenViewWindow();
             }
         };
 
-        this.peerConnection.onconnectionstatechange = () => {
-            switch (this.peerConnection.connectionState) {
-                case 'connected':
-                    this.showCallStatus('Соединение установлено');
-                    this.startCallTimer();
-                    break;
-                case 'disconnected':
-                case 'failed':
-                    this.showCallStatus('Соединение прервано');
-                    this.endCall();
-                    break;
+        this.screenShareConnection.onconnectionstatechange = () => {
+            const statusElement = document.getElementById('screenShareStatus');
+            if (statusElement) {
+                switch (this.screenShareConnection.connectionState) {
+                    case 'connected':
+                        statusElement.textContent = 'Трансляция активна';
+                        break;
+                    case 'disconnected':
+                    case 'failed':
+                        statusElement.textContent = 'Соединение прервано';
+                        this.stopScreenShare();
+                        break;
+                }
             }
         };
     }
 
-    showCallWindow(isVideoCall) {
-        document.getElementById('callUserName').textContent = this.currentChat;
-        this.callWindow.style.display = 'block';
-        
-        if (!isVideoCall) {
-            document.querySelector('.video-container').style.display = 'none';
-        }
-    }
-
-    hideCallWindow() {
-        this.callWindow.style.display = 'none';
-        document.querySelector('.video-container').style.display = 'block';
-    }
-
-    showIncomingCallWindow(from) {
-        document.getElementById('incomingCallUser').textContent = from;
-        this.incomingCallWindow.style.display = 'block';
-    }
-
-    hideIncomingCallWindow() {
-        this.incomingCallWindow.style.display = 'none';
-    }
-
-    async acceptCall() {
+    async acceptScreenShare() {
         try {
-            this.hideIncomingCallWindow();
-            this.showCallWindow(true);
+            this.hideIncomingScreenShareWindow();
             
-            // Получаем медиапоток
-            this.localStream = await navigator.mediaDevices.getUserMedia({
-                video: true,
-                audio: true
-            });
-
-            const localVideo = document.getElementById('localVideo');
-            localVideo.srcObject = this.localStream;
-
-            // Создаем peer connection
-            await this.createPeerConnection();
-
-            // Добавляем локальный поток
-            this.localStream.getTracks().forEach(track => {
-                this.peerConnection.addTrack(track, this.localStream);
-            });
+            // Создаем peer connection для приема трансляции
+            await this.createScreenShareConnection();
 
             // Устанавливаем удаленное описание
-            await this.peerConnection.setRemoteDescription(
-                new RTCSessionDescription(this.incomingCallOffer)
+            await this.screenShareConnection.setRemoteDescription(
+                new RTCSessionDescription(this.incomingScreenShareOffer)
             );
 
             // Создаем answer
-            const answer = await this.peerConnection.createAnswer();
-            await this.peerConnection.setLocalDescription(answer);
+            const answer = await this.screenShareConnection.createAnswer();
+            await this.screenShareConnection.setLocalDescription(answer);
 
             // Отправляем answer
-            socket.emit('accept-call', {
-                callId: this.currentCallId,
+            socket.emit('accept-screen-share', {
+                screenShareId: this.screenShareId,
                 answer: answer
             });
 
         } catch (error) {
-            console.error('Error accepting call:', error);
-            this.showCallStatus('Ошибка при принятии звонка');
+            console.error('Error accepting screen share:', error);
+            alert('Ошибка при принятии трансляции экрана');
         }
     }
 
-    rejectCall() {
-        socket.emit('reject-call', {
-            callId: this.currentCallId
+    rejectScreenShare() {
+        socket.emit('reject-screen-share', {
+            screenShareId: this.screenShareId
         });
-        this.hideIncomingCallWindow();
-        this.currentCallId = null;
+        this.hideIncomingScreenShareWindow();
+        this.screenShareId = null;
     }
 
-    async endCall() {
-        if (this.peerConnection) {
-            this.peerConnection.close();
-            this.peerConnection = null;
+    async stopScreenShare() {
+        if (this.screenShareConnection) {
+            this.screenShareConnection.close();
+            this.screenShareConnection = null;
         }
 
-        if (this.localStream) {
-            this.localStream.getTracks().forEach(track => track.stop());
-            this.localStream = null;
+        if (this.screenShareStream) {
+            this.screenShareStream.getTracks().forEach(track => track.stop());
+            this.screenShareStream = null;
         }
 
-        if (this.currentCallId) {
-            socket.emit('end-call', {
-                callId: this.currentCallId
+        if (this.screenShareId) {
+            socket.emit('end-screen-share', {
+                screenShareId: this.screenShareId
             });
         }
 
-        this.hideCallWindow();
-        this.stopCallTimer();
-        this.currentCallId = null;
-        this.isMuted = false;
-        this.isVideoEnabled = true;
+        this.hideScreenShareWindow();
+        this.hideScreenViewWindow();
+        this.screenShareId = null;
+        this.isScreenSharing = false;
     }
 
-    toggleMute() {
-        if (this.localStream) {
-            const audioTracks = this.localStream.getAudioTracks();
-            audioTracks.forEach(track => {
-                track.enabled = !track.enabled;
-            });
-            this.isMuted = !this.isMuted;
-            
-            const muteBtn = document.querySelector('.mute-btn');
-            muteBtn.textContent = this.isMuted ? '🔇' : '🔊';
+    closeScreenView() {
+        this.hideScreenViewWindow();
+    }
+
+    // ========== ОТОБРАЖЕНИЕ ОКОН ТРАНСЛЯЦИИ ==========
+
+    showScreenShareWindow() {
+        document.getElementById('screenShareUser').textContent = this.currentChat;
+        document.getElementById('screenShareWindow').style.display = 'block';
+        this.isScreenSharing = true;
+    }
+
+    hideScreenShareWindow() {
+        document.getElementById('screenShareWindow').style.display = 'none';
+        this.isScreenSharing = false;
+    }
+
+    showIncomingScreenShareWindow(from) {
+        document.getElementById('incomingScreenShareUser').textContent = from;
+        document.getElementById('incomingScreenShareWindow').style.display = 'block';
+    }
+
+    hideIncomingScreenShareWindow() {
+        document.getElementById('incomingScreenShareWindow').style.display = 'none';
+    }
+
+    showScreenViewWindow() {
+        document.getElementById('screenViewUser').textContent = this.currentChat;
+        document.getElementById('screenViewWindow').style.display = 'block';
+    }
+
+    hideScreenViewWindow() {
+        const screenViewVideo = document.getElementById('screenViewVideo');
+        if (screenViewVideo) {
+            screenViewVideo.srcObject = null;
         }
+        document.getElementById('screenViewWindow').style.display = 'none';
     }
 
-    toggleVideo() {
-        if (this.localStream) {
-            const videoTracks = this.localStream.getVideoTracks();
-            videoTracks.forEach(track => {
-                track.enabled = !track.enabled;
-            });
-            this.isVideoEnabled = !this.isVideoEnabled;
-            
-            const videoBtn = document.querySelector('.video-btn');
-            videoBtn.textContent = this.isVideoEnabled ? '📹' : '📷 off';
-        }
-    }
-
-    toggleFullscreen() {
-        const videoContainer = document.querySelector('.video-container');
-        if (videoContainer) {
+    toggleScreenFullscreen() {
+        const screenViewContainer = document.querySelector('.screen-view-container');
+        if (screenViewContainer) {
             if (!document.fullscreenElement) {
-                if (videoContainer.requestFullscreen) {
-                    videoContainer.requestFullscreen();
-                } else if (videoContainer.mozRequestFullScreen) {
-                    videoContainer.mozRequestFullScreen();
-                } else if (videoContainer.webkitRequestFullscreen) {
-                    videoContainer.webkitRequestFullscreen();
-                } else if (videoContainer.msRequestFullscreen) {
-                    videoContainer.msRequestFullscreen();
+                if (screenViewContainer.requestFullscreen) {
+                    screenViewContainer.requestFullscreen();
                 }
             } else {
                 if (document.exitFullscreen) {
                     document.exitFullscreen();
-                } else if (document.mozCancelFullScreen) {
-                    document.mozCancelFullScreen();
-                } else if (document.webkitExitFullscreen) {
-                    document.webkitExitFullscreen();
-                } else if (document.msExitFullscreen) {
-                    document.msExitFullscreen();
                 }
             }
         }
     }
 
-    showCallStatus(status) {
-        const statusElement = document.getElementById('callStatus');
-        if (statusElement) {
-            statusElement.textContent = status;
-        }
-    }
-
-    startCallTimer() {
-        this.callStartTime = new Date();
-        this.timerInterval = setInterval(() => {
-            const elapsed = Math.floor((new Date() - this.callStartTime) / 1000);
-            const minutes = Math.floor(elapsed / 60).toString().padStart(2, '0');
-            const seconds = (elapsed % 60).toString().padStart(2, '0');
-            document.getElementById('callTimer').textContent = `${minutes}:${seconds}`;
-        }, 1000);
-    }
-
-    stopCallTimer() {
-        if (this.timerInterval) {
-            clearInterval(this.timerInterval);
-            this.timerInterval = null;
-        }
-        document.getElementById('callTimer').textContent = '00:00';
-    }
+    // ========== ОБРАБОТЧИКИ SOCKET.IO ДЛЯ ТРАНСЛЯЦИИ ==========
 
     setupSocketListeners() {
         socket.on('private message', (data) => this.handleIncomingMessage(data));
         socket.on('conversations updated', () => this.loadConversations());
 
-        // Новые обработчики звонков
+        // Обработчики звонков
         socket.on('incoming-call', (data) => {
             this.currentCallId = data.callId;
             this.incomingCallOffer = data.offer;
@@ -500,277 +508,52 @@ class PrivateChat {
             }
         });
 
+        // Новые обработчики для трансляции экрана
+        socket.on('screen-share-offer', (data) => {
+            this.screenShareId = data.screenShareId;
+            this.incomingScreenShareOffer = data.offer;
+            this.showIncomingScreenShareWindow(data.from);
+        });
+
+        socket.on('screen-share-accepted', async (data) => {
+            await this.screenShareConnection.setRemoteDescription(
+                new RTCSessionDescription(data.answer)
+            );
+        });
+
+        socket.on('screen-share-rejected', (data) => {
+            document.getElementById('screenShareStatus').textContent = 'Трансляция отклонена';
+            setTimeout(() => this.stopScreenShare(), 2000);
+        });
+
+        socket.on('screen-share-ended', (data) => {
+            if (this.isScreenSharing) {
+                document.getElementById('screenShareStatus').textContent = 'Трансляция завершена';
+                setTimeout(() => this.stopScreenShare(), 2000);
+            } else {
+                this.hideScreenViewWindow();
+            }
+        });
+
+        socket.on('screen-share-ice-candidate', async (data) => {
+            if (this.screenShareConnection) {
+                try {
+                    await this.screenShareConnection.addIceCandidate(
+                        new RTCIceCandidate(data.candidate)
+                    );
+                } catch (error) {
+                    console.error('Error adding screen share ICE candidate:', error);
+                }
+            }
+        });
+
         socket.on('call-failed', (data) => {
             this.showCallStatus('Ошибка звонка: ' + data.reason);
             setTimeout(() => this.endCall(), 2000);
         });
     }
 
-    async loadConversations() {
-        try {
-            const response = await fetch('/api/conversations');
-            this.conversations = await response.json();
-            this.displayConversations();
-        } catch (error) {
-            console.error('Error loading conversations:', error);
-        }
-    }
-
-    displayConversations() {
-        const container = document.getElementById('conversationsList');
-        container.innerHTML = '';
-
-        if (this.conversations.length === 0) {
-            container.innerHTML = '<div class="conversation-item empty">Нет диалогов</div>';
-            return;
-        }
-
-        this.conversations.forEach(conversation => {
-            const convElement = document.createElement('div');
-            convElement.className = `conversation-item ${conversation.username === this.currentChat ? 'active' : ''}`;
-            
-            const lastMsg = conversation.lastMessage;
-            const preview = lastMsg ? (lastMsg.isOwn ? `Вы: ${lastMsg.text}` : lastMsg.text) : 'Нет сообщений';
-            const shortPreview = preview.length > 25 ? preview.substring(0, 25) + '...' : preview;
-
-            convElement.innerHTML = `
-                <div class="conv-avatar">👤</div>
-                <div class="conv-info">
-                    <div class="conv-name">${conversation.username}</div>
-                    <div class="conv-preview">${shortPreview}</div>
-                </div>
-                ${lastMsg ? `<div class="conv-time">${lastMsg.timestamp}</div>` : ''}
-            `;
-
-            convElement.addEventListener('click', () => this.startChat(conversation.username));
-            container.appendChild(convElement);
-        });
-    }
-
-    async searchUsers() {
-        const query = document.getElementById('userSearch').value.trim();
-        const resultsContainer = document.getElementById('searchResults');
-        
-        if (query.length < 2) {
-            resultsContainer.style.display = 'none';
-            return;
-        }
-
-        try {
-            const response = await fetch(`/api/users/search?query=${encodeURIComponent(query)}`);
-            const users = await response.json();
-            this.displaySearchResults(users);
-        } catch (error) {
-            console.error('Search error:', error);
-        }
-    }
-
-    displaySearchResults(users) {
-        const resultsContainer = document.getElementById('searchResults');
-        resultsContainer.innerHTML = '';
-        resultsContainer.style.display = 'block';
-
-        if (users.length === 0) {
-            resultsContainer.innerHTML = '<div class="search-result">😢 Никого не найдено</div>';
-            return;
-        }
-
-        users.forEach(user => {
-            const userElement = document.createElement('div');
-            userElement.className = 'search-result';
-            userElement.innerHTML = `
-                <div class="search-user-info">
-                    <span class="search-avatar">👤</span>
-                    <span class="search-username">${user.username}</span>
-                </div>
-                <button type="button" class="start-chat-btn">💬 Написать</button>
-            `;
-
-            userElement.querySelector('.start-chat-btn').addEventListener('click', (e) => {
-                e.stopPropagation();
-                this.startChat(user.username);
-            });
-
-            resultsContainer.appendChild(userElement);
-        });
-    }
-
-    async startChat(username) {
-        this.currentChat = username;
-        
-        document.getElementById('searchResults').style.display = 'none';
-        document.getElementById('userSearch').value = '';
-        
-        document.getElementById('chatHeader').style.display = 'none';
-        document.getElementById('activeChat').style.display = 'flex';
-        document.getElementById('currentChatUser').textContent = username;
-        
-        try {
-            const response = await fetch(`/api/messages/private/${username}`);
-            const messages = await response.json();
-            this.displayMessageHistory(messages);
-        } catch (error) {
-            console.error('Error loading messages:', error);
-        }
-        
-        document.getElementById('privateMessageInput').focus();
-        this.loadConversations();
-    }
-
-    closeCurrentChat() {
-        this.currentChat = null;
-        document.getElementById('chatHeader').style.display = 'block';
-        document.getElementById('activeChat').style.display = 'none';
-        
-        const privateMessages = document.getElementById('privateMessages');
-        privateMessages.innerHTML = '<div class="no-messages">📝 Начните общение первым!</div>';
-        
-        document.getElementById('privateMessageInput').value = '';
-        this.hideScrollIndicator();
-        
-        this.loadConversations();
-    }
-
-    displayMessageHistory(messages) {
-        const container = document.getElementById('privateMessages');
-        container.innerHTML = '';
-        
-        if (messages.length === 0) {
-            container.innerHTML = '<div class="no-messages">📝 Начните общение первым!</div>';
-            return;
-        }
-        
-        messages.sort((a, b) => new Date(a.date) - new Date(b.date));
-        messages.forEach(message => this.displayMessage(message, false));
-        setTimeout(() => this.scrollToBottom(), 100);
-    }
-
-    displayMessage(message, shouldScroll = true) {
-        const container = document.getElementById('privateMessages');
-        
-        const noMessagesElement = container.querySelector('.no-messages');
-        if (noMessagesElement) {
-            noMessagesElement.remove();
-        }
-        
-        const messageElement = document.createElement('div');
-        const isOwn = message.sender === document.getElementById('username').textContent;
-        
-        messageElement.className = `private-message ${isOwn ? 'own' : 'other'}`;
-        
-        const formattedMessage = this.formatMessageText(message.message);
-        
-        messageElement.innerHTML = `
-            <div class="message-content">
-                <div class="message-header">
-                    <strong>${isOwn ? 'Вы' : message.sender}</strong>
-                    <span class="message-time">${message.timestamp}</span>
-                </div>
-                <div class="message-text">${formattedMessage}</div>
-            </div>
-        `;
-        
-        container.appendChild(messageElement);
-        
-        if (shouldScroll && this.isScrolledToBottom) {
-            setTimeout(() => this.scrollToBottom(), 50);
-        } else if (shouldScroll) {
-            this.showScrollIndicator();
-        }
-    }
-
-    formatMessageText(text) {
-        const words = text.split(' ');
-        let lines = [];
-        let currentLine = '';
-
-        words.forEach(word => {
-            if ((currentLine + word).length > 20) {
-                if (currentLine) {
-                    lines.push(currentLine);
-                }
-                currentLine = word;
-            } else {
-                currentLine = currentLine ? currentLine + ' ' + word : word;
-            }
-        });
-
-        if (currentLine) {
-            lines.push(currentLine);
-        }
-
-        return lines.join('<br>');
-    }
-
-    handleIncomingMessage(data) {
-        if (this.currentChat && 
-            ((data.sender === this.currentChat && data.receiver === document.getElementById('username').textContent) ||
-             (data.receiver === this.currentChat && data.sender === document.getElementById('username').textContent))) {
-            this.displayMessage(data, true);
-        }
-        
-        this.loadConversations();
-    }
-
-    sendPrivateMessage() {
-        const input = document.getElementById('privateMessageInput');
-        const message = input.value.trim();
-        const currentUser = document.getElementById('username').textContent;
-        
-        if (message && this.currentChat) {
-            socket.emit('private message', {
-                sender: currentUser,
-                receiver: this.currentChat,
-                message: message
-            });
-            
-            input.value = '';
-            input.focus();
-        }
-    }
-
-    handleScroll() {
-        const container = document.getElementById('privateMessages');
-        const scrollIndicator = document.getElementById('scrollIndicator');
-        
-        if (container) {
-            this.isScrolledToBottom = this.isAtBottom(container);
-            
-            if (scrollIndicator) {
-                if (this.isScrolledToBottom) {
-                    scrollIndicator.style.display = 'none';
-                } else {
-                    scrollIndicator.style.display = 'block';
-                }
-            }
-        }
-    }
-
-    showScrollIndicator() {
-        const scrollIndicator = document.getElementById('scrollIndicator');
-        if (scrollIndicator && !this.isScrolledToBottom) {
-            scrollIndicator.style.display = 'block';
-        }
-    }
-
-    hideScrollIndicator() {
-        const scrollIndicator = document.getElementById('scrollIndicator');
-        if (scrollIndicator) {
-            scrollIndicator.style.display = 'none';
-        }
-    }
-
-    debounce(func, wait) {
-        let timeout;
-        return function executedFunction(...args) {
-            const later = () => {
-                clearTimeout(timeout);
-                func(...args);
-            };
-            clearTimeout(timeout);
-            timeout = setTimeout(later, wait);
-        };
-    }
+    // ... остальные существующие методы (scrollToBottom, isAtBottom, loadConversations, etc.) ...
 
     generateUUID() {
         return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {

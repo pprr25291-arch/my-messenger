@@ -20,6 +20,28 @@ class WebRTCManager {
         }
     }
 
+    static async getDisplayMedia(options = {}) {
+        try {
+            const defaultOptions = {
+                video: {
+                    cursor: "always",
+                    displaySurface: "monitor"
+                },
+                audio: true
+            };
+
+            const mergedOptions = {
+                video: { ...defaultOptions.video, ...options.video },
+                audio: options.audio !== undefined ? options.audio : defaultOptions.audio
+            };
+
+            return await navigator.mediaDevices.getDisplayMedia(mergedOptions);
+        } catch (error) {
+            console.error('Error accessing display media:', error);
+            throw new Error('Не удалось получить доступ к экрану');
+        }
+    }
+
     static createPeerConnection(iceServers = null) {
         const configuration = {
             iceServers: iceServers || [
@@ -35,8 +57,8 @@ class WebRTCManager {
     static async createOffer(peerConnection) {
         try {
             const offer = await peerConnection.createOffer({
-                offerToReceiveAudio: true,
                 offerToReceiveVideo: true,
+                offerToReceiveAudio: true,
                 voiceActivityDetection: true
             });
             await peerConnection.setLocalDescription(offer);
@@ -89,18 +111,62 @@ class WebRTCManager {
         }
     }
 
-    static async getDisplayMedia() {
+    static async checkScreenSharePermissions() {
         try {
+            // Попытка запросить доступ к экрану (будет показан диалог выбора)
+            const stream = await navigator.mediaDevices.getDisplayMedia({ 
+                video: true,
+                audio: false 
+            });
+            this.stopStream(stream);
+            return true;
+        } catch (error) {
+            console.error('Screen share permission denied:', error);
+            return false;
+        }
+    }
+
+    static getScreenShareConstraints(quality = 'medium') {
+        const qualityPresets = {
+            low: {
+                width: { ideal: 640 },
+                height: { ideal: 480 },
+                frameRate: { ideal: 15 },
+                bitrate: 500000
+            },
+            medium: {
+                width: { ideal: 1280 },
+                height: { ideal: 720 },
+                frameRate: { ideal: 24 },
+                bitrate: 1000000
+            },
+            high: {
+                width: { ideal: 1920 },
+                height: { ideal: 1080 },
+                frameRate: { ideal: 30 },
+                bitrate: 2500000
+            },
+            ultra: {
+                width: { ideal: 3840 },
+                height: { ideal: 2160 },
+                frameRate: { ideal: 30 },
+                bitrate: 5000000
+            }
+        };
+
+        return qualityPresets[quality] || qualityPresets.medium;
+    }
+
+    static async getDisplayMediaWithQuality(quality = 'medium') {
+        try {
+            const constraints = this.getScreenShareConstraints(quality);
             return await navigator.mediaDevices.getDisplayMedia({
-                video: {
-                    cursor: "always",
-                    displaySurface: "application"
-                },
+                video: constraints,
                 audio: true
             });
         } catch (error) {
-            console.error('Error getting display media:', error);
-            throw new Error('Не удалось получить доступ к экрану');
+            console.error('Error accessing display media with quality:', error);
+            throw error;
         }
     }
 
@@ -118,9 +184,40 @@ class WebRTCManager {
         }
         return Promise.resolve();
     }
+
+    static async captureScreenFrame(stream, format = 'image/png', quality = 0.92) {
+        return new Promise((resolve, reject) => {
+            try {
+                const video = document.createElement('video');
+                video.srcObject = stream;
+                video.onloadedmetadata = () => {
+                    video.play();
+                    
+                    setTimeout(() => {
+                        const canvas = document.createElement('canvas');
+                        canvas.width = video.videoWidth;
+                        canvas.height = video.videoHeight;
+                        
+                        const ctx = canvas.getContext('2d');
+                        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                        
+                        const imageData = canvas.toDataURL(format, quality);
+                        resolve(imageData);
+                        
+                        // Очистка
+                        video.srcObject = null;
+                    }, 100);
+                };
+                
+                video.onerror = reject;
+            } catch (error) {
+                reject(error);
+            }
+        });
+    }
 }
 
-// Функции для полноэкранного режима :cite[2]:cite[7]:cite[8]
+// Функции для полноэкранного режима 
 class FullScreenManager {
     static requestFullscreen(element) {
         if (element.requestFullscreen) {
@@ -239,7 +336,9 @@ class WebRTCErrorHandler {
             'NotReadableError': 'Не удалось получить доступ к медиаустройству',
             'OverconstrainedError': 'Ограничения не могут быть удовлетворены',
             'SecurityError': 'Доступ к медиаустройству заблокирован по соображениям безопасности',
-            'TypeError': 'Недопустимые параметры'
+            'TypeError': 'Недопустимые параметры',
+            'AbortError': 'Операция прервана',
+            'NotSupportedError': 'Операция не поддерживается'
         };
 
         const message = errorMap[error.name] || `Ошибка ${context}: ${error.message}`;
@@ -257,6 +356,10 @@ class WebRTCErrorHandler {
 
     static isDeviceNotFound(error) {
         return error.name === 'NotFoundError';
+    }
+
+    static isConstraintError(error) {
+        return error.name === 'OverconstrainedError';
     }
 }
 

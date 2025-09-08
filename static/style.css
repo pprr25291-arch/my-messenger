@@ -1235,4 +1235,333 @@ input:focus,
     .scroll-indicator {
         animation: none;
     }
+}/* Стили для окон трансляции экрана */
+.screen-share-window {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 400px;
+    background: white;
+    border-radius: 15px;
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+    z-index: 1002;
+    padding: 20px;
+    text-align: center;
+    display: none;
+}
+
+.screen-share-header {
+    margin-bottom: 20px;
+}
+
+.screen-share-header h4 {
+    margin: 0 0 10px 0;
+    color: #2c3e50;
+}
+
+.screen-share-status {
+    font-size: 16px;
+    color: #667eea;
+    font-weight: bold;
+}
+
+.screen-share-controls {
+    display: flex;
+    justify-content: center;
+    gap: 15px;
+}
+
+.screen-share-control {
+    padding: 12px 20px;
+    background: linear-gradient(45deg, #dc3545, #c82333);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: bold;
+    transition: all 0.3s ease;
+}
+
+.screen-share-control:hover {
+    background: linear-gradient(45deg, #c82333, #a71e2a);
+    transform: scale(1.05);
+}
+
+.incoming-screen-share-window {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 350px;
+    background: white;
+    border-radius: 15px;
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+    z-index: 1003;
+    padding: 25px;
+    text-align: center;
+    display: none;
+}
+
+.incoming-screen-share-content h4 {
+    margin: 0 0 25px 0;
+    color: #2c3e50;
+    font-size: 18px;
+    font-weight: bold;
+}
+
+.incoming-screen-share-buttons {
+    display: flex;
+    justify-content: center;
+    gap: 15px;
+}
+
+.accept-screen-share-btn, .reject-screen-share-btn {
+    padding: 12px 25px;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: bold;
+    transition: all 0.3s ease;
+    font-size: 14px;
+    min-width: 100px;
+}
+
+.accept-screen-share-btn {
+    background: linear-gradient(45deg, #28a745, #20c997);
+    color: white;
+}
+
+.accept-screen-share-btn:hover {
+    background: linear-gradient(45deg, #218838, #1e9e8a);
+    transform: scale(1.05);
+}
+
+.reject-screen-share-btn {
+    background: linear-gradient(45deg, #dc3545, #c82333);
+    color: white;
+}
+
+.reject-screen-share-btn:hover {
+    background: linear-gradient(45deg, #c82333, #a71e2a);
+    transform: scale(1.05);
+}
+
+.screen-view-window {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 800px;
+    max-width: 90%;
+    height: 600px;
+    max-height: 80%;
+    background: #000;
+    border-radius: 15px;
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
+    z-index: 1004;
+    overflow: hidden;
+    display: none;
+}
+
+.screen-view-header {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    background: rgba(0, 0, 0, 0.7);
+    color: white;
+    padding: 15px 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    z-index: 10;
+}
+
+.screen-view-header h4 {
+    margin: 0;
+    font-size: 16px;
+}
+
+.close-screen-view {
+    background: rgba(255, 255, 255, 0.2);
+    color: white;
+    border: none;
+    border-radius: 50%;
+    width: 30px;
+    height: 30px;
+    cursor: pointer;
+    font-size: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.close-screen-view:hover {
+    background: rgba(255, 255, 255, 0.3);
+}
+
+.screen-view-container {
+    width: 100%;
+    height: 100%;
+    background: #000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+#screenViewVideo {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+}
+
+.screen-view-controls {
+    position: absolute;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 10px;
+    z-index: 10;
+}
+
+.screen-view-control {
+    width: 50px;
+    height: 50px;
+    border-radius: 50%;
+    border: none;
+    background: rgba(255, 255, 255, 0.2);
+    color: white;
+    cursor: pointer;
+    font-size: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.3s ease;
+}
+
+.screen-view-control:hover {
+    background: rgba(255, 255, 255, 0.3);
+    transform: scale(1.1);
+}
+
+/* Затемнение фона для окон трансляции */
+.screen-share-window::before,
+.incoming-screen-share-window::before,
+.screen-view-window::before {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: rgba(0, 0, 0, 0.7);
+    z-index: -1;
+}
+
+/* Адаптивность для окон трансляции */
+@media (max-width: 768px) {
+    .screen-share-window,
+    .incoming-screen-share-window {
+        width: 90%;
+        padding: 15px;
+    }
+    
+    .screen-view-window {
+        width: 95%;
+        height: 400px;
+    }
+    
+    .incoming-screen-share-buttons {
+        flex-direction: column;
+    }
+    
+    .accept-screen-share-btn,
+    .reject-screen-share-btn {
+        width: 100%;
+    }
+}
+
+@media (max-width: 480px) {
+    .screen-view-window {
+        height: 300px;
+        border-radius: 10px;
+    }
+    
+    .screen-view-header {
+        padding: 10px 15px;
+    }
+    
+    .screen-view-header h4 {
+        font-size: 14px;
+    }
+    
+    .screen-view-controls {
+        bottom: 10px;
+    }
+    
+    .screen-view-control {
+        width: 40px;
+        height: 40px;
+        font-size: 16px;
+    }
+}
+
+/* Стили для кнопки трансляции экрана в окне звонка */
+.screen-share-btn {
+    background: #6f42c1;
+}
+
+.screen-share-btn:hover {
+    background: #5a2d9c;
+}
+
+/* Индикатор активной трансляции */
+.screen-share-indicator {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    background: rgba(220, 53, 69, 0.8);
+    color: white;
+    padding: 10px 15px;
+    border-radius: 20px;
+    font-size: 14px;
+    font-weight: bold;
+    z-index: 1005;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    0% { opacity: 1; }
+    50% { opacity: 0.7; }
+    100% { opacity: 1; }
+}
+
+/* Полноэкранный режим для трансляции */
+:fullscreen .screen-view-container {
+    width: 100vw;
+    height: 100vh;
+    border-radius: 0;
+}
+
+:fullscreen .screen-view-header {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    background: rgba(0, 0, 0, 0.8);
+}
+
+:fullscreen .screen-view-controls {
+    position: fixed;
+    bottom: 30px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0, 0, 0, 0.7);
+    padding: 10px;
+    border-radius: 25px;
 }
