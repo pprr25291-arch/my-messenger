@@ -1,19 +1,19 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Чат</title>
+    <title>Anonimo - Чат</title>
     <link rel="stylesheet" href="/style.css">
 </head>
 <body>
     <div class="chat-container">
         <header>
-            <h2>Мессенджер</h2>
+            <h2>Anonimo</h2>
             <div>
                 <span>Добро пожаловать, <span id="username"><%= username %></span>!</span>
                 <div class="header-buttons">
-                    <button id="globalBtn" class="header-btn active" onclick="switchToGlobal()">Общий чат</button>
-                    <button id="privateBtn" class="header-btn" onclick="switchToPrivate()">Приватные сообщения</button>
-                    <button class="header-btn" onclick="logout()">Выйти</button>
+                    <button id="globalBtn" class="header-btn active" type="button">Общий чат</button>
+                    <button id="privateBtn" class="header-btn" type="button">Приватные сообщения</button>
+                    <button class="header-btn" type="button" onclick="logout()">Выйти</button>
                 </div>
             </div>
         </header>
@@ -34,5 +34,12 @@
     <script src="/socket.io/socket.io.js"></script>
     <script src="/chat.js"></script>
     <script src="/private-chat.js"></script>
+    
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            document.getElementById('globalBtn').addEventListener('click', switchToGlobal);
+            document.getElementById('privateBtn').addEventListener('click', switchToPrivate);
+        });
+    </script>
 </body>
 </html>

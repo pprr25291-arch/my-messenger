@@ -11,18 +11,13 @@ document.addEventListener('DOMContentLoaded', function() {
             try {
                 const response = await fetch('/api/login', {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(data)
                 });
 
                 const result = await response.json();
-                if (result.success) {
-                    window.location.href = '/chat';
-                } else {
-                    alert('Ошибка входа: ' + (result.error || 'Неизвестная ошибка'));
-                }
+                if (result.success) window.location.href = '/chat';
+                else alert('Ошибка входа: ' + (result.error || 'Неизвестная ошибка'));
             } catch (error) {
                 alert('Ошибка сети. Попробуйте еще раз.');
             }
@@ -38,18 +33,13 @@ document.addEventListener('DOMContentLoaded', function() {
             try {
                 const response = await fetch('/api/register', {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(data)
                 });
 
                 const result = await response.json();
-                if (result.success) {
-                    window.location.href = '/chat';
-                } else {
-                    alert('Ошибка регистрации: ' + (result.error || 'Неизвестная ошибка'));
-                }
+                if (result.success) window.location.href = '/chat';
+                else alert('Ошибка регистрации: ' + (result.error || 'Неизвестная ошибка'));
             } catch (error) {
                 alert('Ошибка сети. Попробуйте еще раз.');
             }

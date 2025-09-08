@@ -20,7 +20,7 @@ app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 app.use(express.static(path.join(__dirname, 'static')));
 
-// Явно указываем пути для основных файлов
+// Serve static files
 app.get('/style.css', (req, res) => {
     res.sendFile(path.join(__dirname, 'static', 'style.css'));
 });
@@ -41,15 +41,17 @@ app.get('/socket.io/socket.io.js', (req, res) => {
     res.sendFile(path.join(__dirname, 'node_modules', 'socket.io', 'client-dist', 'socket.io.js'));
 });
 
-// Настройка шаблонов
+// Setup view engine
 app.set('views', path.join(__dirname, 'templates'));
 app.set('view engine', 'html');
 app.engine('html', require('ejs').renderFile);
 
-// Хранилище данных
+// Data storage
 let users = [];
 let messages = [];
+const userSockets = new Map();
 
+// Data management functions
 async function loadUsers() {
     try {
         const data = await fs.readFile('users.json', 'utf8');
@@ -86,11 +88,11 @@ async function saveMessages() {
     }
 }
 
-// Загружаем данные при запуске
+// Load initial data
 loadUsers();
 loadMessages();
 
-// Проверка JWT токена
+// Authentication middleware
 function authenticateToken(req, res, next) {
     const token = req.cookies.token;
     if (!token) return res.sendStatus(401);
@@ -122,21 +124,17 @@ app.get('/chat', authenticateToken, (req, res) => {
 // API Routes
 app.post('/api/register', async (req, res) => {
     try {
-        const { username, password, tags } = req.body;
+        const { username, password } = req.body;
         
-        // Проверяем, существует ли пользователь
         if (users.find(u => u.username === username)) {
             return res.status(400).json({ error: 'Username already exists' });
         }
         
         const hashedPassword = await bcrypt.hash(password, 10);
-        const tag = '#' + Math.floor(1000 + Math.random() * 9000);
         
         users.push({ 
             username, 
-            password: hashedPassword, 
-            tag,
-            tags: tags ? tags.split(',').map(t => t.trim()) : []
+            password: hashedPassword
         });
         
         await saveUsers();
@@ -173,25 +171,70 @@ app.post('/api/logout', (req, res) => {
     res.json({ success: true });
 });
 
-// Поиск пользователей
+app.get('/api/messages/global', authenticateToken, (req, res) => {
+    try {
+        const globalMessages = messages.filter(msg => msg.type === 'global');
+        res.json(globalMessages);
+    } catch (error) {
+        console.error('Global messages error:', error);
+        res.status(500).json({ error: 'Failed to load global messages' });
+    }
+});
+
+app.get('/api/conversations', authenticateToken, (req, res) => {
+    try {
+        const currentUser = req.user.username;
+        const conversationPartners = new Set();
+        
+        messages.forEach(msg => {
+            if (msg.type === 'private') {
+                if (msg.sender === currentUser) conversationPartners.add(msg.receiver);
+                else if (msg.receiver === currentUser) conversationPartners.add(msg.sender);
+            }
+        });
+        
+        const conversations = Array.from(conversationPartners).map(partner => {
+            const lastMessage = messages
+                .filter(msg => msg.type === 'private' && 
+                    ((msg.sender === currentUser && msg.receiver === partner) ||
+                     (msg.sender === partner && msg.receiver === currentUser)))
+                .sort((a, b) => new Date(b.date) - new Date(a.date))[0];
+            
+            return {
+                username: partner,
+                lastMessage: lastMessage ? {
+                    text: lastMessage.message,
+                    timestamp: lastMessage.timestamp,
+                    isOwn: lastMessage.sender === currentUser
+                } : null
+            };
+        });
+        
+        conversations.sort((a, b) => {
+            if (!a.lastMessage) return 1;
+            if (!b.lastMessage) return -1;
+            return new Date(b.lastMessage.timestamp) - new Date(a.lastMessage.timestamp);
+        });
+        
+        res.json(conversations);
+    } catch (error) {
+        console.error('Conversations error:', error);
+        res.status(500).json({ error: 'Failed to load conversations' });
+    }
+});
+
 app.get('/api/users/search', authenticateToken, (req, res) => {
     try {
         const { query } = req.query;
-        
-        if (!query || query.length < 2) {
-            return res.json([]);
-        }
+        if (!query || query.length < 2) return res.json([]);
         
         const results = users.filter(user => 
-            user.username.toLowerCase().includes(query.toLowerCase()) ||
-            user.tag.toLowerCase().includes(query.toLowerCase()) ||
-            user.tags.some(tag => tag.toLowerCase().includes(query.toLowerCase()))
+            user.username.toLowerCase().includes(query.toLowerCase())
         );
         
-        // Исключаем текущего пользователя
         const filteredResults = results
             .filter(user => user.username !== req.user.username)
-            .map(({ password, ...user }) => user); // Убираем пароль
+            .map(({ password, ...user }) => user);
         
         res.json(filteredResults);
     } catch (error) {
@@ -200,7 +243,6 @@ app.get('/api/users/search', authenticateToken, (req, res) => {
     }
 });
 
-// История личных сообщений
 app.get('/api/messages/private/:username', authenticateToken, (req, res) => {
     try {
         const otherUser = req.params.username;
@@ -223,7 +265,11 @@ app.get('/api/messages/private/:username', authenticateToken, (req, res) => {
 io.on('connection', (socket) => {
     console.log('User connected');
 
-    // Глобальные сообщения
+    socket.on('user authenticated', (username) => {
+        userSockets.set(username, socket.id);
+        socket.username = username;
+    });
+
     socket.on('chat message', (data) => {
         try {
             const messageData = {
@@ -243,7 +289,6 @@ io.on('connection', (socket) => {
         }
     });
 
-    // Личные сообщения
     socket.on('private message', (data) => {
         try {
             const messageData = {
@@ -258,25 +303,21 @@ io.on('connection', (socket) => {
             messages.push(messageData);
             saveMessages();
             
-            // Отправляем конкретным пользователям
-            io.emit('private message', messageData);
+            const receiverSocketId = userSockets.get(data.receiver);
+            if (receiverSocketId) {
+                io.to(receiverSocketId).emit('private message', messageData);
+            }
+            
+            socket.emit('private message', messageData);
+            io.emit('conversations updated');
         } catch (error) {
             console.error('Private message error:', error);
         }
     });
 
     socket.on('disconnect', () => {
-        console.log('User disconnected');
+        if (socket.username) userSockets.delete(socket.username);
     });
-});
-
-// Обработка ошибок
-process.on('uncaughtException', (error) => {
-    console.error('Uncaught Exception:', error);
-});
-
-process.on('unhandledRejection', (reason, promise) => {
-    console.error('Unhandled Rejection at:', promise, 'reason:', reason);
 });
 
 server.listen(PORT, () => {
