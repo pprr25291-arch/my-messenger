@@ -783,6 +783,19 @@ header {
     background: #5a6268;
 }
 
+.screen-share-btn {
+    background: #6f42c1;
+}
+
+.screen-share-btn:hover {
+    background: #5a2d9c;
+}
+
+.screen-share-btn.active {
+    background: #dc3545;
+    animation: pulse 2s infinite;
+}
+
 .end-call-btn {
     background: #dc3545;
     transform: scale(1.1);
@@ -973,6 +986,12 @@ a:hover {
     }
 }
 
+@keyframes pulse {
+    0% { opacity: 1; }
+    50% { opacity: 0.7; }
+    100% { opacity: 1; }
+}
+
 /* Стили для полноэкранного режима */
 :fullscreen .video-container {
     width: 100vw;
@@ -1000,6 +1019,98 @@ a:hover {
     background: rgba(0, 0, 0, 0.7);
     padding: 15px;
     border-radius: 25px;
+}
+
+/* Индикатор трансляции экрана */
+.screen-share-indicator {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    background: rgba(220, 53, 69, 0.8);
+    color: white;
+    padding: 10px 15px;
+    border-radius: 20px;
+    font-size: 14px;
+    font-weight: bold;
+    z-index: 1005;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    animation: pulse 2s infinite;
+}
+
+/* Окно выбора источника экрана */
+.screen-source-window {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 400px;
+    background: white;
+    border-radius: 15px;
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+    z-index: 1002;
+    padding: 20px;
+    display: none;
+}
+
+.screen-source-header {
+    text-align: center;
+    margin-bottom: 20px;
+}
+
+.screen-source-header h4 {
+    margin: 0 0 10px 0;
+    color: #2c3e50;
+}
+
+.screen-source-options {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.screen-source-option {
+    padding: 15px;
+    border: 2px solid #e9ecef;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.screen-source-option:hover {
+    border-color: #667eea;
+    background: #f8f9fa;
+}
+
+.screen-source-option.active {
+    border-color: #28a745;
+    background: #d4edda;
+}
+
+.screen-source-icon {
+    font-size: 24px;
+}
+
+.screen-source-info h5 {
+    margin: 0 0 5px 0;
+    color: #2c3e50;
+}
+
+.screen-source-info p {
+    margin: 0;
+    color: #6c757d;
+    font-size: 12px;
+}
+
+.screen-source-buttons {
+    display: flex;
+    justify-content: center;
+    gap: 15px;
+    margin-top: 20px;
 }
 
 /* Responsive design */
@@ -1076,6 +1187,10 @@ a:hover {
     .incoming-call-window {
         width: 90%;
     }
+    
+    .screen-source-window {
+        width: 90%;
+    }
 }
 
 @media (max-width: 480px) {
@@ -1128,6 +1243,13 @@ a:hover {
     
     .call-timer {
         font-size: 16px;
+    }
+    
+    .screen-share-indicator {
+        top: 10px;
+        right: 10px;
+        font-size: 12px;
+        padding: 8px 12px;
     }
 }
 
@@ -1235,7 +1357,52 @@ input:focus,
     .scroll-indicator {
         animation: none;
     }
-}/* Стили для окон трансляции экрана */
+    
+    .screen-share-indicator {
+        animation: none;
+    }
+}
+
+/* Стили для статуса соединения */
+#connectionStatus {
+    position: fixed;
+    top: 10px;
+    right: 10px;
+    padding: 10px 15px;
+    border-radius: 5px;
+    color: white;
+    font-size: 14px;
+    z-index: 10000;
+    max-width: 300px;
+    text-align: center;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+    animation: slideIn 0.3s ease-out;
+}
+
+@keyframes slideIn {
+    from {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+/* Адаптивность для статуса соединения */
+@media (max-width: 768px) {
+    #connectionStatus {
+        top: 5px;
+        right: 5px;
+        left: 5px;
+        max-width: none;
+        font-size: 12px;
+        padding: 8px 12px;
+    }
+}
+
+/* Стили для окон трансляции экрана */
 .screen-share-window {
     position: fixed;
     top: 50%;
@@ -1508,21 +1675,35 @@ input:focus,
     }
 }
 
-/* Стили для кнопки трансляции экрана в окне звонка */
-.screen-share-btn {
-    background: #6f42c1;
+/* Полноэкранный режим для трансляции */
+:fullscreen .screen-view-container {
+    width: 100vw;
+    height: 100vh;
+    border-radius: 0;
 }
 
-.screen-share-btn:hover {
-    background: #5a2d9c;
+:fullscreen .screen-view-header {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    background: rgba(0, 0, 0, 0.8);
 }
 
-/* Индикатор активной трансляции */
+:fullscreen .screen-view-controls {
+    position: fixed;
+    bottom: 30px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0, 0, 0, 0.7);
+    padding: 10px;
+    border-radius: 25px;
+}/* Индикатор трансляции экрана */
 .screen-share-indicator {
     position: fixed;
     top: 20px;
     right: 20px;
-    background: rgba(220, 53, 69, 0.8);
+    background: rgba(220, 53, 69, 0.9);
     color: white;
     padding: 10px 15px;
     border-radius: 20px;
@@ -1535,10 +1716,447 @@ input:focus,
     animation: pulse 2s infinite;
 }
 
+/* Кнопка активной трансляции экрана */
+.screen-share-btn.active {
+    background: #dc3545 !important;
+    animation: pulse 2s infinite;
+}
+
+/* Уведомления */
+.notification {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    padding: 12px 20px;
+    border-radius: 8px;
+    color: white;
+    font-weight: bold;
+    z-index: 10010;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.notification.success {
+    background: #28a745;
+}
+
+.notification.error {
+    background: #dc3545;
+}
+
+.notification.info {
+    background: #17a2b8;
+}
+
+/* Предупреждение о поддержке браузера */
+.browser-warning {
+    margin: 10px 0;
+    padding: 15px;
+    background: #fff3cd;
+    border: 1px solid #ffeaa7;
+    border-radius: 5px;
+    color: #856404;
+}
+
+/* Анимация пульсации */
 @keyframes pulse {
     0% { opacity: 1; }
     50% { opacity: 0.7; }
     100% { opacity: 1; }
+}
+
+/* Адаптивность для индикатора */
+@media (max-width: 768px) {
+    .screen-share-indicator {
+        top: 10px;
+        right: 10px;
+        left: 10px;
+        text-align: center;
+        font-size: 12px;
+    }
+    
+    .notification {
+        top: 10px;
+        right: 10px;
+        left: 10px;
+        text-align: center;
+    }
+}/* Добавьте эти стили в конец файла style.css */
+
+/* Индикатор трансляции экрана */
+.screen-share-indicator {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    background: rgba(220, 53, 69, 0.9);
+    color: white;
+    padding: 10px 15px;
+    border-radius: 20px;
+    font-size: 14px;
+    font-weight: bold;
+    z-index: 1005;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    animation: pulse 2s infinite;
+}
+
+/* Кнопка активной трансляции экрана */
+.screen-share-btn.active {
+    background: #dc3545 !important;
+    animation: pulse 2s infinite;
+}
+
+/* Уведомления */
+.notification {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    padding: 12px 20px;
+    border-radius: 8px;
+    color: white;
+    font-weight: bold;
+    z-index: 10010;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.notification.success {
+    background: #28a745;
+}
+
+.notification.error {
+    background: #dc3545;
+}
+
+.notification.info {
+    background: #17a2b8;
+}
+
+/* Анимация пульсации */
+@keyframes pulse {
+    0% { opacity: 1; }
+    50% { opacity: 0.7; }
+    100% { opacity: 1; }
+}
+
+/* Адаптивность для индикатора */
+@media (max-width: 768px) {
+    .screen-share-indicator {
+        top: 10px;
+        right: 10px;
+        left: 10px;
+        text-align: center;
+        font-size: 12px;
+    }
+    
+    .notification {
+        top: 10px;
+        right: 10px;
+        left: 10px;
+        text-align: center;
+    }
+    
+    .call-controls {
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+    
+    .call-control {
+        width: 45px;
+        height: 45px;
+        font-size: 16px;
+    }
+}/* Добавьте эти стили в конец файла style.css */
+
+/* Индикатор трансляции экрана */
+.screen-share-indicator {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    background: rgba(220, 53, 69, 0.9);
+    color: white;
+    padding: 10px 15px;
+    border-radius: 20px;
+    font-size: 14px;
+    font-weight: bold;
+    z-index: 1005;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    animation: pulse 2s infinite;
+}
+
+/* Кнопка активной трансляции экрана */
+.screen-share-btn.active {
+    background: #dc3545 !important;
+    animation: pulse 2s infinite;
+}
+
+/* Уведомления */
+.notification {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    padding: 12px 20px;
+    border-radius: 8px;
+    color: white;
+    font-weight: bold;
+    z-index: 10010;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.notification.success {
+    background: #28a745;
+}
+
+.notification.error {
+    background: #dc3545;
+}
+
+.notification.info {
+    background: #17a2b8;
+}
+
+/* Предупреждение о поддержке браузера */
+.browser-warning {
+    margin: 10px 0;
+    padding: 15px;
+    background: #fff3cd;
+    border: 1px solid #ffeaa7;
+    border-radius: 5px;
+    color: #856404;
+}
+
+/* Анимация пульсации */
+@keyframes pulse {
+    0% { opacity: 1; }
+    50% { opacity: 0.7; }
+    100% { opacity: 1; }
+}
+
+/* Адаптивность для индикатора */
+@media (max-width: 768px) {
+    .screen-share-indicator {
+        top: 10px;
+        right: 10px;
+        left: 10px;
+        text-align: center;
+        font-size: 12px;
+    }
+    
+    .notification {
+        top: 10px;
+        right: 10px;
+        left: 10px;
+        text-align: center;
+    }
+    
+    .call-controls {
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+    
+    .call-control {
+        width: 45px;
+        height: 45px;
+        font-size: 16px;
+    }
+}
+
+/* Стили для кнопки трансляции экрана */
+.screen-share-btn {
+    background: #6f42c1;
+    color: white;
+}
+
+.screen-share-btn:hover {
+    background: #5a2d9c;
+}
+
+.screen-share-btn:disabled {
+    background: #6c757d;
+    opacity: 0.5;
+    cursor: not-allowed;
+}/* Стили для аудиозвонков */
+.audio-call-placeholder {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+}
+
+.audio-icon {
+    font-size: 80px;
+    margin-bottom: 20px;
+    animation: pulse 2s infinite;
+}
+
+.audio-user-name {
+    font-size: 24px;
+    font-weight: bold;
+    margin-bottom: 10px;
+}
+
+.audio-status {
+    font-size: 16px;
+    opacity: 0.8;
+}
+
+/* Адаптивность для аудиозвонков */
+@media (max-width: 768px) {
+    .audio-icon {
+        font-size: 60px;
+    }
+    
+    .audio-user-name {
+        font-size: 20px;
+    }
+}/* Стили для окон трансляции экрана */
+.screen-view-window {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 800px;
+    max-width: 90%;
+    height: 600px;
+    max-height: 80%;
+    background: #000;
+    border-radius: 15px;
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
+    z-index: 1004;
+    overflow: hidden;
+    display: none;
+}
+
+.screen-view-header {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    background: rgba(0, 0, 0, 0.7);
+    color: white;
+    padding: 15px 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    z-index: 10;
+}
+
+.screen-view-header h4 {
+    margin: 0;
+    font-size: 16px;
+}
+
+.close-screen-view {
+    background: rgba(255, 255, 255, 0.2);
+    color: white;
+    border: none;
+    border-radius: 50%;
+    width: 30px;
+    height: 30px;
+    cursor: pointer;
+    font-size: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.close-screen-view:hover {
+    background: rgba(255, 255, 255, 0.3);
+}
+
+.screen-view-container {
+    width: 100%;
+    height: 100%;
+    background: #000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+#screenViewVideo {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+}
+
+.screen-view-controls {
+    position: absolute;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 10px;
+    z-index: 10;
+}
+
+.screen-view-control {
+    width: 50px;
+    height: 50px;
+    border-radius: 50%;
+    border: none;
+    background: rgba(255, 255, 255, 0.2);
+    color: white;
+    cursor: pointer;
+    font-size: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.3s ease;
+}
+
+.screen-view-control:hover {
+    background: rgba(255, 255, 255, 0.3);
+    transform: scale(1.1);
+}
+
+/* Затемнение фона для окон трансляции */
+.screen-view-window::before {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: rgba(0, 0, 0, 0.7);
+    z-index: -1;
+}
+
+/* Адаптивность для окон трансляции */
+@media (max-width: 768px) {
+    .screen-view-window {
+        width: 95%;
+        height: 400px;
+    }
+    
+    .screen-view-header {
+        padding: 10px 15px;
+    }
+    
+    .screen-view-header h4 {
+        font-size: 14px;
+    }
+    
+    .screen-view-controls {
+        bottom: 10px;
+    }
+    
+    .screen-view-control {
+        width: 40px;
+        height: 40px;
+        font-size: 16px;
+    }
+}
+
+@media (max-width: 480px) {
+    .screen-view-window {
+        height: 300px;
+        border-radius: 10px;
+    }
 }
 
 /* Полноэкранный режим для трансляции */
@@ -1564,41 +2182,207 @@ input:focus,
     background: rgba(0, 0, 0, 0.7);
     padding: 10px;
     border-radius: 25px;
-}/* Стили для статуса соединения */
-#connectionStatus {
-    position: fixed;
-    top: 10px;
-    right: 10px;
-    padding: 10px 15px;
-    border-radius: 5px;
+}
+
+/* Стили для аудиозвонков */
+.audio-call-placeholder {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 200px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     color: white;
+    border-radius: 10px;
+    margin: 20px 0;
+}
+
+.audio-icon {
+    font-size: 60px;
+    margin-bottom: 15px;
+    animation: pulse 2s infinite;
+}
+
+.audio-user-name {
+    font-size: 20px;
+    font-weight: bold;
+    margin-bottom: 10px;
+}
+
+.audio-status {
     font-size: 14px;
-    z-index: 10000;
+    opacity: 0.8;
+}/* Стили для файловых сообщений */
+.file-message {
     max-width: 300px;
+    margin: 10px 0;
+    padding: 12px;
+    border-radius: 12px;
+    background: #f8f9fa;
+    border: 1px solid #e9ecef;
+}
+
+.file-preview {
+    max-width: 100%;
+    max-height: 200px;
+    border-radius: 8px;
+    margin-bottom: 8px;
+    cursor: pointer;
+    transition: transform 0.2s ease;
+}
+
+.file-preview:hover {
+    transform: scale(1.02);
+}
+
+.file-info {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.file-icon {
+    font-size: 24px;
+    flex-shrink: 0;
+}
+
+.file-details {
+    flex: 1;
+    min-width: 0;
+}
+
+.file-name {
+    font-weight: bold;
+    margin-bottom: 4px;
+    word-break: break-word;
+    font-size: 14px;
+}
+
+.file-size {
+    font-size: 12px;
+    color: #6c757d;
+}
+
+.file-download {
+    padding: 6px 12px;
+    background: linear-gradient(45deg, #667eea, #764ba2);
+    color: white;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 12px;
+    flex-shrink: 0;
+}
+
+.file-download:hover {
+    background: linear-gradient(45deg, #5a67d8, #6b46c1);
+}
+
+/* Прогресс бар загрузки */
+.progress-bar {
+    width: 100%;
+    height: 8px;
+    background: #e0e0e0;
+    border-radius: 4px;
+    overflow: hidden;
+    margin-bottom: 5px;
+}
+
+.progress {
+    height: 100%;
+    background: linear-gradient(45deg, #667eea, #764ba2);
+    border-radius: 4px;
+    transition: width 0.3s ease;
+    width: 0%;
+}
+
+.progress-text {
+    font-size: 12px;
+    color: #666;
     text-align: center;
-    box-shadow: 0 2px 10px rgba(0,0,0,0.2);
-    animation: slideIn 0.3s ease-out;
 }
 
-@keyframes slideIn {
-    from {
-        transform: translateX(100%);
-        opacity: 0;
-    }
-    to {
-        transform: translateX(0);
-        opacity: 1;
-    }
+/* Модальное окно просмотра изображений */
+.image-view-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.95);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10000;
+    animation: fadeIn 0.3s ease;
 }
 
-/* Адаптивность для статуса соединения */
+.image-view-content {
+    max-width: 90vw;
+    max-height: 90vh;
+    position: relative;
+}
+
+.image-view-content img {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+    border-radius: 8px;
+}
+
+.close-image-view {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    background: rgba(255, 255, 255, 0.2);
+    color: white;
+    border: none;
+    border-radius: 50%;
+    width: 40px;
+    height: 40px;
+    font-size: 20px;
+    cursor: pointer;
+    z-index: 10001;
+    transition: background 0.3s ease;
+}
+
+.close-image-view:hover {
+    background: rgba(255, 255, 255, 0.3);
+}
+
+/* Кнопка прикрепления файла */
+.attach-file {
+    background: #17a2b8 !important;
+}
+
+.attach-file:hover {
+    background: #138496 !important;
+}
+
+/* Адаптивность для файловых сообщений */
 @media (max-width: 768px) {
-    #connectionStatus {
-        top: 5px;
-        right: 5px;
-        left: 5px;
-        max-width: none;
-        font-size: 12px;
-        padding: 8px 12px;
+    .file-message {
+        max-width: 250px;
+    }
+    
+    .file-info {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+    
+    .file-download {
+        align-self: flex-end;
+    }
+}
+
+@media (max-width: 480px) {
+    .file-message {
+        max-width: 200px;
+    }
+    
+    .file-preview {
+        max-height: 150px;
     }
 }

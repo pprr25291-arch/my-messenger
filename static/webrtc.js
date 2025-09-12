@@ -42,6 +42,85 @@ class WebRTCManager {
         }
     }
 
+    static async getDisplayMediaWithAudio() {
+        try {
+            return await navigator.mediaDevices.getDisplayMedia({
+                video: {
+                    cursor: "always",
+                    displaySurface: "monitor"
+                },
+                audio: {
+                    echoCancellation: true,
+                    noiseSuppression: true,
+                    sampleRate: 44100
+                }
+            });
+        } catch (error) {
+            console.error('Error accessing display media with audio:', error);
+            throw error;
+        }
+    }
+
+    static async switchToScreenShare(peerConnection, currentStream) {
+        try {
+            // Получаем поток с экрана
+            const screenStream = await this.getDisplayMediaWithAudio();
+            
+            // Находим видеотрек в текущем потоке
+            const videoSender = peerConnection.getSenders().find(sender => 
+                sender.track && sender.track.kind === 'video'
+            );
+            
+            if (videoSender) {
+                // Заменяем видеотрек на трек с экрана
+                const videoTrack = screenStream.getVideoTracks()[0];
+                await videoSender.replaceTrack(videoTrack);
+                
+                // Останавливаем старый видеотрек
+                if (currentStream) {
+                    currentStream.getVideoTracks().forEach(track => track.stop());
+                }
+                
+                return {
+                    stream: screenStream,
+                    videoTrack: videoTrack
+                };
+            }
+            
+            throw new Error('Не найден видеосендер для замены');
+        } catch (error) {
+            console.error('Error switching to screen share:', error);
+            throw error;
+        }
+    }
+
+    static async switchToCamera(peerConnection, screenStream, cameraStream) {
+        try {
+            // Находим видеотрек в текущем потоке
+            const videoSender = peerConnection.getSenders().find(sender => 
+                sender.track && sender.track.kind === 'video'
+            );
+            
+            if (videoSender && cameraStream) {
+                // Заменяем видеотрек на трек с камеры
+                const videoTrack = cameraStream.getVideoTracks()[0];
+                await videoSender.replaceTrack(videoTrack);
+                
+                // Останавливаем поток с экрана
+                if (screenStream) {
+                    screenStream.getTracks().forEach(track => track.stop());
+                }
+                
+                return cameraStream;
+            }
+            
+            throw new Error('Не удалось переключиться на камеру');
+        } catch (error) {
+            console.error('Error switching to camera:', error);
+            throw error;
+        }
+    }
+
     static createPeerConnection(iceServers = null) {
         const configuration = {
             iceServers: iceServers || [
@@ -363,9 +442,39 @@ class WebRTCErrorHandler {
     }
 }
 
+// Функция для проверки поддержки трансляции экрана
+function checkScreenShareSupport() {
+    return navigator.mediaDevices && 
+           navigator.mediaDevices.getDisplayMedia &&
+           typeof navigator.mediaDevices.getDisplayMedia === 'function';
+}
+
+// Показ предупреждения, если трансляция экрана не поддерживается
+function showScreenShareWarning() {
+    if (!checkScreenShareSupport()) {
+        const warning = document.createElement('div');
+        warning.className = 'browser-warning';
+        warning.innerHTML = `
+            <div style="padding: 15px; background: #fff3cd; border: 1px solid #ffeaa7; 
+                        border-radius: 5px; margin: 10px 0; color: #856404;">
+                <strong>Внимание:</strong> Трансляция экрана может не поддерживаться вашим браузером. 
+                Для лучшей совместимости используйте последние версии Chrome, Firefox или Edge.
+            </div>
+        `;
+        
+        // Добавьте предупреждение в нужное место вашего UI
+        const callControls = document.querySelector('.call-controls');
+        if (callControls) {
+            callControls.parentNode.insertBefore(warning, callControls);
+        }
+    }
+}
+
 // Экспорт классов для глобального использования
 window.WebRTCManager = WebRTCManager;
 window.FullScreenManager = FullScreenManager;
 window.TimeUtils = TimeUtils;
 window.WebRTCErrorHandler = WebRTCErrorHandler;
 window.generateUUID = generateUUID;
+window.checkScreenShareSupport = checkScreenShareSupport;
+window.showScreenShareWarning = showScreenShareWarning;

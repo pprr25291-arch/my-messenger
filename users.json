@@ -14,5 +14,57 @@
   {
     "username": "333",
     "password": "$2a$10$4g6sknQObMs449Pu0/2mg.gLzBcYXuTjYU0gVmIoW8PbKdHrtbjy2"
+  },
+  {
+    "username": "2222",
+    "password": "111"
+  },
+  {
+    "username": "2221",
+    "password": "ччч"
+  },
+  {
+    "username": "22213",
+    "password": "$2a$10$qZblSNR3S8GwWoA.LmXNMueultl68YgBOlGghKODdQ5uCg9DqyPzG"
+  },
+  {
+    "username": "сс",
+    "password": "$2a$10$h4FTm00JgtwgnX8ch2LmC.2VOtuVZSp2kpkhOGLWi9k86N3g0dc8y"
+  },
+  {
+    "id": "6dc88719-73ec-465f-b965-a6034e2f7121",
+    "username": "123",
+    "password": "$2a$10$fgYBwy9U4ckbG4P0Dod7Kedoxi/1JswSnLg9vSWUy.nHdmWEvh4oa",
+    "createdAt": "2025-09-09T05:40:55.823Z"
+  },
+  {
+    "id": "903d4c14-5a28-4a2a-95a8-cdf9edf94f26",
+    "username": "ммм",
+    "password": "$2a$10$iyke4NJybxrEiham/wzFROUHQJRmAZ170VSkbJ6HOWumkLIEszXQW",
+    "createdAt": "2025-09-09T05:41:37.947Z"
+  },
+  {
+    "username": "ccc",
+    "password": "$2a$10$KZlvjyGJXPg9SqDwJs7QU.Gp7Y0oCbQSSvdcLywXSsdeY3UE73tKW"
+  },
+  {
+    "username": "444",
+    "password": "$2a$10$Q/MaN0ZygPYJc7jXYXPMTetfZyBEMM9zU4GTumU2NEpTIJfs907hO"
+  },
+  {
+    "username": "чч",
+    "password": "$2a$10$NaUCNmvIuyx4hFj1suzffumPU636F5aWeQHiQUOYUMorirmaSOAQm"
+  },
+  {
+    "username": "xxx",
+    "password": "$2a$10$Skbf.aLRIi0nFfvYcnnSNO3j0ct0we7pVEYO3/JF.0Gyu/lVHmiyu"
+  },
+  {
+    "username": "ass",
+    "password": "$2a$10$2G76oW1WIT2f0jT0G14ew.zKI195m2aA193RSnBH17UiIPvSKT.uK"
+  },
+  {
+    "username": "222111",
+    "password": "$2a$10$a0SoIwO9RF8KpJeu9ie/a./najn4p3v2gI.6Ec0NHn.Q7jsyBDg.q"
   }
 ]

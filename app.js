@@ -7,6 +7,8 @@ const cookieParser = require('cookie-parser');
 const fs = require('fs').promises;
 const path = require('path');
 const { v4: uuidv4 } = require('uuid');
+const multer = require('multer');
+const sharp = require('sharp');
 
 const app = express();
 const server = http.createServer(app);
@@ -18,23 +20,69 @@ const io = socketIo(server, {
         methods: ["GET", "POST"],
         credentials: true
     },
-    transports: ['websocket', 'polling'] // Явно указываем транспорты
+    transports: ['websocket', 'polling']
 });
 
 const JWT_SECRET = process.env.JWT_SECRET || 'fallback-secret-key-for-development';
 const PORT = process.env.PORT || 3000;
 
 // Middleware
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 app.use(cookieParser());
 app.use(express.static(path.join(__dirname, 'static')));
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // CORS middleware
 app.use((req, res, next) => {
     res.header('Access-Control-Allow-Origin', '*');
     res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE');
     res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    next();
+});
+
+// Настройка multer для загрузки файлов
+const storage = multer.diskStorage({
+    destination: (req, file, cb) => {
+        const uploadDir = path.join(__dirname, 'uploads');
+        if (!fs.existsSync(uploadDir)) {
+            fs.mkdirSync(uploadDir, { recursive: true });
+        }
+        cb(null, uploadDir);
+    },
+    filename: (req, file, cb) => {
+        const uniqueName = `${Date.now()}-${Math.round(Math.random() * 1E9)}${path.extname(file.originalname)}`;
+        cb(null, uniqueName);
+    }
+});
+
+const upload = multer({
+    storage: storage,
+    limits: {
+        fileSize: 10 * 1024 * 1024, // 10MB limit
+    },
+    fileFilter: (req, file, cb) => {
+        const allowedTypes = /jpeg|jpg|png|gif|bmp|webp/;
+        const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
+        const mimetype = allowedTypes.test(file.mimetype);
+
+        if (mimetype && extname) {
+            return cb(null, true);
+        } else {
+            cb(new Error('Только изображения разрешены'));
+        }
+    }
+});
+
+// Блокировка запросов от Kaspersky
+app.use((req, res, next) => {
+    const referer = req.headers.referer || '';
+    const userAgent = req.headers['user-agent'] || '';
+    
+    if (referer.includes('kaspersky') || userAgent.includes('Kaspersky')) {
+        console.log('Blocked request from Kaspersky:', { referer, userAgent });
+        return res.status(403).json({ error: 'Requests from security software are blocked' });
+    }
     next();
 });
 
@@ -59,8 +107,17 @@ app.get('/webrtc.js', (req, res) => {
     res.sendFile(path.join(__dirname, 'static', 'webrtc.js'));
 });
 
+app.get('/file-manager.js', (req, res) => {
+    res.sendFile(path.join(__dirname, 'static', 'file-manager.js'));
+});
+
 app.get('/socket.io/socket.io.js', (req, res) => {
     res.sendFile(path.join(__dirname, 'node_modules', 'socket.io', 'client-dist', 'socket.io.js'));
+});
+
+// Favicon handler
+app.get('/favicon.ico', (req, res) => {
+    res.status(204).end(); // No Content
 });
 
 // Setup view engine
@@ -143,7 +200,11 @@ app.get('/login', (req, res) => {
 });
 
 app.get('/chat', authenticateToken, (req, res) => {
-    res.render('chat', { username: req.user.username });
+    const token = jwt.sign({ username: req.user.username }, JWT_SECRET);
+    res.render('chat', { 
+        username: req.user.username,
+        token: token
+    });
 });
 
 // API Routes
@@ -230,7 +291,8 @@ app.get('/api/conversations', authenticateToken, (req, res) => {
                 lastMessage: lastMessage ? {
                     text: lastMessage.message,
                     timestamp: lastMessage.timestamp,
-                    isOwn: lastMessage.sender === currentUser
+                    isOwn: lastMessage.sender === currentUser,
+                    type: lastMessage.type || 'text'
                 } : null
             };
         });
@@ -253,8 +315,6 @@ app.get('/api/users/search', authenticateToken, (req, res) => {
         const { query } = req.query;
         const currentUser = req.user.username;
         
-        console.log('Search query:', query, 'from user:', currentUser);
-        
         if (!query || query.trim().length < 2) {
             return res.json([]);
         }
@@ -268,8 +328,6 @@ app.get('/api/users/search', authenticateToken, (req, res) => {
                 user.username !== currentUser
             )
             .map(({ password, ...user }) => user);
-        
-        console.log('Search results:', results.map(u => u.username));
         
         res.json(results);
     } catch (error) {
@@ -296,6 +354,46 @@ app.get('/api/messages/private/:username', authenticateToken, (req, res) => {
     }
 });
 
+// File upload endpoint
+app.post('/api/upload', authenticateToken, upload.single('file'), async (req, res) => {
+    try {
+        if (!req.file) {
+            return res.status(400).json({ error: 'Файл не загружен' });
+        }
+
+        // Создаем миниатюру для изображений
+        let thumbnailPath = null;
+        if (req.file.mimetype.startsWith('image/')) {
+            const thumbName = `thumb-${req.file.filename}`;
+            thumbnailPath = path.join(__dirname, 'uploads', thumbName);
+            
+            await sharp(req.file.path)
+                .resize(200, 200, {
+                    fit: 'inside',
+                    withoutEnlargement: true
+                })
+                .jpeg({ quality: 80 })
+                .toFile(thumbnailPath);
+        }
+
+        res.json({
+            success: true,
+            file: {
+                originalName: req.file.originalname,
+                filename: req.file.filename,
+                path: `/uploads/${req.file.filename}`,
+                thumbnail: thumbnailPath ? `/uploads/thumb-${req.file.filename}` : null,
+                size: req.file.size,
+                mimetype: req.file.mimetype,
+                uploadDate: new Date().toISOString()
+            }
+        });
+    } catch (error) {
+        console.error('Upload error:', error);
+        res.status(500).json({ error: 'Ошибка загрузки файла' });
+    }
+});
+
 // Health check endpoint
 app.get('/health', (req, res) => {
     res.json({ status: 'OK', timestamp: new Date().toISOString() });
@@ -305,7 +403,6 @@ app.get('/health', (req, res) => {
 io.on('connection', (socket) => {
     console.log('User connected:', socket.id);
 
-    // Обработка ошибок подключения
     socket.on('error', (error) => {
         console.error('Socket error:', error);
     });
@@ -351,7 +448,9 @@ io.on('connection', (socket) => {
                 message: data.message,
                 timestamp: new Date().toLocaleTimeString(),
                 type: 'private',
-                date: new Date().toISOString()
+                date: new Date().toISOString(),
+                messageType: data.messageType || 'text',
+                fileData: data.fileData || null
             };
             
             messages.push(messageData);
@@ -367,6 +466,91 @@ io.on('connection', (socket) => {
         } catch (error) {
             console.error('Private message error:', error);
             socket.emit('error', { message: 'Failed to send private message' });
+        }
+    });
+
+    // WebRTC signaling events
+    socket.on('call-offer', (data) => {
+        try {
+            const receiverSocketId = userSockets.get(data.to);
+            if (receiverSocketId) {
+                io.to(receiverSocketId).emit('incoming-call', {
+                    from: socket.username,
+                    offer: data.offer,
+                    isVideoCall: data.isVideoCall,
+                    callId: data.callId
+                });
+            }
+        } catch (error) {
+            console.error('Error handling call offer:', error);
+        }
+    });
+
+    socket.on('call-answer', (data) => {
+        try {
+            const receiverSocketId = userSockets.get(data.to);
+            if (receiverSocketId) {
+                io.to(receiverSocketId).emit('call-answered', {
+                    answer: data.answer,
+                    callId: data.callId
+                });
+            }
+        } catch (error) {
+            console.error('Error handling call answer:', error);
+        }
+    });
+
+    socket.on('ice-candidate', (data) => {
+        try {
+            const receiverSocketId = userSockets.get(data.to);
+            if (receiverSocketId) {
+                io.to(receiverSocketId).emit('ice-candidate', {
+                    candidate: data.candidate,
+                    callId: data.callId
+                });
+            }
+        } catch (error) {
+            console.error('Error handling ICE candidate:', error);
+        }
+    });
+
+    socket.on('end-call', (data) => {
+        try {
+            const receiverSocketId = userSockets.get(data.to);
+            if (receiverSocketId) {
+                io.to(receiverSocketId).emit('call-ended', {
+                    callId: data.callId
+                });
+            }
+        } catch (error) {
+            console.error('Error handling end call:', error);
+        }
+    });
+
+    // Screen sharing events
+    socket.on('screen-share-start', (data) => {
+        try {
+            const receiverSocketId = userSockets.get(data.to);
+            if (receiverSocketId) {
+                io.to(receiverSocketId).emit('screen-share-started', {
+                    callId: data.callId
+                });
+            }
+        } catch (error) {
+            console.error('Error handling screen share start:', error);
+        }
+    });
+
+    socket.on('screen-share-end', (data) => {
+        try {
+            const receiverSocketId = userSockets.get(data.to);
+            if (receiverSocketId) {
+                io.to(receiverSocketId).emit('screen-share-ended', {
+                    callId: data.callId
+                });
+            }
+        } catch (error) {
+            console.error('Error handling screen share end:', error);
         }
     });
 
