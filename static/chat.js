@@ -4,7 +4,6 @@ const MAX_RECONNECT_ATTEMPTS = 5;
 
 function initSocket() {
     try {
-        // Явно указываем транспорты и настройки
         socket = io({
             transports: ['websocket', 'polling'],
             upgrade: true,
@@ -17,10 +16,10 @@ function initSocket() {
 
         window.socket = socket;
 
-        // Обработчики событий socket.io
         socket.on('connect', () => {
             console.log('Connected to server');
             reconnectAttempts = 0;
+            showConnectionStatus('Подключено', 'success');
             
             const username = document.getElementById('username')?.textContent;
             if (username) {
@@ -49,14 +48,6 @@ function initSocket() {
             showConnectionStatus('Подключено', 'success');
         });
 
-        socket.on('reconnect_attempt', (attemptNumber) => {
-            console.log('Reconnection attempt:', attemptNumber);
-        });
-
-        socket.on('reconnect_error', (error) => {
-            console.error('Reconnection error:', error);
-        });
-
         socket.on('reconnect_failed', () => {
             console.error('Reconnection failed');
             showConnectionStatus('Не удалось восстановить соединение', 'error');
@@ -67,7 +58,6 @@ function initSocket() {
             showConnectionStatus('Ошибка соединения', 'error');
         });
 
-        // Обработка сообщений
         socket.on('chat message', (data) => {
             if (data.type === 'global') {
                 displayMessage(data, true);
@@ -81,7 +71,6 @@ function initSocket() {
 }
 
 function showConnectionStatus(message, type = 'info') {
-    // Создаем или обновляем элемент статуса
     let statusElement = document.getElementById('connectionStatus');
     if (!statusElement) {
         statusElement = document.createElement('div');
@@ -111,7 +100,6 @@ function showConnectionStatus(message, type = 'info') {
     statusElement.textContent = message;
     statusElement.style.background = colors[type] || colors.info;
     
-    // Автоматически скрываем через 5 секунд, если не ошибка
     if (type !== 'error') {
         setTimeout(() => {
             statusElement.style.display = 'none';
@@ -158,7 +146,9 @@ function logout() {
 function scrollToBottom(containerId) {
     const container = document.getElementById(containerId);
     if (container) {
-        container.scrollTop = container.scrollHeight;
+        setTimeout(() => {
+            container.scrollTop = container.scrollHeight;
+        }, 100);
     }
 }
 
@@ -245,16 +235,13 @@ document.addEventListener('DOMContentLoaded', function() {
     const messageForm = document.getElementById('messageForm');
     const messageInput = document.getElementById('messageInput');
 
-    // Инициализируем socket.io
     initSocket();
 
-    // Загружаем историю сообщений
     setTimeout(() => {
         loadMessageHistory();
         scrollToBottom('messages');
     }, 300);
 
-    // Обработка отправки сообщений
     if (messageForm) {
         messageForm.addEventListener('submit', (e) => {
             e.preventDefault();
@@ -277,7 +264,6 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    // Инициализация кнопок переключения
     const globalBtn = document.getElementById('globalBtn');
     const privateBtn = document.getElementById('privateBtn');
     
@@ -289,15 +275,12 @@ document.addEventListener('DOMContentLoaded', function() {
         privateBtn.addEventListener('click', switchToPrivate);
     }
 
-    // Фокус на поле ввода
     if (messageInput) {
         messageInput.focus();
     }
     
-    // По умолчанию показываем общий чат
     switchToGlobal();
 
-    // Периодическая проверка соединения
     setInterval(() => {
         if (socket && !socket.connected) {
             showConnectionStatus('Потеряно соединение с сервером', 'error');

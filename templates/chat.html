@@ -3,14 +3,9 @@
 <head>
     <title>Anonimo - Чат</title>
     <link rel="stylesheet" href="/style.css">
-   <script>
-// Передаем username из серверного рендеринга в клиентский JavaScript
-const USERNAME = '<%= username %>';
-
-// Токен будет доступен через куки (httpOnly) или можно получить его из localStorage
-// если вы его там сохраняли при регистрации/логине
-const USER_TOKEN = document.cookie.replace(/(?:(?:^|.*;\s*)token\s*=\s*([^;]*).*$)|^.*$/, '$1');
-</script>
+    <script>
+        const USERNAME = '<%= username %>';
+        const USER_TOKEN = document.cookie.replace(/(?:(?:^|.*;\s*)token\s*=\s*([^;]*).*$)|^.*$/, '$1');
     </script>
 </head>
 <body>
@@ -27,7 +22,6 @@ const USER_TOKEN = document.cookie.replace(/(?:(?:^|.*;\s*)token\s*=\s*([^;]*).*
             </div>
         </header>
         
-        <!-- Глобальный чат -->
         <div id="globalChat">
             <div id="messages"></div>
             <form id="messageForm">
@@ -36,19 +30,48 @@ const USER_TOKEN = document.cookie.replace(/(?:(?:^|.*;\s*)token\s*=\s*([^;]*).*
             </form>
         </div>
         
-        <!-- Приватный чат -->
-        <div id="privateChat" style="display: none;"></div>
+        <div id="privateChat" style="display: none;">
+            <!-- Контент будет создан JavaScript -->
+        </div>
     </div>
 
     <script src="/socket.io/socket.io.js"></script>
-    <script src="/webrtc.js"></script>
     <script src="/chat.js"></script>
     <script src="/private-chat.js"></script>
     
     <script>
+        function switchToGlobal() {
+            document.getElementById('globalChat').style.display = 'block';
+            document.getElementById('privateChat').style.display = 'none';
+            document.getElementById('globalBtn').classList.add('active');
+            document.getElementById('privateBtn').classList.remove('active');
+            scrollToBottom('messages');
+        }
+
+        function switchToPrivate() {
+            document.getElementById('globalChat').style.display = 'none';
+            document.getElementById('privateChat').style.display = 'block';
+            document.getElementById('globalBtn').classList.remove('active');
+            document.getElementById('privateBtn').classList.add('active');
+            
+            // Инициализируем приватный чат при переключении
+            setTimeout(() => {
+                if (window.initPrivateChat) {
+                    const privateInstance = window.initPrivateChat();
+                    if (privateInstance) {
+                        privateInstance.loadConversations();
+                    }
+                }
+            }, 100);
+        }
+
+        document.getElementById('globalBtn').addEventListener('click', switchToGlobal);
+        document.getElementById('privateBtn').addEventListener('click', switchToPrivate);
+
+        // Инициализируем базовые функции
         document.addEventListener('DOMContentLoaded', function() {
-            document.getElementById('globalBtn').addEventListener('click', switchToGlobal);
-            document.getElementById('privateBtn').addEventListener('click', switchToPrivate);
+            window.privateChatInstance = new PrivateChat();
+            console.log('Private chat instance created');
         });
     </script>
 </body>
