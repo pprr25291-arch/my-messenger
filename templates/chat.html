@@ -1,37 +1,55 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Anonimo - Чат</title>
+    <title>Anonimo - Мессенджер</title>
     <link rel="stylesheet" href="/style.css">
     <script>
-        const USERNAME = '<%= username %>';
-        const USER_TOKEN = document.cookie.replace(/(?:(?:^|.*;\s*)token\s*=\s*([^;]*).*$)|^.*$/, '$1');
+        // Глобальные переменные для доступа из JavaScript
+        window.USERNAME = '<%= username %>';
+        window.USER_TOKEN = '<%= token %>';
     </script>
 </head>
 <body>
     <div class="chat-container">
         <header>
             <h2>Anonimo</h2>
-            <div>
+            <div class="header-content">
                 <span>Добро пожаловать, <span id="username"><%= username %></span>!</span>
                 <div class="header-buttons">
-                    <button id="globalBtn" class="header-btn active" type="button">Общий чат</button>
-                    <button id="privateBtn" class="header-btn" type="button">Приватные сообщения</button>
-                    <button class="header-btn" type="button" onclick="logout()">Выйти</button>
+                    <button id="notificationsBtn" class="header-btn" type="button">📢 Уведомления</button>
+                    <button id="privateBtn" class="header-btn active" type="button">💬 Приватные сообщения</button>
+                    <% if (username === 'admin') { %>
+                    <button id="adminBtn" class="header-btn" type="button">⚙️ Админ</button>
+                    <% } %>
+                    <button class="header-btn" type="button" onclick="logout()">🚪 Выйти</button>
                 </div>
             </div>
         </header>
         
-        <div id="globalChat">
-            <div id="messages"></div>
-            <form id="messageForm">
-                <input type="text" id="messageInput" placeholder="Введите сообщение..." autocomplete="off">
-                <button type="submit">Отправить</button>
-            </form>
-        </div>
-        
-        <div id="privateChat" style="display: none;">
-            <!-- Контент будет создан JavaScript -->
+        <div class="chat-content">
+            <!-- Панель уведомлений -->
+            <div id="notificationsPanel" class="chat-section" style="display: none;">
+                <div class="notifications-header">
+                    <h3>📢 Системные уведомления</h3>
+                    <p>Важные сообщения от администрации системы</p>
+                </div>
+                <div id="notifications" class="notifications-list">
+                    <div class="no-notifications">
+                        <div class="no-notifications-icon">📋</div>
+                        <h3>Нет уведомлений</h3>
+                        <p>Здесь будут отображаться системные уведомления</p>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Приватный чат -->
+            <div id="privateChat" class="chat-section">
+                <!-- Контент будет создан JavaScript -->
+                <div class="loading-chat">
+                    <div class="loading-spinner"></div>
+                    <p>Загрузка приватного чата...</p>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -40,39 +58,104 @@
     <script src="/private-chat.js"></script>
     
     <script>
-        function switchToGlobal() {
-            document.getElementById('globalChat').style.display = 'block';
-            document.getElementById('privateChat').style.display = 'none';
-            document.getElementById('globalBtn').classList.add('active');
-            document.getElementById('privateBtn').classList.remove('active');
-            scrollToBottom('messages');
+        // Глобальные функции
+        function logout() {
+            fetch('/api/logout', { method: 'POST' })
+                .then(() => window.location.href = '/')
+                .catch(() => window.location.href = '/');
         }
 
-        function switchToPrivate() {
-            document.getElementById('globalChat').style.display = 'none';
-            document.getElementById('privateChat').style.display = 'block';
-            document.getElementById('globalBtn').classList.remove('active');
-            document.getElementById('privateBtn').classList.add('active');
+        // Инициализация при загрузке страницы
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('🚀 Starting application initialization...');
             
-            // Инициализируем приватный чат при переключении
+            // Инициализируем приватный чат
             setTimeout(() => {
-                if (window.initPrivateChat) {
-                    const privateInstance = window.initPrivateChat();
-                    if (privateInstance) {
-                        privateInstance.loadConversations();
-                    }
+                if (!window.privateChatInstance) {
+                    console.log('🔄 Creating PrivateChat instance...');
+                    window.privateChatInstance = new PrivateChat();
+                    
+                    // Проверяем инициализацию
+                    setTimeout(() => {
+                        if (window.privateChatInstance && window.privateChatInstance.isInitialized) {
+                            console.log('✅ PrivateChat instance created successfully');
+                        } else {
+                            console.error('❌ Failed to create PrivateChat instance');
+                            // Показываем fallback интерфейс
+                            showFallbackChatInterface();
+                        }
+                    }, 2000);
                 }
             }, 100);
+
+            // Инициализация админ-панели для администратора
+            const username = document.getElementById('username')?.textContent;
+            if (username === 'admin') {
+                const adminBtn = document.getElementById('adminBtn');
+                if (adminBtn) {
+                    adminBtn.addEventListener('click', () => {
+                        if (window.privateChatInstance && typeof window.privateChatInstance.toggleAdminPanel === 'function') {
+                            window.privateChatInstance.toggleAdminPanel();
+                        } else {
+                            console.error('Admin panel method not available');
+                            // Fallback админ-панель
+                            showFallbackAdminPanel();
+                        }
+                    });
+                }
+            }
+        });
+
+        // Fallback функции
+        function showFallbackChatInterface() {
+            const privateChat = document.getElementById('privateChat');
+            if (privateChat) {
+                privateChat.innerHTML = `
+                    <div class="fallback-chat">
+                        <div class="fallback-header">
+                            <h3>💬 Приватные сообщения</h3>
+                            <p>Основной интерфейс временно недоступен</p>
+                        </div>
+                        <div class="fallback-content">
+                            <p>Пожалуйста, обновите страницу или обратитесь к администратору.</p>
+                            <button onclick="location.reload()">🔄 Обновить страницу</button>
+                        </div>
+                    </div>
+                `;
+            }
         }
 
-        document.getElementById('globalBtn').addEventListener('click', switchToGlobal);
-        document.getElementById('privateBtn').addEventListener('click', switchToPrivate);
-
-        // Инициализируем базовые функции
-        document.addEventListener('DOMContentLoaded', function() {
-            window.privateChatInstance = new PrivateChat();
-            console.log('Private chat instance created');
-        });
+        function showFallbackAdminPanel() {
+            const adminPanel = document.createElement('div');
+            adminPanel.id = 'fallbackAdminPanel';
+            adminPanel.style.cssText = `
+                position: fixed;
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%, -50%);
+                background: white;
+                padding: 20px;
+                border-radius: 10px;
+                box-shadow: 0 0 20px rgba(0,0,0,0.3);
+                z-index: 10000;
+                max-width: 400px;
+                width: 90%;
+            `;
+            
+            adminPanel.innerHTML = `
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                    <h3 style="margin: 0;">⚙️ Админ панель</h3>
+                    <button onclick="this.parentElement.parentElement.remove()" style="background: none; border: none; font-size: 20px; cursor: pointer;">✕</button>
+                </div>
+                <p>Основная админ-панель временно недоступна.</p>
+                <p>Пожалуйста, обновите страницу.</p>
+                <button onclick="location.reload()" style="width: 100%; padding: 10px; background: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer; margin-top: 10px;">
+                    🔄 Обновить
+                </button>
+            `;
+            
+            document.body.appendChild(adminPanel);
+        }
     </script>
 </body>
 </html>
