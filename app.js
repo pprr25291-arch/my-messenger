@@ -30,9 +30,12 @@ const uploadsDir = path.join(__dirname, 'uploads');
 // Инициализация хранилищ
 let users = [];
 let messages = [];
-let systemNotifications = []; // Добавьте эту строку
+let systemNotifications = [];
+let groups = [];
 const userSockets = new Map();
 const onlineUsers = new Set();
+const activeCalls = new Map();
+const screenShares = new Map();
 
 async function ensureDirectories() {
     try {
@@ -74,38 +77,54 @@ const storage = multer.diskStorage({
     }
 });
 
+const fileFilter = (req, file, cb) => {
+    const allowedTypes = [
+        'image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/bmp', 'image/webp', 'image/svg+xml',
+        'application/pdf', 
+        'application/msword', 
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'application/vnd.ms-excel',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'application/vnd.ms-powerpoint',
+        'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+        'text/plain', 'text/csv',
+        'application/zip', 'application/x-rar-compressed', 'application/x-7z-compressed', 
+        'application/x-tar', 'application/gzip',
+        'audio/mpeg', 'audio/wav', 'audio/ogg', 'audio/mp4', 'audio/aac', 'audio/webm', 'audio/x-m4a', 'audio/x-wav',
+        'video/mp4', 'video/mpeg', 'video/ogg', 'video/webm', 'video/quicktime',
+        'application/json', 'application/xml'
+    ];
+
+    if (allowedTypes.includes(file.mimetype)) {
+        cb(null, true);
+    } else {
+        const allowedExtensions = /\.(jpeg|jpg|png|gif|bmp|webp|svg|pdf|doc|docx|xls|xlsx|ppt|pptx|txt|csv|zip|rar|7z|tar|gz|mp3|wav|ogg|m4a|mp4|aac|webm|mov|avi|mkv|json|xml)$/i;
+        if (allowedExtensions.test(file.originalname)) {
+            cb(null, true);
+        } else {
+            cb(new Error('Неподдерживаемый тип файла: ' + file.mimetype));
+        }
+    }
+};
+
 const upload = multer({
     storage: storage,
     limits: {
-        fileSize: 100 * 1024 * 1024,
+        fileSize: 50 * 1024 * 1024,
+    },
+    fileFilter: fileFilter
+});
+
+const voiceUpload = multer({
+    storage: storage,
+    limits: {
+        fileSize: 50 * 1024 * 1024,
     },
     fileFilter: (req, file, cb) => {
-        const allowedTypes = [
-            'image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/bmp', 'image/webp', 'image/svg+xml',
-            'application/pdf', 
-            'application/msword', 
-            'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-            'application/vnd.ms-excel',
-            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-            'application/vnd.ms-powerpoint',
-            'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-            'text/plain', 'text/csv',
-            'application/zip', 'application/x-rar-compressed', 'application/x-7z-compressed', 
-            'application/x-tar', 'application/gzip',
-            'audio/mpeg', 'audio/wav', 'audio/ogg', 'audio/mp4', 'audio/aac',
-            'video/mp4', 'video/mpeg', 'video/ogg', 'video/webm', 'video/quicktime',
-            'application/json', 'application/xml'
-        ];
-
-        if (allowedTypes.includes(file.mimetype)) {
+        if (file.mimetype.startsWith('audio/')) {
             cb(null, true);
         } else {
-            const allowedExtensions = /\.(jpeg|jpg|png|gif|bmp|webp|svg|pdf|doc|docx|xls|xlsx|ppt|pptx|txt|csv|zip|rar|7z|tar|gz|mp3|wav|ogg|mp4|m4a|mov|avi|mkv|json|xml)$/i;
-            if (allowedExtensions.test(file.originalname)) {
-                cb(null, true);
-            } else {
-                cb(new Error('Неподдерживаемый тип файла: ' + file.mimetype));
-            }
+            cb(new Error('Разрешены только аудио файлы для голосовых сообщений'));
         }
     }
 });
@@ -133,6 +152,17 @@ async function loadMessages() {
     }
 }
 
+async function loadGroups() {
+    try {
+        const data = await fs.readFile(path.join(dataDir, 'groups.json'), 'utf8');
+        groups = JSON.parse(data);
+        console.log('Groups loaded:', groups.length);
+    } catch (error) {
+        groups = [];
+        await saveGroups();
+    }
+}
+
 async function saveUsers() {
     try {
         await fs.writeFile(path.join(dataDir, 'users.json'), JSON.stringify(users, null, 2));
@@ -146,6 +176,14 @@ async function saveMessages() {
         await fs.writeFile(path.join(dataDir, 'messages.json'), JSON.stringify(messages, null, 2));
     } catch (error) {
         console.error('Error saving messages:', error);
+    }
+}
+
+async function saveGroups() {
+    try {
+        await fs.writeFile(path.join(dataDir, 'groups.json'), JSON.stringify(groups, null, 2));
+    } catch (error) {
+        console.error('Error saving groups:', error);
     }
 }
 
@@ -276,7 +314,7 @@ app.post('/api/logout', (req, res) => {
     res.json({ success: true });
 });
 
-// 2. Системные уведомления (ТОЛЬКО ОДИН ЭНДПОИНТ!)
+// 2. Системные уведомления
 app.get('/api/notifications', authenticateToken, (req, res) => {
     try {
         const recentNotifications = systemNotifications
@@ -457,7 +495,41 @@ app.post('/api/upload', authenticateToken, upload.single('file'), async (req, re
     }
 });
 
-// 6. Админ панель
+// 6. Загрузка голосовых сообщений
+app.post('/api/upload-voice', authenticateToken, voiceUpload.single('file'), async (req, res) => {
+    try {
+        if (!req.file) {
+            return res.status(400).json({ error: 'Файл не загружен' });
+        }
+
+        const fileResponse = {
+            success: true,
+            file: {
+                originalName: req.file.originalname,
+                filename: req.file.filename,
+                path: `/uploads/${req.file.filename}`,
+                size: req.file.size,
+                mimetype: req.file.mimetype,
+                uploadDate: new Date().toISOString(),
+                type: 'voice'
+            }
+        };
+
+        console.log('Voice message uploaded:', fileResponse.file.originalName);
+        res.json(fileResponse);
+
+    } catch (error) {
+        console.error('Voice upload error:', error);
+        
+        if (req.file) {
+            await fs.unlink(req.file.path).catch(console.error);
+        }
+        
+        res.status(500).json({ error: 'Ошибка загрузки голосового сообщения: ' + error.message });
+    }
+});
+
+// 7. Админ панель
 app.get('/api/users/online', authenticateToken, (req, res) => {
     try {
         if (req.user.username !== 'admin') {
@@ -529,7 +601,7 @@ app.post('/api/admin/send-notification', authenticateToken, async (req, res) => 
     }
 });
 
-// 7. Группы
+// 8. Группы
 app.post('/api/groups/create', authenticateToken, async (req, res) => {
     try {
         const { name, members, createdBy } = req.body;
@@ -544,8 +616,21 @@ app.post('/api/groups/create', authenticateToken, async (req, res) => {
             members: members,
             createdBy: createdBy,
             createdAt: new Date().toISOString(),
-            messages: []
+            messages: [],
+            memberCount: members.length
         };
+
+        groups.push(group);
+        await saveGroups();
+
+        members.forEach(member => {
+            const memberSocketId = userSockets.get(member);
+            if (memberSocketId) {
+                io.to(memberSocketId).emit('group_created', {
+                    group: group
+                });
+            }
+        });
 
         res.json({
             success: true,
@@ -561,7 +646,9 @@ app.post('/api/groups/create', authenticateToken, async (req, res) => {
 app.get('/api/groups', authenticateToken, (req, res) => {
     try {
         const currentUser = req.user.username;
-        const userGroups = [];
+        const userGroups = groups.filter(group => 
+            group.members && group.members.includes(currentUser)
+        );
         res.json(userGroups);
     } catch (error) {
         console.error('Groups error:', error);
@@ -569,16 +656,257 @@ app.get('/api/groups', authenticateToken, (req, res) => {
     }
 });
 
-// 8. Health check
+// 9. Health check
 app.get('/health', (req, res) => {
     res.json({ 
         status: 'OK', 
         timestamp: new Date().toISOString(),
         users: users.length,
         messages: messages.length,
+        groups: groups.length,
         onlineUsers: onlineUsers.size,
         notifications: systemNotifications.length
     });
+});
+
+// 10. Групповые сообщения
+app.get('/api/groups/:groupId/messages', authenticateToken, (req, res) => {
+    try {
+        const { groupId } = req.params;
+        const currentUser = req.user.username;
+        
+        const group = groups.find(g => g.id === groupId);
+        if (!group || !group.members.includes(currentUser)) {
+            return res.status(403).json({ error: 'Доступ запрещен' });
+        }
+        
+        const groupMessages = messages.filter(msg => 
+            msg.type === 'group' && msg.groupId === groupId
+        );
+        
+        res.json(groupMessages);
+    } catch (error) {
+        console.error('Group messages error:', error);
+        res.status(500).json({ error: 'Failed to load group messages' });
+    }
+});
+
+// 11. Отправка сообщений в группу
+app.post('/api/groups/:groupId/messages', authenticateToken, async (req, res) => {
+    try {
+        const { groupId } = req.params;
+        const { message, messageType = 'text', fileData = null } = req.body;
+        const sender = req.user.username;
+
+        if (!message && !fileData) {
+            return res.status(400).json({ error: 'Сообщение не может быть пустым' });
+        }
+
+        const group = groups.find(g => g.id === groupId);
+        if (!group || !group.members.includes(sender)) {
+            return res.status(403).json({ error: 'Доступ запрещен' });
+        }
+
+        const messageData = {
+            id: 'msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
+            sender: sender,
+            groupId: groupId,
+            message: message,
+            timestamp: new Date().toLocaleTimeString(),
+            type: 'group',
+            date: new Date().toISOString(),
+            messageType: messageType,
+            fileData: fileData
+        };
+        
+        messages.push(messageData);
+        await saveMessages();
+
+        group.members.forEach(member => {
+            const memberSocketId = userSockets.get(member);
+            if (memberSocketId) {
+                io.to(memberSocketId).emit('group_message', messageData);
+            }
+        });
+
+        res.json({ success: true, message: messageData });
+        
+    } catch (error) {
+        console.error('Group message error:', error);
+        res.status(500).json({ error: 'Ошибка отправки сообщения' });
+    }
+});
+
+// 12. Получение списка групп пользователя
+app.get('/api/user/groups', authenticateToken, (req, res) => {
+    try {
+        const currentUser = req.user.username;
+        
+        const userGroups = groups.filter(group => 
+            group.members && group.members.includes(currentUser)
+        ).map(group => ({
+            id: group.id,
+            name: group.name,
+            members: group.members,
+            createdBy: group.createdBy,
+            createdAt: group.createdAt,
+            memberCount: group.members ? group.members.length : 0,
+            isGroup: true
+        }));
+        
+        res.json(userGroups);
+        
+    } catch (error) {
+        console.error('User groups error:', error);
+        res.status(500).json({ error: 'Failed to load user groups' });
+    }
+});
+
+// 13. Получение информации о группе
+app.get('/api/groups/:groupId', authenticateToken, (req, res) => {
+    try {
+        const { groupId } = req.params;
+        const currentUser = req.user.username;
+        
+        const group = groups.find(g => g.id === groupId);
+        
+        if (!group) {
+            return res.status(404).json({ error: 'Группа не найдена' });
+        }
+        
+        if (!group.members.includes(currentUser)) {
+            return res.status(403).json({ error: 'Доступ запрещен' });
+        }
+        
+        const groupInfo = {
+            id: group.id,
+            name: group.name,
+            members: group.members,
+            createdBy: group.createdBy,
+            createdAt: group.createdAt,
+            memberCount: group.members ? group.members.length : 0
+        };
+        
+        res.json(groupInfo);
+    } catch (error) {
+        console.error('Group info error:', error);
+        res.status(500).json({ error: 'Failed to load group info' });
+    }
+});
+
+// 14. Добавление пользователей в группу
+app.post('/api/groups/:groupId/add-users', authenticateToken, async (req, res) => {
+    try {
+        const { groupId } = req.params;
+        const { users: usersToAdd } = req.body;
+        const currentUser = req.user.username;
+
+        const group = groups.find(g => g.id === groupId);
+        
+        if (!group) {
+            return res.status(404).json({ error: 'Группа не найдена' });
+        }
+
+        if (group.createdBy !== currentUser) {
+            return res.status(403).json({ error: 'Только создатель группы может добавлять участников' });
+        }
+
+        const newMembers = usersToAdd.filter(user => !group.members.includes(user));
+        group.members = [...group.members, ...newMembers];
+        group.memberCount = group.members.length;
+        
+        await saveGroups();
+
+        newMembers.forEach(username => {
+            const userSocketId = userSockets.get(username);
+            if (userSocketId) {
+                io.to(userSocketId).emit('group_invitation', {
+                    groupId: groupId,
+                    groupName: group.name,
+                    inviter: currentUser
+                });
+            }
+        });
+
+        group.members.forEach(member => {
+            const memberSocketId = userSockets.get(member);
+            if (memberSocketId) {
+                io.to(memberSocketId).emit('group_updated', {
+                    groupId: groupId,
+                    action: 'users_added',
+                    addedUsers: newMembers,
+                    updatedBy: currentUser,
+                    memberCount: group.memberCount
+                });
+            }
+        });
+
+        res.json({ 
+            success: true,
+            message: 'Пользователи успешно добавлены в группу',
+            addedUsers: newMembers,
+            memberCount: group.memberCount
+        });
+
+    } catch (error) {
+        console.error('Error adding users to group:', error);
+        res.status(500).json({ error: 'Ошибка добавления пользователей в группу' });
+    }
+});
+
+// 15. Удаление пользователя из группы
+app.post('/api/groups/:groupId/remove-member', authenticateToken, async (req, res) => {
+    try {
+        const { groupId } = req.params;
+        const { member } = req.body;
+        const currentUser = req.user.username;
+
+        const group = groups.find(g => g.id === groupId);
+        
+        if (!group) {
+            return res.status(404).json({ error: 'Группа не найдена' });
+        }
+
+        if (group.createdBy !== currentUser && member !== currentUser) {
+            return res.status(403).json({ error: 'Недостаточно прав для удаления пользователя' });
+        }
+
+        group.members = group.members.filter(m => m !== member);
+        group.memberCount = group.members.length;
+        
+        await saveGroups();
+
+        group.members.forEach(member => {
+            const memberSocketId = userSockets.get(member);
+            if (memberSocketId) {
+                io.to(memberSocketId).emit('group_updated', {
+                    groupId: groupId,
+                    action: 'member_removed',
+                    removedMember: member,
+                    updatedBy: currentUser,
+                    memberCount: group.memberCount
+                });
+            }
+        });
+
+        const removedUserSocketId = userSockets.get(member);
+        if (removedUserSocketId) {
+            io.to(removedUserSocketId).emit('group_removed', {
+                groupId: groupId,
+                groupName: group.name
+            });
+        }
+
+        res.json({ 
+            success: true,
+            message: 'Пользователь удален из группы',
+            memberCount: group.memberCount
+        });
+
+    } catch (error) {
+        console.error('Error removing member from group:', error);
+        res.status(500).json({ error: 'Ошибка удаления пользователя из группы' });
+    }
 });
 
 // Socket.io логика
@@ -594,6 +922,31 @@ io.on('connection', (socket) => {
         if (socket.username) {
             userSockets.delete(socket.username);
             onlineUsers.delete(socket.username);
+            
+            // Завершаем активные звонки пользователя
+            if (activeCalls.has(socket.username)) {
+                const callData = activeCalls.get(socket.username);
+                activeCalls.delete(socket.username);
+                
+                // Уведомляем участников звонка о отключении
+                if (callData.participants) {
+                    callData.participants.forEach(participant => {
+                        const participantSocket = userSockets.get(participant);
+                        if (participantSocket) {
+                            io.to(participantSocket).emit('call_ended', {
+                                callId: callData.callId,
+                                reason: 'Участник покинул чат',
+                                endedBy: socket.username
+                            });
+                        }
+                    });
+                }
+            }
+            
+            // Останавливаем трансляцию экрана
+            if (screenShares.has(socket.username)) {
+                screenShares.delete(socket.username);
+            }
             
             io.emit('user-status-changed', {
                 username: socket.username,
@@ -657,47 +1010,252 @@ io.on('connection', (socket) => {
         }
     });
 
+    // Обработчики групповых сообщений
+    socket.on('group_message', (data) => {
+        try {
+            const group = groups.find(g => g.id === data.groupId);
+            if (!group || !group.members.includes(data.sender)) {
+                socket.emit('error', { message: 'Доступ запрещен' });
+                return;
+            }
+
+            const messageData = {
+                id: 'msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
+                sender: data.sender,
+                groupId: data.groupId,
+                message: data.message,
+                timestamp: new Date().toLocaleTimeString(),
+                type: 'group',
+                date: new Date().toISOString(),
+                messageType: data.messageType || 'text',
+                fileData: data.fileData || null
+            };
+            
+            messages.push(messageData);
+            saveMessages();
+
+            group.members.forEach(member => {
+                const memberSocketId = userSockets.get(member);
+                if (memberSocketId) {
+                    io.to(memberSocketId).emit('group_message', messageData);
+                }
+            });
+
+            io.emit('conversations updated');
+            
+        } catch (error) {
+            console.error('Group message error:', error);
+            socket.emit('error', { message: 'Failed to send group message' });
+        }
+    });
+
+    // Обработчики обновлений групп
+    socket.on('group_created', (data) => {
+        data.group.members.forEach(member => {
+            const memberSocketId = userSockets.get(member);
+            if (memberSocketId) {
+                io.to(memberSocketId).emit('group_created', data);
+            }
+        });
+    });
+
     // Обработчики звонков
-    socket.on('call-offer', (data) => {
-        const targetSocketId = userSockets.get(data.target);
+    socket.on('initiate_call', (data) => {
+        const targetSocketId = userSockets.get(data.targetUser);
         if (targetSocketId) {
-            io.to(targetSocketId).emit('call-offer', {
+            // Сохраняем информацию о звонке
+            activeCalls.set(data.caller, {
+                callId: data.callId,
+                participants: [data.caller, data.targetUser],
+                type: data.callType,
+                startTime: new Date().toISOString()
+            });
+            
+            io.to(targetSocketId).emit('incoming_call', {
+                callId: data.callId,
+                caller: data.caller,
+                callType: data.callType,
+                timestamp: new Date().toISOString()
+            });
+        } else {
+            // Пользователь не в сети
+            socket.emit('call_rejected', {
+                callId: data.callId,
+                reason: 'Пользователь не в сети'
+            });
+        }
+    });
+
+    socket.on('accept_call', (data) => {
+        const callerSocketId = userSockets.get(data.caller);
+        if (callerSocketId) {
+            // Обновляем информацию о звонке
+            const callData = activeCalls.get(data.caller);
+            if (callData) {
+                callData.participants.push(data.acceptor);
+                activeCalls.set(data.caller, callData);
+            }
+            
+            io.to(callerSocketId).emit('call_accepted', {
+                callId: data.callId,
+                acceptor: socket.username
+            });
+        }
+    });
+
+    socket.on('reject_call', (data) => {
+        const callerSocketId = userSockets.get(data.caller);
+        if (callerSocketId) {
+            // Удаляем информацию о звонке
+            activeCalls.delete(data.caller);
+            
+            io.to(callerSocketId).emit('call_rejected', {
+                callId: data.callId,
+                reason: data.reason
+            });
+        }
+    });
+
+    socket.on('end_call', (data) => {
+        // Удаляем информацию о звонке
+        activeCalls.delete(socket.username);
+        
+        // Уведомляем всех участников звонка о завершении
+        io.emit('call_ended', {
+            callId: data.callId,
+            reason: data.reason,
+            endedBy: socket.username
+        });
+    });
+
+    // WebRTC сигналы
+    socket.on('webrtc_offer', (data) => {
+        const targetSocketId = userSockets.get(data.targetUser);
+        if (targetSocketId) {
+            io.to(targetSocketId).emit('webrtc_offer', {
+                callId: data.callId,
                 offer: data.offer,
                 caller: socket.username
             });
         }
     });
-    
-    socket.on('call-answer', (data) => {
-        const targetSocketId = userSockets.get(data.target);
+
+    socket.on('webrtc_answer', (data) => {
+        const targetSocketId = userSockets.get(data.targetUser);
         if (targetSocketId) {
-            io.to(targetSocketId).emit('call-answer', {
-                answer: data.answer
+            io.to(targetSocketId).emit('webrtc_answer', {
+                callId: data.callId,
+                answer: data.answer,
+                answerer: socket.username
             });
-        }
-    });
-    
-    socket.on('ice-candidate', (data) => {
-        const targetSocketId = userSockets.get(data.target);
-        if (targetSocketId) {
-            io.to(targetSocketId).emit('ice-candidate', {
-                candidate: data.candidate
-            });
-        }
-    });
-    
-    socket.on('call-end', (data) => {
-        const targetSocketId = userSockets.get(data.target);
-        if (targetSocketId) {
-            io.to(targetSocketId).emit('call-end');
         }
     });
 
+    socket.on('webrtc_ice_candidate', (data) => {
+        const targetSocketId = userSockets.get(data.targetUser);
+        if (targetSocketId) {
+            io.to(targetSocketId).emit('webrtc_ice_candidate', {
+                callId: data.callId,
+                candidate: data.candidate,
+                sender: socket.username
+            });
+        }
+    });
+
+    // Трансляция экрана
+    socket.on('screen_share_started', (data) => {
+        const targetSocketId = userSockets.get(data.targetUser);
+        if (targetSocketId) {
+            // Сохраняем информацию о трансляции
+            screenShares.set(socket.username, {
+                targetUser: data.targetUser,
+                callId: data.callId,
+                startTime: new Date().toISOString()
+            });
+            
+            io.to(targetSocketId).emit('screen_share_started', {
+                callId: data.callId,
+                sharer: socket.username
+            });
+        }
+    });
+
+    socket.on('screen_share_ended', (data) => {
+        const targetSocketId = userSockets.get(data.targetUser);
+        if (targetSocketId) {
+            // Удаляем информацию о трансляции
+            screenShares.delete(socket.username);
+            
+            io.to(targetSocketId).emit('screen_share_ended', {
+                callId: data.callId,
+                sharer: socket.username
+            });
+        }
+    });
+
+    // Системные уведомления
+    socket.on('system_notification', (data) => {
+        const notificationData = {
+            id: 'notif_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
+            title: data.title || 'Системное уведомление',
+            message: data.message,
+            type: data.type || 'info',
+            sender: data.sender || 'Система',
+            timestamp: new Date().toLocaleTimeString(),
+            date: new Date().toISOString(),
+            isSystem: true
+        };
+
+        systemNotifications.push(notificationData);
+        
+        if (systemNotifications.length > 1000) {
+            systemNotifications = systemNotifications.slice(-500);
+        }
+
+        // Отправляем уведомление всем пользователям
+        io.emit('system_notification', notificationData);
+    });
+
+    // Ping для проверки соединения
     socket.on('ping', (cb) => {
         if (typeof cb === 'function') {
             cb('pong');
         }
     });
+    // Трансляция экрана
+socket.on('screen_share_started', (data) => {
+    const targetSocketId = userSockets.get(data.targetUser);
+    if (targetSocketId) {
+        // Сохраняем информацию о трансляции
+        screenShares.set(socket.username, {
+            targetUser: data.targetUser,
+            callId: data.callId,
+            startTime: new Date().toISOString()
+        });
+        
+        io.to(targetSocketId).emit('screen_share_started', {
+            callId: data.callId,
+            sharer: socket.username
+        });
+        
+        console.log(`🖥️ Screen share started: ${socket.username} -> ${data.targetUser}`);
+    }
+});
+
+socket.on('screen_share_ended', (data) => {
+    const targetSocketId = userSockets.get(data.targetUser);
+    if (targetSocketId) {
+        // Удаляем информацию о трансляции
+        screenShares.delete(socket.username);
+        
+        io.to(targetSocketId).emit('screen_share_ended', {
+            callId: data.callId,
+            sharer: socket.username
+        });
+        
+        console.log(`🖥️ Screen share ended: ${socket.username} -> ${data.targetUser}`);
+    }
+});
 });
 
 // Запуск сервера
@@ -706,223 +1264,20 @@ async function startServer() {
         await ensureDirectories();
         await loadUsers();
         await loadMessages();
+        await loadGroups();
         
         server.listen(PORT, '0.0.0.0', () => {
             console.log(`🚀 Server running on port ${PORT}`);
             console.log(`📊 Health check: http://localhost:${PORT}/health`);
             console.log(`💾 Data directory: ${dataDir}`);
             console.log(`📁 Uploads directory: ${uploadsDir}`);
+            console.log(`👥 Groups loaded: ${groups.length}`);
+            console.log(`💬 Active features: Private Chat, Group Chat, Voice/Video Calls, Screen Sharing, File Sharing`);
         });
     } catch (error) {
         console.error('❌ Failed to start server:', error);
         process.exit(1);
     }
 }
-// API для добавления пользователей в группу
-app.post('/api/groups/:groupId/add-users', authenticateToken, async (req, res) => {
-    try {
-        const { groupId } = req.params;
-        const { users } = req.body;
-        const currentUser = req.user.username;
 
-        // Здесь должна быть логика поиска группы в базе данных
-        // const group = await findGroupById(groupId);
-        
-        // Проверяем права доступа
-        // if (!group.members.includes(currentUser)) {
-        //     return res.status(403).json({ error: 'У вас нет доступа к этой группе' });
-        // }
-
-        // Добавляем пользователей в группу
-        // group.members = [...new Set([...group.members, ...users])];
-        // await saveGroup(group);
-
-        // Отправляем уведомления новым участникам
-        users.forEach(username => {
-            const userSocketId = userSockets.get(username);
-            if (userSocketId) {
-                io.to(userSocketId).emit('group_invitation', {
-                    groupId: groupId,
-                    groupName: 'Название группы', // Замените на реальное название
-                    inviter: currentUser
-                });
-            }
-        });
-
-        // Уведомляем всех участников группы об обновлении
-        // group.members.forEach(member => {
-        //     const memberSocketId = userSockets.get(member);
-        //     if (memberSocketId) {
-        //         io.to(memberSocketId).emit('group_updated', {
-        //             groupId: groupId,
-        //             action: 'users_added',
-        //             addedUsers: users,
-        //             updatedBy: currentUser
-        //         });
-        //     }
-        // });
-
-        res.json({ 
-            success: true,
-            message: 'Пользователи успешно добавлены в группу',
-            addedUsers: users
-        });
-
-    } catch (error) {
-        console.error('Error adding users to group:', error);
-        res.status(500).json({ error: 'Ошибка добавления пользователей в группу' });
-    }
-});
-
-// API для удаления пользователя из группы
-app.post('/api/groups/:groupId/remove-member', authenticateToken, async (req, res) => {
-    try {
-        const { groupId } = req.params;
-        const { member } = req.body;
-        const currentUser = req.user.username;
-
-        // Здесь должна быть логика поиска группы в базе данных
-        // const group = await findGroupById(groupId);
-        
-        // Проверяем права доступа (только создатель или сам пользователь может удалить)
-        // if (group.createdBy !== currentUser && member !== currentUser) {
-        //     return res.status(403).json({ error: 'Недостаточно прав для удаления пользователя' });
-        // }
-
-        // Удаляем пользователя из группы
-        // group.members = group.members.filter(m => m !== member);
-        // await saveGroup(group);
-
-        // Уведомляем участников группы
-        // group.members.forEach(member => {
-        //     const memberSocketId = userSockets.get(member);
-        //     if (memberSocketId) {
-        //         io.to(memberSocketId).emit('group_updated', {
-        //             groupId: groupId,
-        //             action: 'member_removed',
-        //             removedMember: member,
-        //             updatedBy: currentUser
-        //         });
-        //     }
-        // });
-
-        // Уведомляем удаленного пользователя
-        const removedUserSocketId = userSockets.get(member);
-        if (removedUserSocketId) {
-            io.to(removedUserSocketId).emit('group_removed', {
-                groupId: groupId,
-                groupName: 'Название группы' // Замените на реальное название
-            });
-        }
-
-        res.json({ 
-            success: true,
-            message: 'Пользователь удален из группы'
-        });
-
-    } catch (error) {
-        console.error('Error removing member from group:', error);
-        res.status(500).json({ error: 'Ошибка удаления пользователя из группы' });
-    }
-})
-// 9. Групповые сообщения
-app.get('/api/groups/:groupId/messages', authenticateToken, (req, res) => {
-    try {
-        const { groupId } = req.params;
-        
-        // Временная реализация - в реальном приложении нужно хранить сообщения групп
-        const groupMessages = messages.filter(msg => 
-            msg.type === 'group' && msg.groupId === groupId
-        );
-        
-        res.json(groupMessages);
-    } catch (error) {
-        console.error('Group messages error:', error);
-        res.status(500).json({ error: 'Failed to load group messages' });
-    }
-});
-
-// 10. Отправка сообщений в группу
-app.post('/api/groups/:groupId/messages', authenticateToken, async (req, res) => {
-    try {
-        const { groupId } = req.params;
-        const { message, messageType = 'text', fileData = null } = req.body;
-        const sender = req.user.username;
-
-        if (!message && !fileData) {
-            return res.status(400).json({ error: 'Сообщение не может быть пустым' });
-        }
-
-        const messageData = {
-            id: 'msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
-            sender: sender,
-            groupId: groupId,
-            message: message,
-            timestamp: new Date().toLocaleTimeString(),
-            type: 'group',
-            date: new Date().toISOString(),
-            messageType: messageType,
-            fileData: fileData
-        };
-        
-        messages.push(messageData);
-        await saveMessages();
-
-        // Отправляем сообщение всем участникам группы
-        // В реальном приложении нужно получить участников группы из базы данных
-        const groupMembers = []; // Здесь должны быть участники группы
-        
-        groupMembers.forEach(member => {
-            const memberSocketId = userSockets.get(member);
-            if (memberSocketId) {
-                io.to(memberSocketId).emit('group_message', messageData);
-            }
-        });
-
-        res.json({ success: true, message: messageData });
-        
-    } catch (error) {
-        console.error('Group message error:', error);
-        res.status(500).json({ error: 'Ошибка отправки сообщения' });
-    }
-});
-
-// 11. Получение списка групп пользователя
-app.get('/api/user/groups', authenticateToken, (req, res) => {
-    try {
-        const currentUser = req.user.username;
-        
-        // Временная реализация - в реальном приложении нужно хранить группы
-        const userGroups = [
-            {
-                id: 'group_1',
-                name: 'Тестовая группа',
-                members: [currentUser, 'user1', 'user2'],
-                createdBy: 'admin',
-                createdAt: new Date().toISOString(),
-                lastMessage: null
-            }
-        ];
-        
-        // Добавляем информацию о последнем сообщении
-        userGroups.forEach(group => {
-            const lastGroupMessage = messages
-                .filter(msg => msg.type === 'group' && msg.groupId === group.id)
-                .sort((a, b) => new Date(b.date) - new Date(a.date))[0];
-            
-            group.lastMessage = lastGroupMessage ? {
-                text: lastGroupMessage.message,
-                timestamp: lastGroupMessage.timestamp,
-                sender: lastGroupMessage.sender,
-                type: lastGroupMessage.messageType || 'text'
-            } : null;
-        });
-        
-        res.json(userGroups);
-        
-    } catch (error) {
-        console.error('User groups error:', error);
-        res.status(500).json({ error: 'Failed to load user groups' });
-    }
-});
 startServer();
