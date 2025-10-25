@@ -157,5 +157,51 @@
             document.body.appendChild(adminPanel);
         }
     </script>
+    <!-- Модальное окно записи голосового сообщения -->
+<div id="voiceRecordModal" class="modal-overlay" style="display: none;">
+    <div class="modal-content voice-recording-panel">
+        <div class="modal-header">
+            <h4>🎤 Запись голосового сообщения</h4>
+            <button class="close-modal">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div class="recording-status">
+                <div id="recordingTimer">00:00</div>
+                <div id="recordingStatus">Готов к записи...</div>
+            </div>
+            
+            <div class="voice-visualization">
+                <canvas id="voiceVisualization" width="400" height="80"></canvas>
+            </div>
+            
+            <div class="recording-controls">
+                <button id="startRecordingBtn" class="btn btn-success">
+                    🎤 Начать запись
+                </button>
+                <button id="stopRecordingBtn" class="btn btn-danger" disabled>
+                    ⏹️ Остановить
+                </button>
+                <button id="playRecordingBtn" class="btn btn-info" disabled>
+                    ▶️ Прослушать
+                </button>
+                <button id="sendVoiceBtn" class="btn btn-primary" disabled>
+                    📤 Отправить
+                </button>
+                <button id="cancelRecordingBtn" class="btn btn-warning">
+                    ❌ Отмена
+                </button>
+            </div>
+            
+            <div class="recording-info">
+                <p>Максимальная длительность: 5 минут</p>
+                <p>Минимальная длительность: 1 секунда</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+       
+</div>
+
 </body>
 </html>
