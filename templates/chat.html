@@ -1,27 +1,348 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Anonimo - Мессенджер</title>
+    <title>Anonka - Мессенджер</title>
     <link rel="stylesheet" href="/style.css">
     <script>
         // Глобальные переменные для доступа из JavaScript
         window.USERNAME = '<%= username %>';
         window.USER_TOKEN = '<%= token %>';
     </script>
+    <style>
+        /* Стили для валюты */
+        .currency-section {
+            padding: 20px 0;
+        }
+
+        .currency-balance {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+        }
+
+        .balance-display {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            margin-bottom: 15px;
+        }
+
+        .currency-icon {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.2);
+            padding: 8px;
+        }
+
+        .balance-info {
+            flex: 1;
+        }
+
+        .balance-label {
+            display: block;
+            font-size: 14px;
+            opacity: 0.9;
+        }
+
+        .balance-amount {
+            display: block;
+            font-size: 28px;
+            font-weight: bold;
+        }
+
+        .daily-reward-btn {
+            width: 100%;
+            padding: 12px;
+            background: rgba(255, 255, 255, 0.2);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            font-weight: bold;
+        }
+
+        .daily-reward-btn:hover:not(:disabled) {
+            background: rgba(255, 255, 255, 0.3);
+        }
+
+        .daily-reward-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .daily-reward-info {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+
+        .reward-stats {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+        }
+
+        .stat-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 0;
+            border-bottom: 1px solid #e9ecef;
+        }
+
+        .stat-label {
+            font-weight: 500;
+            color: #6c757d;
+        }
+
+        .stat-value {
+            font-weight: bold;
+            color: #28a745;
+        }
+
+        .currency-history {
+            background: white;
+            border: 1px solid #e9ecef;
+            border-radius: 8px;
+            padding: 15px;
+        }
+
+        .history-list {
+            max-height: 200px;
+            overflow-y: auto;
+        }
+
+        .history-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px;
+            border-bottom: 1px solid #f8f9fa;
+        }
+
+        .history-item:last-child {
+            border-bottom: none;
+        }
+
+        .history-info {
+            flex: 1;
+        }
+
+        .history-amount {
+            font-weight: bold;
+        }
+
+        .history-amount.positive {
+            color: #28a745;
+        }
+
+        .history-amount.negative {
+            color: #dc3545;
+        }
+
+        .history-date {
+            font-size: 12px;
+            color: #6c757d;
+        }
+
+        /* Админ панель управления валютой */
+        .currency-admin-controls {
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 2px solid #e9ecef;
+        }
+
+        .admin-currency-form {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+        }
+
+        .admin-currency-form h5 {
+            margin-bottom: 15px;
+            color: #495057;
+        }
+
+        .currency-controls {
+            display: grid;
+            grid-template-columns: 1fr auto auto;
+            gap: 10px;
+            align-items: end;
+        }
+
+        .currency-user-input {
+            margin-bottom: 0;
+        }
+
+        .currency-amount-input {
+            margin-bottom: 0;
+        }
+
+        /* Анимация получения награды */
+        @keyframes coinBounce {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.2); }
+        }
+
+        .coin-animation {
+            animation: coinBounce 0.6s ease-in-out;
+        }
+
+        .reward-notification {
+            background: linear-gradient(135deg, #28a745, #20c997);
+            color: white;
+            padding: 15px;
+            border-radius: 10px;
+            margin: 10px 0;
+            text-align: center;
+            font-weight: bold;
+        }
+
+        .history-empty {
+            text-align: center;
+            color: #6c757d;
+            padding: 20px;
+            font-style: italic;
+        }
+
+        /* Стили для магазина подарков в настройках */
+        .gift-shop-section {
+            background: white;
+            border: 1px solid #e9ecef;
+            border-radius: 10px;
+            padding: 20px;
+            margin-top: 20px;
+        }
+
+        .gift-item {
+            background: white;
+            border: 1px solid #e9ecef;
+            border-radius: 8px;
+            padding: 12px;
+            text-align: center;
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+
+        .gift-item:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            border-color: #007bff;
+        }
+
+        .gift-icon {
+            font-size: 32px;
+            margin-bottom: 8px;
+        }
+
+        .gift-name {
+            font-weight: 600;
+            font-size: 12px;
+            margin-bottom: 6px;
+            color: #333;
+        }
+
+        .gift-price {
+            color: #28a745;
+            font-weight: bold;
+            font-size: 14px;
+            margin-bottom: 8px;
+        }
+
+        .gift-type {
+            font-size: 10px;
+            margin-bottom: 8px;
+        }
+
+        .buy-gift-btn {
+            width: 100%;
+            padding: 6px 12px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 11px;
+            transition: all 0.3s ease;
+        }
+
+        .buy-gift-btn:not(.owned):not(:disabled) {
+            background: #28a745;
+            color: white;
+        }
+
+        .buy-gift-btn:not(.owned):not(:disabled):hover {
+            background: #218838;
+        }
+
+        .buy-gift-btn.owned {
+            background: #6c757d;
+            color: white;
+            cursor: not-allowed;
+        }
+
+        .buy-gift-btn:disabled {
+            background: #dc3545;
+            color: white;
+            cursor: not-allowed;
+        }
+
+        /* Стили для купленных подарков */
+        .owned-gift-item {
+            text-align: center;
+            padding: 8px;
+            background: white;
+            border-radius: 6px;
+            border: 1px solid #dee2e6;
+        }
+
+        .owned-gift-icon {
+            font-size: 20px;
+            margin-bottom: 4px;
+        }
+
+        .owned-gift-name {
+            font-size: 9px;
+            color: #6c757d;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        /* Категории */
+        .category-btn.active {
+            background: #007bff !important;
+            color: white !important;
+            border-color: #007bff !important;
+        }
+
+        /* Анимации для покупки */
+        @keyframes giftPurchase {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+            100% { transform: scale(1); }
+        }
+
+        .gift-purchase-animation {
+            animation: giftPurchase 0.6s ease-in-out;
+        }
+    </style>
 </head>
 <body>
     <div class="chat-container">
         <header>
-            <h2>Anonimo</h2>
+            <h2>Anonka</h2>
             <div class="header-content">
                 <span>Добро пожаловать, <span id="username"><%= username %></span>!</span>
                 <div class="header-buttons">
-                    <button id="notificationsBtn" class="header-btn" type="button">📢 Уведомления</button>
-                    <button id="privateBtn" class="header-btn active" type="button">💬 Приватные сообщения</button>
-                    <% if (username === 'admin') { %>
-                    <button id="adminBtn" class="header-btn" type="button">⚙️ Админ</button>
-                    <% } %>
-                    <button class="header-btn" type="button" onclick="logout()">🚪 Выйти</button>
+                    <div class="header-buttons">
+                        <button id="notificationsBtn" class="header-btn" type="button">📢 Уведомления</button>
+                        <button id="privateBtn" class="header-btn active" type="button">💬 Приватные сообщения</button>
+                        <% if (username === 'admin') { %>
+                        <button id="adminBtn" class="header-btn" type="button">⚙️ Админ</button>
+                        <% } %>
+                        <button id="settingsBtn" class="header-btn" type="button">⚙️ Настройки</button>
+                    </div>
                 </div>
             </div>
         </header>
@@ -157,51 +478,1055 @@
             document.body.appendChild(adminPanel);
         }
     </script>
+
     <!-- Модальное окно записи голосового сообщения -->
-<div id="voiceRecordModal" class="modal-overlay" style="display: none;">
-    <div class="modal-content voice-recording-panel">
-        <div class="modal-header">
-            <h4>🎤 Запись голосового сообщения</h4>
-            <button class="close-modal">&times;</button>
-        </div>
-        <div class="modal-body">
-            <div class="recording-status">
-                <div id="recordingTimer">00:00</div>
-                <div id="recordingStatus">Готов к записи...</div>
+    <div id="voiceRecordModal" class="modal-overlay" style="display: none;">
+        <div class="modal-content voice-recording-panel">
+            <div class="modal-header">
+                <h4>🎤 Запись голосового сообщения</h4>
+                <button class="close-modal">&times;</button>
             </div>
-            
-            <div class="voice-visualization">
-                <canvas id="voiceVisualization" width="400" height="80"></canvas>
-            </div>
-            
-            <div class="recording-controls">
-                <button id="startRecordingBtn" class="btn btn-success">
-                    🎤 Начать запись
-                </button>
-                <button id="stopRecordingBtn" class="btn btn-danger" disabled>
-                    ⏹️ Остановить
-                </button>
-                <button id="playRecordingBtn" class="btn btn-info" disabled>
-                    ▶️ Прослушать
-                </button>
-                <button id="sendVoiceBtn" class="btn btn-primary" disabled>
-                    📤 Отправить
-                </button>
-                <button id="cancelRecordingBtn" class="btn btn-warning">
-                    ❌ Отмена
-                </button>
-            </div>
-            
-            <div class="recording-info">
-                <p>Максимальная длительность: 5 минут</p>
-                <p>Минимальная длительность: 1 секунда</p>
+            <div class="modal-body">
+                <div class="recording-status">
+                    <div id="recordingTimer">00:00</div>
+                    <div id="recordingStatus">Готов к записи...</div>
+                </div>
+                
+                <div class="voice-visualization">
+                    <canvas id="voiceVisualization" width="400" height="80"></canvas>
+                </div>
+                
+                <div class="recording-controls">
+                    <button id="startRecordingBtn" class="btn btn-success">
+                        🎤 Начать запись
+                    </button>
+                    <button id="stopRecordingBtn" class="btn btn-danger" disabled>
+                        ⏹️ Остановить
+                    </button>
+                    <button id="playRecordingBtn" class="btn btn-info" disabled>
+                        ▶️ Прослушать
+                    </button>
+                    <button id="sendVoiceBtn" class="btn btn-primary" disabled>
+                        📤 Отправить
+                    </button>
+                    <button id="cancelRecordingBtn" class="btn btn-warning">
+                        ❌ Отмена
+                    </button>
+                </div>
+                
+                <div class="recording-info">
+                    <p>Максимальная длительность: 5 минут</p>
+                    <p>Минимальная длительность: 1 секунда</p>
+                </div>
             </div>
         </div>
     </div>
-</div>
 
-       
-</div>
+    <!-- Модальное окно для смены аватара -->
+    <div id="avatarModal" class="modal-overlay" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>🖼️ Смена аватара</h3>
+                <button class="close-modal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="avatar-section">
+                    <div class="avatar-preview" id="avatarPreview">
+                        <img id="avatarPreviewImg" src="/default-avatar.png" alt="Аватар">
+                        <div class="avatar-overlay">
+                            <span>📷</span>
+                            <span>Сменить</span>
+                        </div>
+                    </div>
+                    <input type="file" id="avatarInput" accept="image/*" style="display: none;">
+                    <button id="uploadAvatarBtn" class="btn-secondary">Выбрать файл</button>
+                </div>
+                <div class="avatar-controls" style="margin-top: 20px; display: flex; gap: 10px; justify-content: center;">
+                    <button id="saveAvatarBtn" class="btn-primary" disabled>Сохранить</button>
+                    <button id="cancelAvatarBtn" class="btn-secondary">Отмена</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Модальное окно настроек -->
+    <div id="settingsModal" class="modal-overlay" style="display: none;">
+        <div class="modal-content settings-modal">
+            <div class="modal-header">
+                <h3>⚙️ Настройки профиля</h3>
+                <button class="close-modal">&times;</button>
+            </div>
+            
+            <div class="modal-body">
+                <!-- Вкладки настроек -->
+                <div class="settings-tabs">
+                    <button class="settings-tab active" data-tab="profile">👤 Профиль</button>
+                    <button class="settings-tab" data-tab="appearance">🎨 Внешний вид</button>
+                    <button class="settings-tab" data-tab="privacy">🔒 Приватность</button>
+                    <button class="settings-tab" data-tab="notifications">🔔 Уведомления</button>
+                    <button class="settings-tab" data-tab="currency">🪙 Валюта</button>
+                </div>
+                
+                <!-- Содержимое вкладок -->
+                <div class="settings-content">
+                    <!-- Вкладка профиля -->
+                    <div id="tab-profile" class="settings-tab-content active">
+                        <div class="avatar-section">
+                            <h4>🖼️ Аватар профиля</h4>
+                            <div class="avatar-container">
+                                <div class="avatar-preview-large" id="avatarPreviewLarge">
+                                    <img id="avatarPreviewImgLarge" src="/default-avatar.png" alt="Аватар">
+                                    <div class="avatar-overlay">
+                                        <span>📷</span>
+                                        <span>Сменить аватар</span>
+                                    </div>
+                                </div>
+                                <div class="avatar-controls">
+                                    <input type="file" id="avatarInputSettings" accept="image/*" style="display: none;">
+                                    <button id="uploadAvatarBtnSettings" class="btn-secondary">Выбрать файл</button>
+                                    <button id="removeAvatarBtn" class="btn-warning">Удалить аватар</button>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="profile-info">
+                            <h4>📝 Информация профиля</h4>
+                            <div class="form-group">
+                                <label>Имя пользователя:</label>
+                                <input type="text" id="usernameDisplay" class="form-input" readonly>
+                            </div>
+                            <div class="form-group">
+                                <label>Дата регистрации:</label>
+                                <input type="text" id="registrationDate" class="form-input" readonly>
+                            </div>
+                            <div class="form-group">
+                                <label>Статус:</label>
+                                <select id="userStatus" class="form-input">
+                                    <option value="online">🟢 Online</option>
+                                    <option value="away">🟡 Отошел</option>
+                                    <option value="dnd">🔴 Не беспокоить</option>
+                                    <option value="offline">⚫ Offline</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Вкладка внешнего вида -->
+                    <div id="tab-appearance" class="settings-tab-content">
+                        <div class="theme-section">
+                            <h4>🎨 Выбор темы</h4>
+                            <div class="theme-selector">
+                                <div class="theme-option" data-theme="light">
+                                    <div class="theme-preview light-theme">
+                                        <div class="preview-header"></div>
+                                        <div class="preview-content"></div>
+                                    </div>
+                                    <span>🌞 Светлая</span>
+                                </div>
+                                <div class="theme-option" data-theme="dark">
+                                    <div class="theme-preview dark-theme">
+                                        <div class="preview-header"></div>
+                                        <div class="preview-content"></div>
+                                    </div>
+                                    <span>🌙 Тёмная</span>
+                                </div>
+                                <div class="theme-option" data-theme="auto">
+                                    <div class="theme-preview auto-theme">
+                                        <div class="preview-header"></div>
+                                        <div class="preview-content"></div>
+                                    </div>
+                                    <span>⚡ Авто</span>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="accent-color-section">
+                            <h4>🎨 Акцентный цвет</h4>
+                            <div class="color-selector">
+                                <div class="color-option" data-color="#007bff" style="background: #007bff;"></div>
+                                <div class="color-option" data-color="#28a745" style="background: #28a745;"></div>
+                                <div class="color-option" data-color="#dc3545" style="background: #dc3545;"></div>
+                                <div class="color-option" data-color="#ffc107" style="background: #ffc107;"></div>
+                                <div class="color-option" data-color="#6f42c1" style="background: #6f42c1;"></div>
+                                <div class="color-option" data-color="#fd7e14" style="background: #fd7e14;"></div>
+                            </div>
+                        </div>
+                        
+                        <div class="layout-options">
+                            <h4>📐 Настройки интерфейса</h4>
+                            <div class="checkbox-group">
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="compactMode" class="checkbox-input">
+                                    <span class="checkbox-custom"></span>
+                                    Компактный режим
+                                </label>
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="showAvatars" class="checkbox-input" checked>
+                                    <span class="checkbox-custom"></span>
+                                    Показывать аватары
+                                </label>
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="animations" class="checkbox-input" checked>
+                                    <span class="checkbox-custom"></span>
+                                    Анимации интерфейса
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Вкладка приватности -->
+                    <div id="tab-privacy" class="settings-tab-content">
+                        <div class="privacy-section">
+                            <h4>🔒 Настройки приватности</h4>
+                            <div class="checkbox-group">
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="showOnlineStatus" class="checkbox-input" checked>
+                                    <span class="checkbox-custom"></span>
+                                    Показывать статус онлайн
+                                </label>
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="allowGroupInvites" class="checkbox-input" checked>
+                                    <span class="checkbox-custom"></span>
+                                    Разрешить приглашения в группы
+                                </label>
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="allowPrivateMessages" class="checkbox-input" checked>
+                                    <span class="checkbox-custom"></span>
+                                    Разрешить личные сообщения
+                                </label>
+                            </div>
+                        </div>
+                        
+                        <div class="security-section">
+                            <h4>🔐 Безопасность</h4>
+                            <button id="changePasswordBtn" class="btn-secondary">Сменить пароль</button>
+                            <button id="logoutAllBtn" class="btn-warning">Выйти со всех устройств</button>
+                        </div>
+                    </div>
+                    
+                    <!-- Вкладка уведомлений -->
+                    <div id="tab-notifications" class="settings-tab-content">
+                        <div class="notifications-section">
+                            <h4>🔔 Настройки уведомлений</h4>
+                            <div class="checkbox-group">
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="notifyMessages" class="checkbox-input" checked>
+                                    <span class="checkbox-custom"></span>
+                                    Уведомления о новых сообщениях
+                                </label>
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="notifyCalls" class="checkbox-input" checked>
+                                    <span class="checkbox-custom"></span>
+                                    Уведомления о звонках
+                                </label>
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="notifyMentions" class="checkbox-input" checked>
+                                    <span class="checkbox-custom"></span>
+                                    Уведомления об упоминаниях
+                                </label>
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="soundEnabled" class="checkbox-input" checked>
+                                    <span class="checkbox-custom"></span>
+                                    Звуковые уведомления
+                                </label>
+                            </div>
+                        </div>
+                        
+                        <div class="notification-sounds">
+                            <h4>🔊 Звуки уведомлений</h4>
+                            <div class="form-group">
+                                <label>Мелодия уведомления:</label>
+                                <select id="notificationSound" class="form-input">
+                                    <option value="default">По умолчанию</option>
+                                    <option value="chime">Колокольчик</option>
+                                    <option value="ding">Звонок</option>
+                                    <option value="pop">Щелчок</option>
+                                </select>
+                            </div>
+                            <button id="testSoundBtn" class="btn-secondary">Проверить звук</button>
+                        </div>
+                    </div>
+
+                    <!-- Вкладка валюты -->
+                    <div id="tab-currency" class="settings-tab-content">
+                        <div class="currency-section">
+                            <h4>🪙 Баланс и награды</h4>
+                            
+                            <!-- Блок баланса -->
+                            <div class="currency-balance">
+                                <div class="balance-display">
+                                    <img src="/coin.png" class="currency-icon" alt="Монеты">
+                                    <div class="balance-info">
+                                        <span class="balance-label">Ваш баланс:</span>
+                                        <span class="balance-amount" id="userBalance">0</span>
+                                    </div>
+                                </div>
+                                <button id="dailyRewardBtn" class="btn-primary daily-reward-btn">
+                                    🎁 Получить ежедневную награду
+                                </button>
+                            </div>
+                            
+                            <!-- Информация о наградах -->
+                            <div class="daily-reward-info">
+                                <h5>Ежедневные награды</h5>
+                                <div class="reward-stats">
+                                    <div class="stat-item">
+                                        <span class="stat-label">Текущая серия:</span>
+                                        <span class="stat-value" id="dailyStreak">0 дней</span>
+                                    </div>
+                                    <div class="stat-item">
+                                        <span class="stat-label">Следующая награда:</span>
+                                        <span class="stat-value" id="nextRewardTime">-</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Магазин подарков -->
+                            <div class="gift-shop-section">
+                                <div class="section-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                                    <h5 style="margin: 0;">🎁 Магазин подарков</h5>
+                                    <span class="gift-count" style="font-size: 12px; color: #6c757d;">
+                                        Ваших подарков: <span id="ownedGiftsCount">0</span>
+                                    </span>
+                                </div>
+                                
+                                <!-- Категории подарков -->
+                                <div class="gift-categories" style="display: flex; gap: 8px; margin-bottom: 15px; flex-wrap: wrap;">
+                                    <button class="category-btn active" data-category="all" style="padding: 6px 12px; border: 1px solid #007bff; background: #007bff; color: white; border-radius: 15px; font-size: 12px; cursor: pointer;">Все</button>
+                                    <button class="category-btn" data-category="decor" style="padding: 6px 12px; border: 1px solid #6c757d; background: white; color: #6c757d; border-radius: 15px; font-size: 12px; cursor: pointer;">🎨 Украшения</button>
+                                    <button class="category-btn" data-category="gift" style="padding: 6px 12px; border: 1px solid #6c757d; background: white; color: #6c757d; border-radius: 15px; font-size: 12px; cursor: pointer;">🎁 Подарки</button>
+                                    <button class="category-btn" data-category="premium" style="padding: 6px 12px; border: 1px solid #6c757d; background: white; color: #6c757d; border-radius: 15px; font-size: 12px; cursor: pointer;">💎 Премиум</button>
+                                </div>
+                                
+                                <!-- Сетка подарков -->
+                                <div class="gifts-grid" id="giftsGrid" style="
+                                    display: grid;
+                                    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+                                    gap: 12px;
+                                    margin-bottom: 20px;
+                                    max-height: 300px;
+                                    overflow-y: auto;
+                                    padding: 10px;
+                                    background: #f8f9fa;
+                                    border-radius: 10px;
+                                ">
+                                    <!-- Подарки будут загружены здесь -->
+                                </div>
+                                
+                                <!-- Список купленных подарков -->
+                                <div class="user-gifts-section">
+                                    <h6 style="margin-bottom: 10px; color: #495057;">🎁 Ваши подарки</h6>
+                                    <div id="userGiftsList" class="user-gifts-list" style="
+                                        display: grid;
+                                        grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+                                        gap: 8px;
+                                        max-height: 120px;
+                                        overflow-y: auto;
+                                        padding: 10px;
+                                        background: white;
+                                        border: 1px solid #e9ecef;
+                                        border-radius: 8px;
+                                    ">
+                                        <!-- Купленные подарки будут здесь -->
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- История операций -->
+                            <div class="currency-history" style="margin-top: 20px;">
+                                <h5>📊 История операций</h5>
+                                <div id="currencyHistory" class="history-list" style="max-height: 150px;">
+                                    <div class="history-empty">История операций пуста</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Кнопки действий -->
+                <div class="settings-actions">
+                    <button id="saveSettings" class="btn-primary">💾 Сохранить настройки</button>
+                    <button id="resetSettings" class="btn-secondary">🔄 Сбросить настройки</button>
+                    <button id="logoutBtn" class="btn-warning">🚪 Выйти</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Модальное окно смены пароля -->
+    <div id="changePasswordModal" class="modal-overlay" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>🔐 Смена пароля</h3>
+                <button class="close-modal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>Текущий пароль:</label>
+                    <input type="password" id="currentPassword" class="form-input">
+                </div>
+                <div class="form-group">
+                    <label>Новый пароль:</label>
+                    <input type="password" id="newPassword" class="form-input">
+                </div>
+                <div class="form-group">
+                    <label>Повторите новый пароль:</label>
+                    <input type="password" id="confirmPassword" class="form-input">
+                </div>
+                <div class="password-strength" id="passwordStrength">
+                    <div class="strength-bar"></div>
+                    <div class="strength-text">Надежность пароля: слабый</div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button id="confirmPasswordChange" class="btn-primary">Сменить пароль</button>
+                <button class="btn-secondary close-modal">Отмена</button>
+            </div>
+        </div>
+    </div>
 
 </body>
 </html>
+
+<script>
+// Класс для управления валютой и магазином подарков
+class CurrencyManager {
+    constructor() {
+        this.balance = 100;
+        this.dailyStreak = 0;
+        this.lastDailyReward = null;
+        this.transactionHistory = [];
+        this.isAdmin = false;
+        
+        this.init();
+    }
+
+    async init() {
+        this.currentUser = document.getElementById('username')?.textContent;
+        this.isAdmin = this.currentUser === 'admin';
+        await this.loadUserData();
+        this.setupEventListeners();
+        this.updateDisplay();
+        
+        console.log('✅ CurrencyManager initialized');
+    }
+
+    async loadUserData() {
+        try {
+            console.log('🔄 Loading currency data for:', this.currentUser);
+            
+            // В реальном приложении здесь будет загрузка с сервера
+            // Пока используем тестовые данные
+            this.balance = 100;
+            this.dailyStreak = 0;
+            this.lastDailyReward = null;
+            this.transactionHistory = [];
+            
+        } catch (error) {
+            console.error('❌ Error loading currency data:', error);
+            this.useDefaultCurrencyData();
+        }
+    }
+
+    useDefaultCurrencyData() {
+        this.balance = 100;
+        this.dailyStreak = 0;
+        this.lastDailyReward = null;
+        this.transactionHistory = [];
+        
+        console.log('✅ Using default currency data');
+    }
+
+    setupEventListeners() {
+        // Кнопка ежедневной награды
+        document.getElementById('dailyRewardBtn')?.addEventListener('click', () => {
+            this.claimDailyReward();
+        });
+
+        // Обновляем таймер следующей награды
+        this.updateNextRewardTimer();
+        setInterval(() => this.updateNextRewardTimer(), 60000);
+
+        // Инициализируем магазин подарков в настройках
+        this.setupGiftShopInSettings();
+    }
+
+    updateDisplay() {
+        // Обновляем баланс
+        const balanceElement = document.getElementById('userBalance');
+        if (balanceElement) {
+            balanceElement.textContent = this.balance;
+        }
+
+        // Обновляем серию
+        const streakElement = document.getElementById('dailyStreak');
+        if (streakElement) {
+            streakElement.textContent = `${this.dailyStreak} дней`;
+        }
+
+        // Обновляем историю
+        this.updateHistoryDisplay();
+
+        // Обновляем магазин подарков в настройках
+        this.updateGiftShopInSettings();
+    }
+
+    canClaimDailyReward() {
+        if (!this.lastDailyReward) {
+            console.log('✅ No previous reward - can claim');
+            return true;
+        }
+
+        const lastClaim = new Date(this.lastDailyReward);
+        const now = new Date();
+        
+        // Награда доступна раз в 23 часа
+        const timeSinceLastReward = now - lastClaim;
+        const hoursSinceLastReward = timeSinceLastReward / (1000 * 60 * 60);
+        
+        return hoursSinceLastReward >= 23;
+    }
+
+    updateNextRewardTimer() {
+        const nextRewardElement = document.getElementById('nextRewardTime');
+        if (!nextRewardElement) return;
+
+        const canClaim = this.canClaimDailyReward();
+
+        if (canClaim) {
+            nextRewardElement.textContent = 'Доступно сейчас!';
+            nextRewardElement.style.color = '#28a745';
+        } else {
+            const now = new Date();
+            const lastClaim = new Date(this.lastDailyReward);
+            const nextRewardTime = new Date(lastClaim.getTime() + (23 * 60 * 60 * 1000));
+            
+            if (nextRewardTime <= now) {
+                nextRewardElement.textContent = 'Доступно сейчас!';
+                nextRewardElement.style.color = '#28a745';
+                return;
+            }
+            
+            const timeUntilReward = nextRewardTime - now;
+            const hours = Math.floor(timeUntilReward / (1000 * 60 * 60));
+            const minutes = Math.floor((timeUntilReward % (1000 * 60 * 60)) / (1000 * 60));
+
+            nextRewardElement.textContent = `Через ${hours}ч ${minutes}м`;
+            nextRewardElement.style.color = '#6c757d';
+        }
+
+        // Обновляем состояние кнопки
+        const rewardBtn = document.getElementById('dailyRewardBtn');
+        if (rewardBtn) {
+            rewardBtn.disabled = !canClaim;
+            if (canClaim) {
+                rewardBtn.innerHTML = '🎁 Получить ежедневную награду';
+                rewardBtn.style.background = 'linear-gradient(45deg, #28a745, #20c997)';
+            } else {
+                rewardBtn.innerHTML = '⏳ Награда скоро будет доступна';
+                rewardBtn.style.background = 'rgba(255, 255, 255, 0.2)';
+            }
+        }
+    }
+
+    async claimDailyReward() {
+        if (!this.canClaimDailyReward()) {
+            this.showNotification('Вы уже получали награду сегодня. Попробуйте позже.', 'error');
+            return;
+        }
+
+        try {
+            console.log('🎁 Claiming daily reward for:', this.currentUser);
+            
+            // Локальная логика расчета награды
+            const result = this.calculateLocalReward();
+
+            if (result && result.success) {
+                // Обновляем локальные данные
+                this.balance = result.newBalance || this.balance + result.rewardAmount;
+                this.dailyStreak = result.streak || this.dailyStreak + 1;
+                this.lastDailyReward = new Date().toISOString();
+                
+                // Добавляем в историю
+                this.addTransaction({
+                    type: 'daily_reward',
+                    amount: result.rewardAmount || 50,
+                    description: `Ежедневная награда (серия: ${this.dailyStreak} дней)`,
+                    timestamp: new Date().toISOString()
+                });
+
+                this.updateDisplay();
+                this.showRewardNotification(result.rewardAmount || 50, this.dailyStreak);
+                
+                console.log('✅ Daily reward claimed successfully', {
+                    newBalance: this.balance,
+                    newStreak: this.dailyStreak,
+                    lastReward: this.lastDailyReward
+                });
+                
+            } else {
+                throw new Error(result?.error || 'Failed to claim reward');
+            }
+        } catch (error) {
+            console.error('❌ Error claiming daily reward:', error);
+            this.showNotification('Ошибка получения награды: ' + error.message, 'error');
+        }
+    }
+
+    calculateLocalReward() {
+        // Локальная логика расчета награды
+        const baseReward = 50;
+        const streakBonus = Math.min(this.dailyStreak * 5, 100);
+        const totalReward = baseReward + streakBonus;
+        
+        return {
+            success: true,
+            rewardAmount: totalReward,
+            newBalance: this.balance + totalReward,
+            streak: this.dailyStreak + 1
+        };
+    }
+
+    addTransaction(transaction) {
+        this.transactionHistory.unshift(transaction);
+        if (this.transactionHistory.length > 50) {
+            this.transactionHistory = this.transactionHistory.slice(0, 50);
+        }
+    }
+
+    updateHistoryDisplay() {
+        const historyElement = document.getElementById('currencyHistory');
+        if (!historyElement) return;
+
+        if (this.transactionHistory.length === 0) {
+            historyElement.innerHTML = '<div class="history-empty">История операций пуста</div>';
+            return;
+        }
+
+        historyElement.innerHTML = this.transactionHistory.map(transaction => `
+            <div class="history-item">
+                <div class="history-info">
+                    <div class="history-description">${transaction.description}</div>
+                    <div class="history-date">${this.formatDate(transaction.timestamp)}</div>
+                </div>
+                <div class="history-amount ${transaction.amount >= 0 ? 'positive' : 'negative'}">
+                    ${transaction.amount >= 0 ? '+' : ''}${transaction.amount}
+                </div>
+            </div>
+        `).join('');
+    }
+
+    formatDate(timestamp) {
+        const date = new Date(timestamp);
+        return date.toLocaleDateString('ru-RU') + ' ' + date.toLocaleTimeString('ru-RU', {
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+    }
+
+    showRewardNotification(amount, streak) {
+        const notification = document.createElement('div');
+        notification.className = 'reward-notification';
+        notification.innerHTML = `
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <div style="font-size: 24px;">🪙</div>
+                <div>
+                    <div>🎉 Вы получили ${amount} монет!</div>
+                    ${streak > 1 ? `<div style="font-size: 12px; opacity: 0.9;">Серия: ${streak} дней подряд!</div>` : ''}
+                </div>
+            </div>
+        `;
+        
+        // Добавляем анимацию к иконке валюты в балансе
+        const currencyIcon = document.querySelector('.currency-icon');
+        if (currencyIcon) {
+            currencyIcon.classList.add('coin-animation');
+            setTimeout(() => {
+                currencyIcon.classList.remove('coin-animation');
+            }, 800);
+        }
+
+        // Вставляем уведомление
+        const balanceDisplay = document.querySelector('.currency-balance');
+        if (balanceDisplay) {
+            balanceDisplay.parentNode.insertBefore(notification, balanceDisplay);
+            
+            // Убираем уведомление через 3 секунды
+            setTimeout(() => {
+                if (notification.parentNode) {
+                    notification.style.opacity = '0';
+                    notification.style.transform = 'translateY(-20px)';
+                    setTimeout(() => {
+                        if (notification.parentNode) {
+                            notification.remove();
+                        }
+                    }, 300);
+                }
+            }, 3000);
+        }
+    }
+
+    // Магазин подарков в настройках
+    setupGiftShopInSettings() {
+        this.loadGiftsToSettingsShop();
+        this.setupGiftShopEventsInSettings();
+    }
+
+    loadGiftsToSettingsShop() {
+        const giftsGrid = document.getElementById('giftsGrid');
+        if (!giftsGrid) return;
+
+        giftsGrid.innerHTML = '';
+
+        if (!window.giftManager) {
+            giftsGrid.innerHTML = '<div style="text-align: center; color: #6c757d; padding: 20px;">Магазин подарков загружается...</div>';
+            return;
+        }
+
+        window.giftManager.gifts.forEach(gift => {
+            const giftElement = document.createElement('div');
+            giftElement.className = `gift-item ${gift.type}`;
+            
+            const isOwned = window.giftManager.isGiftOwned(gift.id);
+            const canAfford = this.balance >= gift.price;
+            
+            giftElement.innerHTML = `
+                <div class="gift-icon">${gift.name.split(' ')[0]}</div>
+                <div class="gift-name">${gift.name}</div>
+                <div class="gift-price">${gift.price} 🪙</div>
+                <div class="gift-type">
+                    ${this.getGiftTypeBadge(gift.type)}
+                </div>
+                <button class="buy-gift-btn ${isOwned ? 'owned' : ''}" 
+                        data-gift-id="${gift.id}"
+                        ${isOwned ? 'disabled' : !canAfford ? 'disabled' : ''}>
+                    ${isOwned ? '✅ Куплен' : !canAfford ? '💸 Не хватает' : '🛒 Купить'}
+                </button>
+            `;
+
+            if (!isOwned && canAfford) {
+                const buyBtn = giftElement.querySelector('.buy-gift-btn');
+                buyBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    this.buyGiftFromSettings(gift);
+                });
+            }
+
+            giftsGrid.appendChild(giftElement);
+        });
+
+        this.updateGiftShopInSettings();
+    }
+
+    getGiftTypeBadge(type) {
+        const badges = {
+            'common': '<span style="background: #6c757d; color: white; padding: 2px 6px; border-radius: 10px; font-size: 9px;">Обычный</span>',
+            'rare': '<span style="background: #007bff; color: white; padding: 2px 6px; border-radius: 10px; font-size: 9px;">Редкий</span>',
+            'epic': '<span style="background: #6f42c1; color: white; padding: 2px 6px; border-radius: 10px; font-size: 9px;">Эпический</span>',
+            'legendary': '<span style="background: #fd7e14; color: white; padding: 2px 6px; border-radius: 10px; font-size: 9px;">Легендарный</span>'
+        };
+        return badges[type] || badges.common;
+    }
+
+    setupGiftShopEventsInSettings() {
+        const categoryBtns = document.querySelectorAll('#tab-currency .category-btn');
+        const giftsGrid = document.getElementById('giftsGrid');
+
+        categoryBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                categoryBtns.forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                this.filterGiftsInSettings(btn.dataset.category);
+            });
+        });
+
+        // Обновляем магазин при переключении на вкладку валюты
+        const currencyTab = document.querySelector('.settings-tab[data-tab="currency"]');
+        if (currencyTab) {
+            currencyTab.addEventListener('click', () => {
+                setTimeout(() => {
+                    this.loadGiftsToSettingsShop();
+                }, 100);
+            });
+        }
+    }
+
+    filterGiftsInSettings(category) {
+        if (!window.giftManager) return;
+
+        const giftItems = document.querySelectorAll('#giftsGrid .gift-item');
+        giftItems.forEach(item => {
+            const giftName = item.querySelector('.gift-name').textContent;
+            const gift = window.giftManager.gifts.find(g => g.name === giftName);
+            
+            if (category === 'all' || gift.category === category) {
+                item.style.display = 'block';
+            } else {
+                item.style.display = 'none';
+            }
+        });
+    }
+
+    async buyGiftFromSettings(gift) {
+        if (!window.giftManager) {
+            this.showNotification('Магазин подарков недоступен', 'error');
+            return;
+        }
+
+        try {
+            await window.giftManager.buyGift(gift);
+            this.loadGiftsToSettingsShop();
+            this.updateDisplay();
+        } catch (error) {
+            console.error('Error buying gift from settings:', error);
+        }
+    }
+
+    updateGiftShopInSettings() {
+        this.updateGiftShopBalanceInSettings();
+        this.updateUserGiftsListInSettings();
+    }
+
+    updateGiftShopBalanceInSettings() {
+        const balanceElement = document.getElementById('userBalance');
+        if (balanceElement) {
+            balanceElement.textContent = this.balance;
+        }
+
+        const ownedCountElement = document.getElementById('ownedGiftsCount');
+        if (ownedCountElement && window.giftManager) {
+            const currentUser = document.getElementById('username')?.textContent;
+            const ownedCount = window.giftManager.userGifts.get(currentUser)?.length || 0;
+            ownedCountElement.textContent = ownedCount;
+        }
+    }
+
+    updateUserGiftsListInSettings() {
+        const userGiftsList = document.getElementById('userGiftsList');
+        if (!userGiftsList || !window.giftManager) return;
+
+        const currentUser = document.getElementById('username')?.textContent;
+        const userGifts = window.giftManager.userGifts.get(currentUser) || [];
+
+        if (userGifts.length === 0) {
+            userGiftsList.innerHTML = '<div style="text-align: center; color: #6c757d; padding: 10px; font-size: 11px;">Пока нет подарков</div>';
+            return;
+        }
+
+        userGiftsList.innerHTML = userGifts.map(gift => `
+            <div class="owned-gift-item" title="${gift.name} (куплен ${new Date(gift.purchaseDate).toLocaleDateString()})">
+                <div class="owned-gift-icon">${gift.name.split(' ')[0]}</div>
+                <div class="owned-gift-name">${gift.name.split(' ').slice(1).join(' ')}</div>
+            </div>
+        `).join('');
+    }
+
+    showNotification(message, type = 'info') {
+        // Простая реализация уведомления
+        const notification = document.createElement('div');
+        notification.className = `notification ${type}`;
+        notification.textContent = message;
+        notification.style.cssText = `
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 12px 20px;
+            border-radius: 8px;
+            color: white;
+            font-weight: bold;
+            z-index: 10010;
+            background: ${type === 'error' ? '#dc3545' : type === 'success' ? '#28a745' : '#17a2b8'};
+        `;
+        
+        document.body.appendChild(notification);
+        
+        setTimeout(() => {
+            if (notification.parentElement) {
+                notification.remove();
+            }
+        }, 3000);
+    }
+}
+
+// Класс для управления подарками
+class GiftManager {
+    constructor() {
+        this.gifts = [
+            { id: 'gift_1', name: '🎈 Воздушный шарик', price: 10, type: 'common', category: 'decor' },
+            { id: 'gift_2', name: '🎁 Подарок', price: 25, type: 'common', category: 'gift' },
+            { id: 'gift_3', name: '🏆 Кубок', price: 50, type: 'rare', category: 'achievement' },
+            { id: 'gift_4', name: '👑 Корона', price: 100, type: 'epic', category: 'premium' },
+            { id: 'gift_5', name: '⭐ Звезда', price: 30, type: 'common', category: 'decor' },
+            { id: 'gift_6', name: '💖 Сердце', price: 40, type: 'common', category: 'emotion' },
+            { id: 'gift_7', name: '🚀 Ракета', price: 75, type: 'rare', category: 'premium' },
+            { id: 'gift_8', name: '🎨 Палитра', price: 35, type: 'common', category: 'creativity' },
+            { id: 'gift_9', name: '🏅 Медаль', price: 60, type: 'rare', category: 'achievement' },
+            { id: 'gift_10', name: '💎 Алмаз', price: 150, type: 'legendary', category: 'premium' }
+        ];
+        
+        this.userGifts = new Map();
+        
+        this.init();
+    }
+
+    async init() {
+        await this.loadUserGifts();
+        console.log('✅ GiftManager initialized');
+    }
+
+    async loadUserGifts() {
+        try {
+            // В реальном приложении здесь будет загрузка с сервера
+            const testGifts = {
+                'user1': [
+                    { id: 'gift_1', name: '🎈 Воздушный шарик', purchaseDate: new Date().toISOString(), price: 10 },
+                    { id: 'gift_5', name: '⭐ Звезда', purchaseDate: new Date().toISOString(), price: 30 }
+                ]
+            };
+            
+            Object.entries(testGifts).forEach(([username, gifts]) => {
+                this.userGifts.set(username, gifts);
+            });
+            
+        } catch (error) {
+            console.log('⚠️ Using local gift data');
+        }
+    }
+
+    isGiftOwned(giftId) {
+        const currentUser = document.getElementById('username')?.textContent;
+        if (!currentUser || !this.userGifts.has(currentUser)) return false;
+        
+        return this.userGifts.get(currentUser).some(gift => gift.id === giftId);
+    }
+
+    async buyGift(gift) {
+        const currentUser = document.getElementById('username')?.textContent;
+        if (!currentUser) {
+            this.showNotification('Ошибка: пользователь не определен', 'error');
+            return;
+        }
+
+        try {
+            // Проверяем баланс
+            if (!window.currencyManager || window.currencyManager.balance < gift.price) {
+                this.showNotification('Недостаточно монет для покупки', 'error');
+                return;
+            }
+
+            // Проверяем, есть ли уже такой подарок
+            if (this.isGiftOwned(gift.id)) {
+                this.showNotification('У вас уже есть этот подарок', 'error');
+                return;
+            }
+
+            // Списание средств
+            window.currencyManager.balance -= gift.price;
+            
+            // Добавляем подарок пользователю
+            if (!this.userGifts.has(currentUser)) {
+                this.userGifts.set(currentUser, []);
+            }
+            
+            this.userGifts.get(currentUser).push({
+                id: gift.id,
+                name: gift.name,
+                purchaseDate: new Date().toISOString(),
+                price: gift.price
+            });
+
+            this.showNotification(`🎉 Вы купили ${gift.name} за ${gift.price} монет!`, 'success');
+            
+        } catch (error) {
+            console.error('❌ Gift purchase error:', error);
+            this.showNotification('Ошибка покупки подарка', 'error');
+        }
+    }
+
+    showNotification(message, type = 'info') {
+        // Простая реализация уведомления
+        const notification = document.createElement('div');
+        notification.className = `notification ${type}`;
+        notification.textContent = message;
+        notification.style.cssText = `
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 12px 20px;
+            border-radius: 8px;
+            color: white;
+            font-weight: bold;
+            z-index: 10010;
+            background: ${type === 'error' ? '#dc3545' : type === 'success' ? '#28a745' : '#17a2b8'};
+        `;
+        
+        document.body.appendChild(notification);
+        
+        setTimeout(() => {
+            if (notification.parentElement) {
+                notification.remove();
+            }
+        }, 3000);
+    }
+}
+
+// Инициализация при загрузке страницы
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('🚀 Starting application initialization...');
+    
+    // Инициализируем менеджеры
+    if (!window.currencyManager) {
+        window.currencyManager = new CurrencyManager();
+        console.log('✅ CurrencyManager initialized');
+    }
+    
+    if (!window.giftManager) {
+        window.giftManager = new GiftManager();
+        console.log('✅ GiftManager initialized');
+    }
+
+    // Обработчик для кнопки настроек
+    document.getElementById('settingsBtn')?.addEventListener('click', function() {
+        const modal = document.getElementById('settingsModal');
+        if (modal) {
+            modal.style.display = 'flex';
+        }
+    });
+
+    // Обработчик для закрытия модальных окон
+    document.querySelectorAll('.close-modal').forEach(btn => {
+        btn.addEventListener('click', function() {
+            this.closest('.modal-overlay').style.display = 'none';
+        });
+    });
+
+    // Обработчик для клика вне модального окна
+    document.querySelectorAll('.modal-overlay').forEach(modal => {
+        modal.addEventListener('click', function(e) {
+            if (e.target === this) {
+                this.style.display = 'none';
+            }
+        });
+    });
+
+    // Обработчик для переключения вкладок в настройках
+    document.querySelectorAll('.settings-tab').forEach(tab => {
+        tab.addEventListener('click', function() {
+            // Убираем активный класс у всех вкладок
+            document.querySelectorAll('.settings-tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.settings-tab-content').forEach(c => c.classList.remove('active'));
+            
+            // Добавляем активный класс текущей вкладке
+            this.classList.add('active');
+            const tabName = this.getAttribute('data-tab');
+            document.getElementById(`tab-${tabName}`).classList.add('active');
+
+            // Если переключились на вкладку валюты, обновляем магазин
+            if (tabName === 'currency' && window.currencyManager) {
+                setTimeout(() => {
+                    window.currencyManager.loadGiftsToSettingsShop();
+                }, 100);
+            }
+        });
+    });
+});

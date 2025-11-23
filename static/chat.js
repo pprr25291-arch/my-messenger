@@ -278,7 +278,9 @@ function logout() {
         .catch(() => {
             window.location.href = '/';
         });
-}// Обработчики для переключения между уведомлениями и приватными сообщениями
+}
+
+// Обработчики для переключения между уведомлениями и приватными сообщениями
 function setupChatNavigation() {
     const notificationsBtn = document.getElementById('notificationsBtn');
     const privateBtn = document.getElementById('privateBtn');
@@ -353,7 +355,6 @@ window.switchToNotifications = switchToNotifications;
 window.switchToPrivate = switchToPrivate;
 
 // Инициализация при загрузке страницы
-// Инициализация при загрузке страницы
 document.addEventListener('DOMContentLoaded', function() {
     console.log('🚀 Starting application initialization...');
     
@@ -382,3 +383,45 @@ document.addEventListener('DOMContentLoaded', function() {
     
     console.log('✅ Application initialization complete');
 });
+
+// Функция для получения аватара пользователя с fallback на SVG
+function getUserAvatar(user) {
+    if (!user) return '/default-avatar.svg';
+    
+    // Если user - это объект с полем avatar
+    if (typeof user === 'object' && user.avatar) {
+        return user.avatar;
+    }
+    
+    // Если user - это строка (имя пользователя), пытаемся найти его аватар
+    if (typeof user === 'string') {
+        // Здесь можно добавить логику получения аватара по имени пользователя
+        return '/default-avatar.svg';
+    }
+    
+    return '/default-avatar.svg';
+}
+
+// Переопределяем функцию отображения пользователей, если она есть
+if (window.PrivateChat) {
+    const originalDisplayUser = window.PrivateChat.prototype.displayUser;
+    window.PrivateChat.prototype.displayUser = function(user) {
+        // Исправляем аватар перед отображением
+        if (user && typeof user === 'object') {
+            user.avatar = getUserAvatar(user);
+        }
+        return originalDisplayUser.call(this, user);
+    };
+}
+
+// Переопределяем функцию отображения сообщений, если она есть
+if (window.PrivateChat) {
+    const originalDisplayMessage = window.PrivateChat.prototype.displayMessage;
+    window.PrivateChat.prototype.displayMessage = function(message) {
+        // Исправляем аватар в сообщениях
+        if (message && message.senderInfo) {
+            message.senderInfo.avatar = getUserAvatar(message.senderInfo);
+        }
+        return originalDisplayMessage.call(this, message);
+    };
+}

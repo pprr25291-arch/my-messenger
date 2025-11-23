@@ -1,22 +1,3 @@
-document.addEventListener('DOMContentLoaded', function() {
-    const loginForm = document.getElementById('loginForm');
-    const registerForm = document.getElementById('registerForm');
-
-    if (loginForm) {
-        loginForm.addEventListener('submit', async function(e) {
-            e.preventDefault();
-            await handleLogin();
-        });
-    }
-
-    if (registerForm) {
-        registerForm.addEventListener('submit', async function(e) {
-            e.preventDefault();
-            await handleRegister();
-        });
-    }
-});
-
 async function handleLogin() {
     const form = document.getElementById('loginForm');
     const formData = new FormData(form);
@@ -58,16 +39,18 @@ async function handleLogin() {
 async function handleRegister() {
     const form = document.getElementById('registerForm');
     const formData = new FormData(form);
-    const data = {
-        username: formData.get('username'),
-        password: formData.get('password')
-    };
+    
+    // Валидация
+    const username = formData.get('username');
+    const password = formData.get('password');
+    const avatarFile = formData.get('avatar');
 
-    if (data.username.length < 3) {
+    if (username.length < 3) {
         showError('Имя пользователя должно быть не менее 3 символов');
+        return;
     }
 
-    if (data.password.length < 6) {
+    if (password.length < 6) {
         showError('Пароль должен быть не менее 6 символов');
         return;
     }
@@ -75,17 +58,15 @@ async function handleRegister() {
     try {
         const response = await fetch('/api/register', {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(data)
+            body: formData // Отправляем FormData, а не JSON
+            // НЕ добавляем Content-Type - браузер установит его автоматически с boundary
         });
 
         const result = await response.json();
 
-        if (result.success) {
+        if (response.ok && result.success) {
             localStorage.setItem('authToken', result.token);
-            localStorage.setItem('username', data.username);
+            localStorage.setItem('username', username);
             document.cookie = `token=${result.token}; path=/; max-age=86400`;
             window.location.href = '/chat';
         } else {
@@ -151,5 +132,111 @@ function getTokenFromCookie() {
     return tokenCookie ? tokenCookie.split('=')[1] : null;
 }
 
+// Обработчики для страницы регистрации
+document.addEventListener('DOMContentLoaded', function() {
+    initializeAvatarUpload();
+    
+    // Обработчик для формы регистрации
+    const registerForm = document.getElementById('registerForm');
+    if (registerForm) {
+        registerForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            handleRegister(); // Исправлено: вызываем существующую функцию
+        });
+    }
+    
+    // Обработчик для формы логина (если есть на странице)
+    const loginForm = document.getElementById('loginForm');
+    if (loginForm) {
+        loginForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            handleLogin();
+        });
+    }
+});
+
+function initializeAvatarUpload() {
+    const avatarInput = document.getElementById('avatarInput');
+    const changeAvatarBtn = document.getElementById('changeAvatarBtn');
+    const avatarPreview = document.getElementById('avatarPreview');
+    const avatarOverlay = document.querySelector('.avatar-overlay');
+
+    if (!avatarInput || !changeAvatarBtn) return;
+
+    // Обработчик клика на кнопку "Изменить аватар"
+    changeAvatarBtn.addEventListener('click', function(e) {
+        e.preventDefault();
+        avatarInput.click();
+    });
+
+    // Обработчик клика на область предпросмотра аватара
+    if (avatarPreview && avatarOverlay) {
+        avatarPreview.addEventListener('click', function(e) {
+            e.preventDefault();
+            avatarInput.click();
+        });
+
+        avatarOverlay.addEventListener('click', function(e) {
+            e.preventDefault();
+            avatarInput.click();
+        });
+    }
+
+    // Обработчик выбора файла
+    avatarInput.addEventListener('change', function(e) {
+        const file = e.target.files[0];
+        if (file) {
+            // Проверяем тип файла
+            if (!file.type.match('image.*')) {
+                alert('Пожалуйста, выберите файл изображения (JPEG, PNG, GIF и т.д.)');
+                return;
+            }
+
+            // Проверяем размер файла (максимум 5MB)
+            if (file.size > 5 * 1024 * 1024) {
+                alert('Размер файла не должен превышать 5MB');
+                return;
+            }
+
+            // Показываем превью выбранного изображения
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                if (avatarPreview) {
+                    avatarPreview.src = e.target.result;
+                    avatarPreview.style.display = 'block';
+                }
+                
+                // Скрываем overlay после выбора изображения
+                if (avatarOverlay) {
+                    avatarOverlay.style.display = 'none';
+                }
+            };
+            reader.readAsDataURL(file);
+        }
+    });
+
+    // Добавляем стили для hover эффекта
+    if (avatarPreview) {
+        avatarPreview.style.cursor = 'pointer';
+        avatarPreview.style.transition = 'opacity 0.3s ease';
+        
+        avatarPreview.addEventListener('mouseenter', function() {
+            if (avatarOverlay) {
+                avatarOverlay.style.display = 'flex';
+            }
+        });
+
+        avatarPreview.addEventListener('mouseleave', function() {
+            // Не скрываем overlay если уже выбрано изображение
+            if (avatarInput.files.length === 0 && avatarOverlay) {
+                avatarOverlay.style.display = 'flex';
+            }
+        });
+    }
+}
+
+// Экспортируем функции в глобальную область видимости
+window.handleLogin = handleLogin;
+window.handleRegister = handleRegister;
 window.checkAuthForChat = checkAuthForChat;
 window.getTokenFromCookie = getTokenFromCookie;

@@ -1,1 +1,14 @@
-[]
+[
+  {
+    "id": "group_1761810051409_fynpu8cv0",
+    "name": "ы",
+    "members": [
+      "aaa",
+      "admin"
+    ],
+    "createdBy": "aaa",
+    "createdAt": "2025-10-30T07:40:51.409Z",
+    "messages": [],
+    "memberCount": 2
+  }
+]

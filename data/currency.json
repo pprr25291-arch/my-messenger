@@ -1,0 +1,1278 @@
+{
+  "aaa": {
+    "balance": 0,
+    "dailyStreak": 4,
+    "lastDailyReward": "2025-11-21T04:45:08.115Z",
+    "transactionHistory": [
+      {
+        "type": "admin_remove",
+        "amount": -10005235716,
+        "description": "Административное списание",
+        "timestamp": "2025-11-21T06:04:02.818Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_remove",
+        "amount": -10,
+        "description": "Административное списание",
+        "timestamp": "2025-11-21T06:03:46.986Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_remove",
+        "amount": -10,
+        "description": "Административное списание",
+        "timestamp": "2025-11-21T06:03:46.835Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_remove",
+        "amount": -10,
+        "description": "Административное списание",
+        "timestamp": "2025-11-21T06:03:46.656Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_remove",
+        "amount": -10,
+        "description": "Административное списание",
+        "timestamp": "2025-11-21T06:03:46.472Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_remove",
+        "amount": -10,
+        "description": "Административное списание",
+        "timestamp": "2025-11-21T06:03:46.298Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_remove",
+        "amount": -10,
+        "description": "Административное списание",
+        "timestamp": "2025-11-21T06:03:46.128Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_remove",
+        "amount": -10,
+        "description": "Административное списание",
+        "timestamp": "2025-11-21T06:03:45.985Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_remove",
+        "amount": -10,
+        "description": "Административное списание",
+        "timestamp": "2025-11-21T06:03:45.823Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_remove",
+        "amount": -10,
+        "description": "Административное списание",
+        "timestamp": "2025-11-21T06:03:45.657Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_remove",
+        "amount": -10,
+        "description": "Административное списание",
+        "timestamp": "2025-11-21T06:03:45.499Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_remove",
+        "amount": -10,
+        "description": "Административное списание",
+        "timestamp": "2025-11-21T06:03:45.337Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_remove",
+        "amount": -10,
+        "description": "Административное списание",
+        "timestamp": "2025-11-21T06:03:45.186Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_remove",
+        "amount": -10,
+        "description": "Административное списание",
+        "timestamp": "2025-11-21T06:03:45.033Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_remove",
+        "amount": -10,
+        "description": "Административное списание",
+        "timestamp": "2025-11-21T06:03:44.872Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_remove",
+        "amount": -10,
+        "description": "Административное списание",
+        "timestamp": "2025-11-21T06:03:44.704Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_remove",
+        "amount": -10,
+        "description": "Административное списание",
+        "timestamp": "2025-11-21T06:03:44.544Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_remove",
+        "amount": -10,
+        "description": "Административное списание",
+        "timestamp": "2025-11-21T06:03:44.376Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_remove",
+        "amount": -10,
+        "description": "Административное списание",
+        "timestamp": "2025-11-21T06:03:44.186Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_remove",
+        "amount": -10,
+        "description": "Административное списание",
+        "timestamp": "2025-11-21T06:03:43.992Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_add",
+        "amount": 10,
+        "description": "Административное начисление",
+        "timestamp": "2025-11-21T06:03:43.160Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_add",
+        "amount": 10,
+        "description": "Административное начисление",
+        "timestamp": "2025-11-21T06:03:42.991Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_add",
+        "amount": 10,
+        "description": "Административное начисление",
+        "timestamp": "2025-11-21T06:03:42.792Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_add",
+        "amount": 10,
+        "description": "Административное начисление",
+        "timestamp": "2025-11-21T06:03:42.571Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_add",
+        "amount": 10,
+        "description": "Административное начисление",
+        "timestamp": "2025-11-21T06:03:42.272Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_add",
+        "amount": 10,
+        "description": "Административное начисление",
+        "timestamp": "2025-11-21T06:03:41.801Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_add",
+        "amount": 10,
+        "description": "Административное начисление",
+        "timestamp": "2025-11-21T06:03:40.624Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_add",
+        "amount": 10,
+        "description": "Административное начисление",
+        "timestamp": "2025-11-21T06:03:40.050Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_add",
+        "amount": 1000,
+        "description": "Административное начисление",
+        "timestamp": "2025-11-21T05:57:33.509Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_add",
+        "amount": 1000,
+        "description": "Административное начисление",
+        "timestamp": "2025-11-21T05:57:31.748Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_add",
+        "amount": 1000,
+        "description": "Административное начисление",
+        "timestamp": "2025-11-21T05:57:31.110Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_remove",
+        "amount": -1000,
+        "description": "Административное списание",
+        "timestamp": "2025-11-21T05:57:30.181Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_remove",
+        "amount": -1000,
+        "description": "Административное списание",
+        "timestamp": "2025-11-21T05:57:29.925Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_remove",
+        "amount": -1000,
+        "description": "Административное списание",
+        "timestamp": "2025-11-21T05:57:29.644Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_remove",
+        "amount": -1000,
+        "description": "Административное списание",
+        "timestamp": "2025-11-21T05:57:29.389Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_remove",
+        "amount": -1000,
+        "description": "Административное списание",
+        "timestamp": "2025-11-21T05:57:28.718Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_add",
+        "amount": 10,
+        "description": "Административное начисление",
+        "timestamp": "2025-11-21T05:24:48.532Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_add",
+        "amount": 10,
+        "description": "Административное начисление",
+        "timestamp": "2025-11-21T05:24:48.187Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_add",
+        "amount": 10,
+        "description": "Административное начисление",
+        "timestamp": "2025-11-21T05:24:47.876Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_add",
+        "amount": 10,
+        "description": "Административное начисление",
+        "timestamp": "2025-11-21T05:24:47.276Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_add",
+        "amount": 10,
+        "description": "Административное начисление",
+        "timestamp": "2025-11-21T05:24:46.605Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_add",
+        "amount": 1000,
+        "description": "Административное начисление",
+        "timestamp": "2025-11-21T05:24:39.090Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_add",
+        "amount": 1000,
+        "description": "Административное начисление",
+        "timestamp": "2025-11-21T05:24:37.484Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_add",
+        "amount": 1000,
+        "description": "Административное начисление",
+        "timestamp": "2025-11-21T05:24:36.611Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_add",
+        "amount": 1000,
+        "description": "Административное начисление",
+        "timestamp": "2025-11-21T05:24:36.403Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_add",
+        "amount": 1000,
+        "description": "Административное начисление",
+        "timestamp": "2025-11-21T05:24:36.170Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_add",
+        "amount": 1000,
+        "description": "Административное начисление",
+        "timestamp": "2025-11-21T05:24:35.963Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_add",
+        "amount": 1000,
+        "description": "Административное начисление",
+        "timestamp": "2025-11-21T05:24:35.738Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_add",
+        "amount": 1000,
+        "description": "Административное начисление",
+        "timestamp": "2025-11-21T05:24:35.363Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_add",
+        "amount": 1000,
+        "description": "Административное начисление",
+        "timestamp": "2025-11-21T05:24:35.116Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_add",
+        "amount": 1000,
+        "description": "Административное начисление",
+        "timestamp": "2025-11-21T05:24:34.931Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_add",
+        "amount": 1000,
+        "description": "Административное начисление",
+        "timestamp": "2025-11-21T05:24:34.755Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_add",
+        "amount": 1000,
+        "description": "Административное начисление",
+        "timestamp": "2025-11-21T05:24:34.587Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_add",
+        "amount": 1000,
+        "description": "Административное начисление",
+        "timestamp": "2025-11-21T05:24:34.419Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_add",
+        "amount": 1000,
+        "description": "Административное начисление",
+        "timestamp": "2025-11-21T05:24:34.242Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_add",
+        "amount": 1000,
+        "description": "Административное начисление",
+        "timestamp": "2025-11-21T05:24:34.058Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_add",
+        "amount": 1000,
+        "description": "Административное начисление",
+        "timestamp": "2025-11-21T05:24:33.875Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_add",
+        "amount": 1000,
+        "description": "Административное начисление",
+        "timestamp": "2025-11-21T05:24:33.683Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_add",
+        "amount": 1000,
+        "description": "Административное начисление",
+        "timestamp": "2025-11-21T05:24:33.467Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_add",
+        "amount": 1000,
+        "description": "Административное начисление",
+        "timestamp": "2025-11-21T05:24:33.020Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_remove",
+        "amount": -1000,
+        "description": "Административное списание",
+        "timestamp": "2025-11-21T05:24:32.307Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_remove",
+        "amount": -1000,
+        "description": "Административное списание",
+        "timestamp": "2025-11-21T05:24:31.603Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_remove",
+        "amount": -1000,
+        "description": "Административное списание",
+        "timestamp": "2025-11-21T05:24:31.020Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_remove",
+        "amount": -1000,
+        "description": "Административное списание",
+        "timestamp": "2025-11-21T05:24:11.915Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_remove",
+        "amount": -1000,
+        "description": "Административное списание",
+        "timestamp": "2025-11-21T05:24:11.754Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_remove",
+        "amount": -1000,
+        "description": "Административное списание",
+        "timestamp": "2025-11-21T05:24:11.595Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_remove",
+        "amount": -1000,
+        "description": "Административное списание",
+        "timestamp": "2025-11-21T05:24:11.436Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_remove",
+        "amount": -1000,
+        "description": "Административное списание",
+        "timestamp": "2025-11-21T05:24:11.267Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_remove",
+        "amount": -1000,
+        "description": "Административное списание",
+        "timestamp": "2025-11-21T05:24:11.090Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_remove",
+        "amount": -1000,
+        "description": "Административное списание",
+        "timestamp": "2025-11-21T05:24:10.922Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_remove",
+        "amount": -1000,
+        "description": "Административное списание",
+        "timestamp": "2025-11-21T05:24:10.771Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_remove",
+        "amount": -1000,
+        "description": "Административное списание",
+        "timestamp": "2025-11-21T05:24:10.619Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_remove",
+        "amount": -1000,
+        "description": "Административное списание",
+        "timestamp": "2025-11-21T05:24:10.451Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_remove",
+        "amount": -1000,
+        "description": "Административное списание",
+        "timestamp": "2025-11-21T05:24:10.300Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_remove",
+        "amount": -1000,
+        "description": "Административное списание",
+        "timestamp": "2025-11-21T05:24:05.003Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_remove",
+        "amount": -1000,
+        "description": "Административное списание",
+        "timestamp": "2025-11-21T05:24:04.180Z",
+        "admin": "admin"
+      },
+      {
+        "type": "daily_reward",
+        "amount": 70,
+        "description": "Ежедневная награда (серия: 4 дней)",
+        "timestamp": "2025-11-21T04:45:08.115Z"
+      },
+      {
+        "type": "admin_add",
+        "amount": 10000000000,
+        "description": "Административное начисление",
+        "timestamp": "2025-11-21T04:44:45.964Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_add",
+        "amount": 10,
+        "description": "Административное начисление",
+        "timestamp": "2025-11-21T04:44:20.370Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_add",
+        "amount": 10,
+        "description": "Административное начисление",
+        "timestamp": "2025-11-21T04:44:20.187Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_add",
+        "amount": 10,
+        "description": "Административное начисление",
+        "timestamp": "2025-11-21T04:44:20.051Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_add",
+        "amount": 10,
+        "description": "Административное начисление",
+        "timestamp": "2025-11-21T04:44:19.891Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_add",
+        "amount": 10,
+        "description": "Административное начисление",
+        "timestamp": "2025-11-21T04:44:19.731Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_add",
+        "amount": 10,
+        "description": "Административное начисление",
+        "timestamp": "2025-11-21T04:44:19.555Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_add",
+        "amount": 10,
+        "description": "Административное начисление",
+        "timestamp": "2025-11-21T04:44:19.371Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_add",
+        "amount": 10,
+        "description": "Административное начисление",
+        "timestamp": "2025-11-21T04:44:19.164Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_add",
+        "amount": 10,
+        "description": "Административное начисление",
+        "timestamp": "2025-11-21T04:44:17.971Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_add",
+        "amount": 10,
+        "description": "Административное начисление",
+        "timestamp": "2025-11-21T04:44:17.516Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_add",
+        "amount": 10,
+        "description": "Административное начисление",
+        "timestamp": "2025-11-21T04:44:16.883Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_add",
+        "amount": 10,
+        "description": "Административное начисление",
+        "timestamp": "2025-11-21T04:44:16.164Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_add",
+        "amount": 10,
+        "description": "Административное начисление",
+        "timestamp": "2025-11-21T04:44:15.308Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_add",
+        "amount": 10,
+        "description": "Административное начисление",
+        "timestamp": "2025-11-20T06:33:03.713Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_add",
+        "amount": 10,
+        "description": "Административное начисление",
+        "timestamp": "2025-11-20T06:32:45.193Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_add",
+        "amount": 1000,
+        "description": "Административное начисление",
+        "timestamp": "2025-11-20T05:31:44.265Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_add",
+        "amount": 1044444,
+        "description": "Административное начисление",
+        "timestamp": "2025-11-20T05:14:44.779Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_add",
+        "amount": 1044444,
+        "description": "Административное начисление",
+        "timestamp": "2025-11-20T05:14:44.610Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_add",
+        "amount": 1044444,
+        "description": "Административное начисление",
+        "timestamp": "2025-11-20T05:14:44.419Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_add",
+        "amount": 1044444,
+        "description": "Административное начисление",
+        "timestamp": "2025-11-20T05:14:44.042Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_add",
+        "amount": 1044444,
+        "description": "Административное начисление",
+        "timestamp": "2025-11-20T05:14:43.611Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_add",
+        "amount": 10,
+        "description": "Административное начисление",
+        "timestamp": "2025-11-20T05:14:39.515Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_add",
+        "amount": 1000,
+        "description": "Административное начисление",
+        "timestamp": "2025-11-20T05:08:00.942Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_remove",
+        "amount": -1000,
+        "description": "Административное списание",
+        "timestamp": "2025-11-20T05:06:10.323Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_add",
+        "amount": 1000,
+        "description": "Административное начисление",
+        "timestamp": "2025-11-20T05:05:53.643Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_add",
+        "amount": 10,
+        "description": "Администратор добавил валюту",
+        "timestamp": "2025-11-20T04:26:50.824Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_add",
+        "amount": 10,
+        "description": "Администратор добавил валюту",
+        "timestamp": "2025-11-20T04:25:15.991Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_add",
+        "amount": 10,
+        "description": "Администратор добавил валюту",
+        "timestamp": "2025-11-20T04:24:31.040Z",
+        "admin": "admin"
+      },
+      {
+        "type": "daily_reward",
+        "amount": 65,
+        "description": "Ежедневная награда (серия: 3 дней)",
+        "timestamp": "2025-11-19T10:51:03.326Z"
+      },
+      {
+        "type": "admin_add",
+        "amount": 10,
+        "description": "Административное начисление",
+        "timestamp": "2025-11-18T07:08:27.409Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_add",
+        "amount": 10,
+        "description": "Административное начисление",
+        "timestamp": "2025-11-18T07:08:27.128Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_add",
+        "amount": 10,
+        "description": "Административное начисление",
+        "timestamp": "2025-11-18T07:08:26.696Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_add",
+        "amount": 10,
+        "description": "Административное начисление",
+        "timestamp": "2025-11-18T07:08:26.513Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_remove",
+        "amount": -1011,
+        "description": "Административное списание",
+        "timestamp": "2025-11-18T06:07:35.525Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_remove",
+        "amount": -1011,
+        "description": "Административное списание",
+        "timestamp": "2025-11-18T06:07:35.333Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_remove",
+        "amount": -1011,
+        "description": "Административное списание",
+        "timestamp": "2025-11-18T06:07:35.117Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_add",
+        "amount": 1011,
+        "description": "Административное начисление",
+        "timestamp": "2025-11-18T06:07:25.748Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_add",
+        "amount": 1011,
+        "description": "Административное начисление",
+        "timestamp": "2025-11-18T06:07:25.158Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_remove",
+        "amount": -1011,
+        "description": "Административное списание",
+        "timestamp": "2025-11-18T06:07:23.814Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_remove",
+        "amount": -500,
+        "description": "Административное списание",
+        "timestamp": "2025-11-18T05:20:18.464Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_remove",
+        "amount": -500,
+        "description": "Административное списание",
+        "timestamp": "2025-11-18T05:20:17.649Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_add",
+        "amount": 102,
+        "description": "Административное начисление",
+        "timestamp": "2025-11-18T05:18:26.297Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_remove",
+        "amount": -1000,
+        "description": "ssssssssssssssssss",
+        "timestamp": "2025-11-18T05:00:16.711Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_remove",
+        "amount": -1000,
+        "description": "ssssssssssssssssss",
+        "timestamp": "2025-11-18T05:00:16.543Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_remove",
+        "amount": -1000,
+        "description": "ssssssssssssssssss",
+        "timestamp": "2025-11-18T05:00:16.179Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_remove",
+        "amount": -1000,
+        "description": "ssssssssssssssssss",
+        "timestamp": "2025-11-18T05:00:13.649Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_add",
+        "amount": 1000,
+        "description": "ssssssssssssssssss",
+        "timestamp": "2025-11-18T04:57:01.758Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_add",
+        "amount": 1000,
+        "description": "ssssssssssssssssss",
+        "timestamp": "2025-11-18T04:57:01.558Z",
+        "admin": "admin"
+      }
+    ]
+  },
+  "admin": {
+    "balance": 4.060606060606006e+26,
+    "dailyStreak": 4,
+    "lastDailyReward": "2025-11-21T04:25:21.757Z",
+    "transactionHistory": [
+      {
+        "type": "daily_reward",
+        "amount": 70,
+        "description": "Ежедневная награда (серия: 4 дней)",
+        "timestamp": "2025-11-21T04:25:21.757Z"
+      },
+      {
+        "type": "daily_reward",
+        "amount": 65,
+        "description": "Ежедневная награда (серия: 3 дней)",
+        "timestamp": "2025-11-19T10:43:16.672Z"
+      },
+      {
+        "type": "admin_remove",
+        "amount": -10000000,
+        "description": "Административное списание",
+        "timestamp": "2025-11-18T05:20:05.120Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_remove",
+        "amount": -10000000,
+        "description": "Административное списание",
+        "timestamp": "2025-11-18T05:20:04.967Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_remove",
+        "amount": -10000000,
+        "description": "Административное списание",
+        "timestamp": "2025-11-18T05:20:04.807Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_remove",
+        "amount": -10000000,
+        "description": "Административное списание",
+        "timestamp": "2025-11-18T05:20:04.648Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_remove",
+        "amount": -10000000,
+        "description": "Административное списание",
+        "timestamp": "2025-11-18T05:20:04.471Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_remove",
+        "amount": -10000000,
+        "description": "Административное списание",
+        "timestamp": "2025-11-18T05:20:04.295Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_remove",
+        "amount": -10000000,
+        "description": "Административное списание",
+        "timestamp": "2025-11-18T05:20:04.120Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_remove",
+        "amount": -10000000,
+        "description": "Административное списание",
+        "timestamp": "2025-11-18T05:20:03.919Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_remove",
+        "amount": -10000000,
+        "description": "Административное списание",
+        "timestamp": "2025-11-18T05:20:03.671Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_remove",
+        "amount": -10000000,
+        "description": "Административное списание",
+        "timestamp": "2025-11-18T05:20:03.512Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_remove",
+        "amount": -10000000,
+        "description": "Административное списание",
+        "timestamp": "2025-11-18T05:20:03.352Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_remove",
+        "amount": -10000000,
+        "description": "Административное списание",
+        "timestamp": "2025-11-18T05:20:03.176Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_remove",
+        "amount": -10000000,
+        "description": "Административное списание",
+        "timestamp": "2025-11-18T05:20:03.017Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_remove",
+        "amount": -10000000,
+        "description": "Административное списание",
+        "timestamp": "2025-11-18T05:20:02.823Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_remove",
+        "amount": -10000000,
+        "description": "Административное списание",
+        "timestamp": "2025-11-18T05:20:02.655Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_remove",
+        "amount": -10000000,
+        "description": "Административное списание",
+        "timestamp": "2025-11-18T05:20:02.487Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_remove",
+        "amount": -10000000,
+        "description": "Административное списание",
+        "timestamp": "2025-11-18T05:20:02.319Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_remove",
+        "amount": -10000000,
+        "description": "Административное списание",
+        "timestamp": "2025-11-18T05:20:02.152Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_remove",
+        "amount": -10000000,
+        "description": "Административное списание",
+        "timestamp": "2025-11-18T05:20:02.008Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_remove",
+        "amount": -10000000,
+        "description": "Административное списание",
+        "timestamp": "2025-11-18T05:20:01.816Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_remove",
+        "amount": -10000000,
+        "description": "Административное списание",
+        "timestamp": "2025-11-18T05:20:01.647Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_remove",
+        "amount": -10000000,
+        "description": "Административное списание",
+        "timestamp": "2025-11-18T05:20:01.487Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_remove",
+        "amount": -10000000,
+        "description": "Административное списание",
+        "timestamp": "2025-11-18T05:20:01.328Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_remove",
+        "amount": -10000000,
+        "description": "Административное списание",
+        "timestamp": "2025-11-18T05:20:01.152Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_remove",
+        "amount": -10000000,
+        "description": "Административное списание",
+        "timestamp": "2025-11-18T05:20:00.664Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_remove",
+        "amount": -10000000,
+        "description": "Административное списание",
+        "timestamp": "2025-11-18T05:19:59.833Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_remove",
+        "amount": -4,
+        "description": "Административное списание",
+        "timestamp": "2025-11-18T05:19:17.608Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_remove",
+        "amount": -4,
+        "description": "Административное списание",
+        "timestamp": "2025-11-18T05:19:17.375Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_remove",
+        "amount": -4,
+        "description": "Административное списание",
+        "timestamp": "2025-11-18T05:19:17.144Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_remove",
+        "amount": -4,
+        "description": "Административное списание",
+        "timestamp": "2025-11-18T05:19:16.992Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_remove",
+        "amount": -4,
+        "description": "Административное списание",
+        "timestamp": "2025-11-18T05:19:16.815Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_remove",
+        "amount": -4,
+        "description": "Административное списание",
+        "timestamp": "2025-11-18T05:19:16.307Z",
+        "admin": "admin"
+      },
+      {
+        "type": "daily_reward",
+        "amount": 60,
+        "description": "Ежедневная награда (серия: 2 дней)",
+        "timestamp": "2025-11-18T04:47:29.613Z"
+      },
+      {
+        "type": "admin_remove",
+        "amount": -4,
+        "description": "Административное списание",
+        "timestamp": "2025-11-18T04:47:07.373Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_remove",
+        "amount": -4,
+        "description": "Административное списание",
+        "timestamp": "2025-11-18T04:47:07.180Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_remove",
+        "amount": -4,
+        "description": "Административное списание",
+        "timestamp": "2025-11-18T04:47:07.021Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_remove",
+        "amount": -4,
+        "description": "Административное списание",
+        "timestamp": "2025-11-18T04:47:06.836Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_remove",
+        "amount": -4,
+        "description": "Административное списание",
+        "timestamp": "2025-11-18T04:47:06.676Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_remove",
+        "amount": -4,
+        "description": "Административное списание",
+        "timestamp": "2025-11-18T04:47:06.453Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_remove",
+        "amount": -4,
+        "description": "Административное списание",
+        "timestamp": "2025-11-18T04:47:06.221Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_remove",
+        "amount": -4,
+        "description": "Административное списание",
+        "timestamp": "2025-11-18T04:47:06.013Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_remove",
+        "amount": -4,
+        "description": "Административное списание",
+        "timestamp": "2025-11-18T04:47:05.837Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_remove",
+        "amount": -4,
+        "description": "Административное списание",
+        "timestamp": "2025-11-18T04:47:05.645Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_remove",
+        "amount": -4,
+        "description": "Административное списание",
+        "timestamp": "2025-11-18T04:47:05.460Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_remove",
+        "amount": -4,
+        "description": "Административное списание",
+        "timestamp": "2025-11-18T04:47:05.276Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_remove",
+        "amount": -4,
+        "description": "Административное списание",
+        "timestamp": "2025-11-18T04:47:05.077Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_remove",
+        "amount": -4,
+        "description": "Административное списание",
+        "timestamp": "2025-11-18T04:47:04.893Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_remove",
+        "amount": -4,
+        "description": "Административное списание",
+        "timestamp": "2025-11-18T04:47:04.541Z",
+        "admin": "admin"
+      }
+    ]
+  },
+  "ааааааааааааа": {
+    "balance": 120,
+    "dailyStreak": 0,
+    "lastDailyReward": null,
+    "transactionHistory": [
+      {
+        "type": "admin_add",
+        "amount": 10,
+        "description": "Администратор добавил валюту",
+        "timestamp": "2025-11-20T04:24:48.982Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_add",
+        "amount": 10,
+        "description": "Администратор добавил валюту",
+        "timestamp": "2025-11-20T04:24:48.280Z",
+        "admin": "admin"
+      }
+    ]
+  },
+  "100000000000": {
+    "balance": 110,
+    "dailyStreak": 0,
+    "lastDailyReward": null,
+    "transactionHistory": [
+      {
+        "type": "admin_add",
+        "amount": 10,
+        "description": "Административное начисление",
+        "timestamp": "2025-11-21T04:44:31.964Z",
+        "admin": "admin"
+      }
+    ]
+  }
+}
