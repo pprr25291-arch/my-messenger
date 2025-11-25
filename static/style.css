@@ -11734,3 +11734,265 @@ header {
 .equipped-gift.effect {
     animation: giftGlow 3s ease-in-out infinite;
 }
+.conversation-item {
+    padding: 10px 15px;
+    border-bottom: 1px solid #eee;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.conversation-item:hover {
+    background-color: #f5f5f5;
+}
+
+.conversation-item.active {
+    background-color: #e3f2fd;
+    border-left: 3px solid #2196f3;
+}
+
+.conv-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 5px;
+}
+
+.conv-name {
+    font-weight: bold;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.conv-time {
+    font-size: 12px;
+    color: #666;
+}
+
+.conv-preview {
+    font-size: 14px;
+    color: #666;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.conversation-avatar {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    object-fit: cover;
+}
+
+.group-avatar {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: #4caf50;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-size: 16px;
+}
+
+.online-dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    background: #4caf50;
+    border-radius: 50%;
+    margin-left: 5px;
+}
+
+.conv-members {
+    font-size: 12px;
+    color: #666;
+    margin-top: 5px;
+}
+
+.conversation-item.empty {
+    text-align: center;
+    color: #666;
+    font-style: italic;
+    padding: 20px;
+}
+.conversation-item {
+    padding: 12px 15px;
+    border-bottom: 1px solid #e9ecef;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    background: white;
+}
+
+.conversation-item:hover {
+    background: #f8f9fa !important;
+    transform: translateX(5px);
+}
+
+.conversation-item.active {
+    background: #e3f2fd;
+    border-left: 4px solid #2196f3;
+    border-right: 1px solid #bbdefb;
+}
+
+.conv-info {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.conv-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 2px;
+}
+
+.conv-name-wrapper {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    width: 100%;
+}
+
+.conv-name {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-weight: 600;
+    color: #2c3e50;
+    flex: 1;
+}
+
+.username-text, .group-name-text {
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.conv-time {
+    font-size: 11px;
+    color: #6c757d;
+    white-space: nowrap;
+    margin-left: 10px;
+}
+
+.conv-preview {
+    font-size: 13px;
+    color: #6c757d;
+    line-height: 1.3;
+    margin: 2px 0;
+}
+
+.conv-status {
+    font-size: 11px;
+    font-weight: 500;
+}
+
+.conv-status.online {
+    color: #28a745;
+}
+
+.conv-status.offline {
+    color: #6c757d;
+}
+
+.conv-meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 3px;
+}
+
+.conv-members {
+    font-size: 11px;
+    color: #6c757d;
+}
+
+.conv-creator {
+    font-size: 10px;
+    color: #999;
+    font-style: italic;
+}
+
+.conversation-avatar {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 2px solid #e9ecef;
+    flex-shrink: 0;
+}
+
+.group-avatar {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-size: 18px;
+    flex-shrink: 0;
+    border: 2px solid #e9ecef;
+}
+
+.online-dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    background: #28a745;
+    border-radius: 50%;
+    margin-left: 5px;
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    0% { transform: scale(1); opacity: 1; }
+    50% { transform: scale(1.2); opacity: 0.7; }
+    100% { transform: scale(1); opacity: 1; }
+}
+
+.conversation-item.empty {
+    text-align: center;
+    color: #6c757d;
+    font-style: italic;
+    padding: 30px 20px;
+    background: #f8f9fa;
+    border-radius: 8px;
+    margin: 10px;
+}
+
+.group-item {
+    border-left: 3px solid #28a745;
+}
+
+.group-item .conv-name {
+    color: #28a745;
+}
+
+/* Адаптивность */
+@media (max-width: 768px) {
+    .conversation-item {
+        padding: 10px 12px;
+    }
+    
+    .conv-name {
+        gap: 8px;
+    }
+    
+    .conversation-avatar,
+    .group-avatar {
+        width: 36px;
+        height: 36px;
+    }
+    
+    .username-text, .group-name-text {
+        font-size: 13px;
+    }
+    
+    .conv-preview {
+        font-size: 12px;
+    }
+}

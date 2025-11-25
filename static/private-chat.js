@@ -81,100 +81,101 @@ class PrivateChat {
         }
     }
   createUI() {
-        const privateChatContainer = document.getElementById('privateChat');
-        if (!privateChatContainer) {
-            console.error('❌ Private chat container not found');
-            return;
-        }
+    const privateChatContainer = document.getElementById('privateChat');
+    if (!privateChatContainer) {
+        console.error('❌ Private chat container not found');
+        return;
+    }
 
-        privateChatContainer.innerHTML = `
-            <div class="private-chat-layout">
-                <div class="private-chat-sidebar">
-                    <div class="sidebar-header">
-                        <h3>💬 Диалоги</h3>
-                        ${this.isAdmin ? '<button class="admin-panel-btn" title="Панель администратора">🔧</button>' : ''}
-                        <button class="create-group-btn" title="Создать группу">👥</button>
+    privateChatContainer.innerHTML = `
+        <div class="private-chat-layout">
+            <div class="private-chat-sidebar">
+                <div class="sidebar-header">
+                    <h3>💬 Диалоги</h3>
+                    ${this.isAdmin ? '<button class="admin-panel-btn" title="Панель администратора">🔧</button>' : ''}
+                    <button class="create-group-btn" title="Создать группу">👥</button>
+                </div>
+                
+                <div class="search-container">
+                    <div class="search-input-wrapper">
+                        <input type="text" id="userSearch" placeholder="🔍 Поиск пользователей..." class="search-input">
+                        <button class="search-clear" id="searchClear">✕</button>
                     </div>
-                    
-                    <div class="search-container">
-                        <div class="search-input-wrapper">
-                            <input type="text" id="userSearch" placeholder="🔍 Поиск пользователей..." class="search-input">
-                            <button class="search-clear" id="searchClear">✕</button>
-                        </div>
-                        <div id="searchResults" class="search-results"></div>
-                    </div>
-                    
-                    <div class="conversations-header">
-                        <span>Диалоги и группы</span>
-                    </div>
-                    
-                    <div class="conversations-list" id="conversationsList">
-                        <div class="conversation-item empty">Загрузка диалогов...</div>
+                    <div id="searchResults" class="search-results"></div>
+                </div>
+                
+                <div class="conversations-header">
+                    <span>Диалоги и группы</span>
+                </div>
+                
+                <div class="conversations-list" id="conversationsList">
+                    <div class="conversation-item empty">Загрузка диалогов...</div>
+                </div>
+            </div>
+            
+            <div class="private-chat-main">
+                <div id="chatHeader" class="chat-header">
+                    <div class="header-content">
+                        <h3>💬 Приватные сообщения</h3>
+                        <p>Выберите диалог или найдите пользователя</p>
                     </div>
                 </div>
                 
-                <div class="private-chat-main">
-                    <div id="chatHeader" class="chat-header">
-                        <div class="header-content">
-                            <h3>💬 Приватные сообщения</h3>
-                            <p>Выберите диалог или найдите пользователя</p>
+                <div id="activeChat" class="active-chat" style="display: none;">
+                    <div class="chat-top-bar">
+                        <div class="chat-user-info">
+                            <span class="user-avatar">
+                                <img src="/default-avatar.png" class="user-avatar-img" alt="" style="width: 40px; height: 40px; border-radius: 50%;">
+                            </span>
+                            <div class="user-details">
+                                <h4 id="currentChatUser"></h4>
+                                <span class="user-status" id="currentUserStatus">offline</span>
+                            </div>
+                        </div>
+                        <div class="chat-controls">
+                            <div class="call-buttons">
+                                <button class="video-call-btn" title="Видеозвонок">📹</button>
+                                <button class="audio-call-btn" title="Аудиозвонок">📞</button>
+                            </div>
+                        
+                            <button class="close-chat" title="Закрыть чат">✕</button>
                         </div>
                     </div>
                     
-                    <div id="activeChat" class="active-chat" style="display: none;">
-                        <div class="chat-top-bar">
-                            <div class="chat-user-info">
-                                <span class="user-avatar">👤</span>
-                                <div class="user-details">
-                                    <h4 id="currentChatUser"></h4>
-                                    <span class="user-status" id="currentUserStatus">offline</span>
-                                </div>
-                            </div>
-                            <div class="chat-controls">
-                                <div class="call-buttons">
-                                    <button class="video-call-btn" title="Видеозвонок">📹</button>
-                                    <button class="audio-call-btn" title="Аудиозвонок">📞</button>
-                                </div>
-                            
-                                <button class="close-chat" title="Закрыть чат">✕</button>
-                            </div>
-                        </div>
-                        
-                        <div class="chat-messages-container">
-                            <div id="privateMessages" class="private-messages">
-                                <div class="no-messages">📝 Начните общение первым!</div>
-                            </div>
-                        </div>
-                        
-                        <div class="message-input-area">
-                            <div class="message-input-container">
-                                <input type="text" id="privateMessageInput" placeholder="Напишите сообщение..." autocomplete="off">
-                                <button type="button" class="emoji-picker-btn" title="Выбрать смайлик">😊</button>
-                                <button type="button" class="voice-message-btn" title="Записать голосовое сообщение">🎤</button>
-                                <button type="button" class="attach-file" title="Прикрепить файл">📎</button>
-                                <button type="button" class="send-button">Отправить</button>
-                                <input type="file" id="fileInput" style="display: none;" 
-                                       accept="image/*,.pdf,.doc,.docx,.txt,.zip,.mp3,.wav,.mp4,.mov"
-                                       multiple>
-                            </div>
-                            <div id="emojiPicker" class="emoji-picker"></div>
-                            <div id="filePreview" class="file-preview-container"></div>
+                    <div class="chat-messages-container">
+                        <div id="privateMessages" class="private-messages">
+                            <div class="no-messages">📝 Начните общение первым!</div>
                         </div>
                     </div>
                     
-                    <div id="noChatSelected" class="no-chat-selected">
-                        <div class="chat-icon">💬</div>
-                        <h3>Выберите диалог</h3>
-                        <p>Выберите существующий диалог или найдите пользователя чтобы начать общение</p>
+                    <div class="message-input-area">
+                        <div class="message-input-container">
+                            <input type="text" id="privateMessageInput" placeholder="Напишите сообщение..." autocomplete="off">
+                            <button type="button" class="emoji-picker-btn" title="Выбрать смайлик">😊</button>
+                            <button type="button" class="voice-message-btn" title="Записать голосовое сообщение">🎤</button>
+                            <button type="button" class="attach-file" title="Прикрепить файл">📎</button>
+                            <button type="button" class="send-button">Отправить</button>
+                            <input type="file" id="fileInput" style="display: none;" 
+                                   accept="image/*,.pdf,.doc,.docx,.txt,.zip,.mp3,.wav,.mp4,.mov"
+                                   multiple>
+                        </div>
+                        <div id="emojiPicker" class="emoji-picker"></div>
+                        <div id="filePreview" class="file-preview-container"></div>
                     </div>
                 </div>
+                
+                <div id="noChatSelected" class="no-chat-selected">
+                    <div class="chat-icon">💬</div>
+                    <h3>Выберите диалог</h3>
+                    <p>Выберите существующий диалог или найдите пользователя чтобы начать общение</p>
+                </div>
             </div>
-        `;
+        </div>
+    `;
 
-        this.createModals();
-        this.setupEmojiPicker();
-    }
-
+    this.createModals();
+    this.setupEmojiPicker();
+}
     // Новые методы для устранения дублирования
     removeDuplicateMessages(messages) {
         const seen = new Set();
@@ -188,7 +189,72 @@ class PrivateChat {
             return true;
         });
     }
+async sendGift(gift, targetUser = null) {
+    const receiver = targetUser || this.currentChat;
+    if (!receiver) {
+        this.showNotification('Выберите чат для отправки подарка', 'error');
+        return;
+    }
 
+    try {
+        const currentUser = this.getCurrentUser();
+        
+        // Проверяем баланс
+        if (window.currencyManager.balance < gift.price) {
+            this.showNotification(`Недостаточно монет. Нужно: ${gift.price} 🪙`, 'error');
+            return;
+        }
+
+        // Покупаем подарок
+        await window.giftManager.buyGift(gift);
+        
+        // Создаем сообщение о подарке
+        const messageData = {
+            sender: currentUser,
+            receiver: receiver,
+            message: `🎁 Подарил(а) ${gift.name}`,
+            messageType: 'gift',
+            giftData: {
+                id: gift.id,
+                name: gift.name,
+                type: gift.type,
+                price: gift.price,
+                icon: gift.name.split(' ')[0]
+            },
+            timestamp: new Date().toLocaleTimeString(),
+            date: new Date().toISOString(),
+            id: 'gift_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9)
+        };
+
+        // Отправляем через сокет
+        if (window.socket) {
+            window.socket.emit('private message', messageData);
+            
+            // Также отправляем специальное событие для подарка
+            window.socket.emit('send_gift', {
+                sender: currentUser,
+                receiver: receiver,
+                gift: gift,
+                messageId: messageData.id
+            });
+        }
+
+        // Показываем уведомление
+        this.showNotification(`Вы подарили ${gift.name} пользователю ${receiver}`, 'success');
+        
+        // Обновляем баланс
+        this.updateCurrencyDisplays();
+        
+    } catch (error) {
+        console.error('Error sending gift:', error);
+        this.showNotification('Ошибка отправки подарка: ' + error.message, 'error');
+    }
+}
+
+// Обновите метод sendGiftToCurrentChat
+async sendGiftToCurrentChat(gift) {
+    await this.sendGift(gift, this.currentChat);
+}
     removeDuplicateGroups(groups) {
         const seen = new Set();
         return groups.filter(group => {
@@ -508,90 +574,47 @@ async loadUserAvatar(username) {
     }
 
     try {
-        console.log(`🖼️ Loading avatar for user: ${username}`);
-        
-        // Пробуем разные эндпоинты
+        // Пробуем несколько эндпоинтов
         const endpoints = [
             `/api/user/${username}/avatar`,
-            `/api/user/${username}`,
-            `/api/users/${username}/avatar`,
-            `/avatars/${username}`
+            `/api/users/${username}/avatar`, 
+            `/uploads/avatars/${username}.jpg`,
+            `/uploads/avatars/${username}.png`,
+            `/uploads/avatars/avatar_${username}.jpg`,
+            `/uploads/avatars/avatar_${username}.png`
         ];
-        
-        let avatarUrl = this.getDefaultAvatarUrl();
-        let success = false;
-        
+
         for (const endpoint of endpoints) {
             try {
-                console.log(`🔍 Trying avatar endpoint: ${endpoint}`);
                 const response = await fetch(endpoint, {
-                    method: 'GET',
-                    credentials: 'same-origin',
-                    signal: AbortSignal.timeout(5000) // Таймаут 5 секунд
+                    method: 'HEAD',
+                    credentials: 'same-origin'
                 });
                 
                 if (response.ok) {
-                    if (endpoint.includes('/avatar')) {
-                        // Если это прямой эндпоинт аватарки
-                        const blob = await response.blob();
-                        avatarUrl = URL.createObjectURL(blob);
-                    } else {
-                        // Если это данные пользователя
-                        const userData = await response.json();
-                        avatarUrl = userData.avatar || userData.avatarUrl || this.getDefaultAvatarUrl();
-                    }
-                    success = true;
-                    console.log(`✅ Avatar loaded from ${endpoint}`);
-                    break;
+                    this.avatarCache.set(username, endpoint);
+                    return endpoint;
                 }
             } catch (error) {
-                console.log(`❌ Endpoint ${endpoint} failed:`, error.message);
                 continue;
             }
         }
         
-        if (!success) {
-            console.warn(`⚠️ All avatar endpoints failed for ${username}, using default`);
-            avatarUrl = this.getDefaultAvatarUrl();
-        }
-        
-        // Обрабатываем URL аватарки
-        if (avatarUrl && avatarUrl !== this.getDefaultAvatarUrl()) {
-            if (!avatarUrl.startsWith('http') && !avatarUrl.startsWith('/') && !avatarUrl.startsWith('data:')) {
-                avatarUrl = '/' + avatarUrl;
-            }
-            
-            // Проверяем существование изображения
-            try {
-                const imgExists = await this.checkImageExists(avatarUrl);
-                if (!imgExists) {
-                    console.warn(`⚠️ Avatar image not found: ${avatarUrl}`);
-                    avatarUrl = this.getDefaultAvatarUrl();
-                }
-            } catch (error) {
-                console.warn(`⚠️ Error checking avatar image: ${error.message}`);
-                avatarUrl = this.getDefaultAvatarUrl();
-            }
-        }
-        
-        console.log(`✅ Final avatar URL for ${username}: ${avatarUrl}`);
-        this.avatarCache.set(username, avatarUrl);
-        return avatarUrl;
-        
-    } catch (error) {
-        console.error(`❌ Error loading avatar for ${username}:`, error);
+        // Если ничего не найдено, используем дефолтный аватар
         const defaultAvatar = this.getDefaultAvatarUrl();
         this.avatarCache.set(username, defaultAvatar);
         return defaultAvatar;
+        
+    } catch (error) {
+        console.error('Error loading avatar:', error);
+        return this.getDefaultAvatarUrl();
     }
 }
-
 // Метод для очистки кэша при необходимости
 clearAvatarCache() {
     this.avatarCache.clear();
 }
 
-// Метод для обновления аватарки конкретного пользователя
 async updateUserAvatar(username) {
     this.avatarCache.delete(username);
     return await this.loadUserAvatar(username);
@@ -599,27 +622,29 @@ async updateUserAvatar(username) {
     getDefaultAvatarUrl() {
         return '/default-avatar.png';
     }
-
-   
-
-  async checkImageExists(url) {
-    try {
-        const response = await fetch(url, { 
-            method: 'HEAD',
-            credentials: 'same-origin',
-            signal: AbortSignal.timeout(3000)
-        });
-        return response.ok;
-    } catch (error) {
-        console.log(`❌ Image check failed for ${url}:`, error.message);
-        return false;
-    }
+async checkImageExists(url) {
+    return new Promise((resolve) => {
+        const img = new Image();
+        let timer = setTimeout(() => {
+            resolve(false);
+        }, 2000);
+        
+        img.onload = () => {
+            clearTimeout(timer);
+            resolve(true);
+        };
+        
+        img.onerror = () => {
+            clearTimeout(timer);
+            resolve(false);
+        };
+        
+        img.src = url;
+    });
 }
-// Метод для безопасной загрузки аватаров с ограничением попыток
 async loadUserAvatarSafe(username, maxRetries = 2) {
     if (!username) return this.getDefaultAvatarUrl();
-    
-    // Проверяем кэш
+
     if (this.avatarCache.has(username)) {
         const cached = this.avatarCache.get(username);
         if (cached !== this.getDefaultAvatarUrl()) {
@@ -1582,6 +1607,28 @@ setupModalEventListeners() {
                 if (results) results.style.display = 'none';
             }
         });
+            document.addEventListener('click', (e) => {
+        if (e.target.classList.contains('video-call-btn')) {
+            const targetUser = this.getCurrentChatUser();
+            if (targetUser) {
+                window.callManager.initiateCall(targetUser, 'video');
+            }
+        } else if (e.target.classList.contains('audio-call-btn')) {
+            const targetUser = this.getCurrentChatUser();
+            if (targetUser) {
+                window.callManager.initiateCall(targetUser, 'audio');
+            }
+        }
+    });
+    document.addEventListener('click', (e) => {
+        const avatar = e.target.closest('.user-avatar-img, .conversation-avatar, .search-avatar-img');
+        if (avatar && avatar.alt) {
+            e.preventDefault();
+            e.stopPropagation();
+            this.openUserProfile(avatar.alt);
+        }
+    });
+
     }
 
     getCurrentChatUser() {
@@ -1714,7 +1761,25 @@ setupAdminPanelTabs() {
             console.log('🔄 Conversations updated event received');
             this.loadConversations();
         });
+         window.socket.on('gift_received', (data) => {
+        console.log('🎁 Gift received:', data);
+        this.handleGiftReceived(data);
+    });
 
+    // Обработчик отправки подарка
+    window.socket.on('gift_sent', (data) => {
+        console.log('🎁 Gift sent confirmation:', data);
+        this.showNotification(`Подарок "${data.gift.name}" отправлен пользователю ${data.receiver}`, 'success');
+    });
+window.socket.on('gift_received', (data) => {
+        console.log('🎁 Gift received:', data);
+        this.showNotification(`🎁 Вы получили подарок "${data.gift.name}" от ${data.sender}`, 'success');
+        
+        // Обновляем профиль если открыт
+        if (window.profileManager && window.profileManager.currentProfile) {
+            window.profileManager.viewProfile(window.profileManager.currentProfile.username);
+        }
+    });
         window.socket.on('user-status-changed', (data) => {
             console.log('🔄 User status changed via socket:', data);
             
@@ -1869,7 +1934,22 @@ setupAdminPanelTabs() {
 
         console.log('✅ PrivateChat socket listeners setup completed');
     }
-
+handleGiftReceived(data) {
+    const notificationMessage = `🎁 Вы получили подарок "${data.gift.name}" от ${data.sender}`;
+    
+    // Показываем уведомление
+    this.showNotification(notificationMessage, 'success');
+    
+    // Если открыт профиль, обновляем его
+    if (window.profileManager && window.profileManager.currentProfile) {
+        window.profileManager.viewProfile(window.profileManager.currentProfile.username);
+    }
+    
+    // Обновляем баланс если это наш подарок
+    if (data.receiver === this.getCurrentUser()) {
+        this.updateCurrencyDisplays();
+    }
+}
     handleIncomingGroupMessage(data) {
         console.log('📨 Group message received in PrivateChat:', data);
         
@@ -2194,62 +2274,60 @@ setupAdminPanelTabs() {
             resultsContainer.innerHTML = '<div class="search-result error">Ошибка поиска</div>';
         }
     }
-
-    displaySearchResults(users) {
-        const resultsContainer = document.getElementById('searchResults');
-        if (!resultsContainer) return;
-        
-        resultsContainer.innerHTML = '';
-        
-        if (!users || users.length === 0) {
-            resultsContainer.innerHTML = '<div class="search-result empty">Никого не найдено</div>';
-            return;
-        }
-
-        users.forEach(user => {
-            if (!user || !user.username) return;
-            
-            const isOnline = user.isOnline === true;
-            const statusClass = isOnline ? 'online' : 'offline';
-            const statusText = isOnline ? 'online' : 'offline';
-            
-            const userElement = document.createElement('div');
-            userElement.className = 'search-result';
-            
-            const avatarUrl = '/default-avatar.png';
-            
-            userElement.innerHTML = `
-                <div class="search-user-info">
-                    <img src="${avatarUrl}" class="search-avatar-img" alt="${user.username}" onerror="this.src='/default-avatar.png'">
-                    <div class="search-user-details">
-                        <span class="search-username">${user.username}</span>
-                        <span class="search-user-status ${statusClass}">${statusText}</span>
-                    </div>
-                </div>
-                <button type="button" class="start-chat-btn">Написать</button>
-            `;
-
-            const chatButton = userElement.querySelector('.start-chat-btn');
-            
-            userElement.addEventListener('click', (e) => {
-                if (!e.target.classList.contains('start-chat-btn')) {
-                    this.startChat(user.username);
-                    resultsContainer.style.display = 'none';
-                }
-            });
-
-            chatButton.addEventListener('click', (e) => {
-                e.stopPropagation();
-                this.startChat(user.username);
-                resultsContainer.style.display = 'none';
-            });
-
-            resultsContainer.appendChild(userElement);
-        });
-        
-        resultsContainer.style.display = 'block';
+displaySearchResults(users) {
+    const resultsContainer = document.getElementById('searchResults');
+    if (!resultsContainer) return;
+    
+    resultsContainer.innerHTML = '';
+    
+    if (!users || users.length === 0) {
+        resultsContainer.innerHTML = '<div class="search-result empty">Никого не найдено</div>';
+        return;
     }
 
+    users.forEach(user => {
+        if (!user || !user.username) return;
+        
+        const isOnline = user.isOnline === true;
+        const statusClass = isOnline ? 'online' : 'offline';
+        const statusText = isOnline ? 'online' : 'offline';
+        
+        const userElement = document.createElement('div');
+        userElement.className = 'search-result';
+        
+        const avatarUrl = '/default-avatar.png';
+        
+        userElement.innerHTML = `
+            <div class="search-user-info">
+                <img src="${avatarUrl}" class="search-avatar-img" alt="${user.username}" onerror="this.src='/default-avatar.png'">
+                <div class="search-user-details">
+                    <span class="search-username">${user.username}</span>
+                    <span class="search-user-status ${statusClass}">${statusText}</span>
+                </div>
+            </div>
+            <button type="button" class="start-chat-btn">Написать</button>
+        `;
+
+        const chatButton = userElement.querySelector('.start-chat-btn');
+        
+        userElement.addEventListener('click', (e) => {
+            if (!e.target.classList.contains('start-chat-btn')) {
+                this.startChat(user.username);
+                resultsContainer.style.display = 'none';
+            }
+        });
+
+        chatButton.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.startChat(user.username);
+            resultsContainer.style.display = 'none';
+        });
+
+        resultsContainer.appendChild(userElement);
+    });
+    
+    resultsContainer.style.display = 'block';
+}
     async startChat(username, isGroup = false, groupId = null) {
         console.log('💬 Starting chat:', { username, isGroup, groupId });
         
@@ -2393,109 +2471,49 @@ setupAdminPanelTabs() {
             this.displayConversations();
         }
     }
+async displayConversations() {
+        const container = document.getElementById('conversationsList');
+        if (!container) return;
+        
+        container.innerHTML = '<div class="conversation-item empty">Загрузка...</div>';
 
-displayConversations() {
-    const container = document.getElementById('conversationsList');
+        try {
+            // Загружаем аватары с обработкой ошибок
+            const conversationsWithAvatars = await Promise.all(
+                this.conversations.map(async (conversation) => {
+                    try {
+                        if (!conversation.isGroup) {
+                            conversation.avatarUrl = await this.loadUserAvatarSafe(conversation.username);
+                        }
+                        return conversation;
+                    } catch (error) {
+                        console.error(`Error loading avatar for ${conversation.username}:`, error);
+                        conversation.avatarUrl = this.getDefaultAvatarUrl();
+                        return conversation;
+                    }
+                })
+            );
+
+            // Используем существующий метод для отображения
+            this.renderConversationsList(conversationsWithAvatars, container);
+            
+        } catch (error) {
+            console.error('Error displaying conversations:', error);
+            // Используем запасной метод
+            this.displayConversationsWithDefaultAvatars();
+        }
+    }
+   renderConversationsList(conversations, container) {
     if (!container) return;
     
     container.innerHTML = '';
 
-    if (this.conversations.length === 0) {
+    if (conversations.length === 0) {
         container.innerHTML = '<div class="conversation-item empty">Нет диалогов</div>';
         return;
     }
 
-    // Загружаем аватары для всех пользователей заранее
-    const loadAvatarPromises = this.conversations.map(async (conversation) => {
-        if (!conversation.isGroup) {
-            conversation.avatarUrl = await this.loadUserAvatarSafe(conversation.username);
-        }
-        return conversation;
-    });
-
-    // Ждем загрузки всех аватаров и затем отображаем
-    Promise.all(loadAvatarPromises).then(conversationsWithAvatars => {
-        conversationsWithAvatars.forEach(conversation => {
-            const convElement = document.createElement('div');
-            const isGroup = conversation.isGroup;
-            
-            let isActive = false;
-            if (isGroup) {
-                isActive = window.groupChatManager?.currentGroup && 
-                          window.groupChatManager.currentGroup.id === conversation.id;
-            } else {
-                isActive = conversation.username === this.currentChat;
-            }
-            
-            convElement.className = `conversation-item ${isActive ? 'active' : ''} ${isGroup ? 'group-item' : ''}`;
-            
-            const lastMsg = conversation.lastMessage;
-            let preview = 'Нет сообщений';
-            
-            if (lastMsg) {
-                preview = lastMsg.isOwn ? `Вы: ${lastMsg.text}` : 
-                         isGroup ? `${lastMsg.sender}: ${lastMsg.text}` : lastMsg.text;
-                if (preview.length > 30) preview = preview.substring(0, 30) + '...';
-            }
-
-            const isOnline = !isGroup && this.onlineUsers.has(conversation.username);
-            const onlineIndicator = isOnline ? '<span class="online-dot"></span>' : '';
-            
-            if (!isGroup) {
-                // Используем загруженную аватарку пользователя вместо дефолтной
-                const avatarUrl = conversation.avatarUrl || this.getDefaultAvatarUrl();
-                convElement.innerHTML = `
-                    <div class="conv-info">
-                        <div class="conv-header">
-                            <span class="conv-name">
-                                <img src="${avatarUrl}" class="conversation-avatar" alt="${conversation.username}" onerror="this.src='${this.getDefaultAvatarUrl()}'">
-                                ${conversation.username} ${onlineIndicator}
-                            </span>
-                            ${lastMsg ? `<span class="conv-time">${lastMsg.timestamp}</span>` : ''}
-                        </div>
-                        <div class="conv-preview">${preview}</div>
-                    </div>
-                `;
-            } else {
-                const memberInfo = `<div class="conv-members">${conversation.memberCount || conversation.members?.length || 0} участников</div>`;
-                
-                convElement.innerHTML = `
-                    <div class="conv-info">
-                        <div class="conv-header">
-                            <span class="conv-name">
-                                <div class="group-avatar">👥</div>
-                                ${conversation.name}
-                            </span>
-                            ${lastMsg ? `<span class="conv-time">${lastMsg.timestamp}</span>` : ''}
-                        </div>
-                        <div class="conv-preview">${preview}</div>
-                        ${memberInfo}
-                    </div>
-                `;
-            }
-
-            convElement.addEventListener('click', () => {
-                if (isGroup) {
-                    this.startChat(conversation.name, true, conversation.id);
-                } else {
-                    this.startChat(conversation.username);
-                }
-            });
-            container.appendChild(convElement);
-        });
-    }).catch(error => {
-        console.error('Error loading avatars for conversations:', error);
-        // В случае ошибки отображаем с дефолтными аватарками
-        this.displayConversationsWithDefaultAvatars();
-    });
-}
-displayConversationsWithDefaultAvatars() {
-    const container = document.getElementById('conversationsList');
-    if (!container) return;
-    
-    container.innerHTML = '';
-
-    this.conversations.forEach(conversation => {
+    conversations.forEach(conversation => {
         const convElement = document.createElement('div');
         const isGroup = conversation.isGroup;
         
@@ -2522,13 +2540,14 @@ displayConversationsWithDefaultAvatars() {
         const onlineIndicator = isOnline ? '<span class="online-dot"></span>' : '';
         
         if (!isGroup) {
-            // Используем дефолтную аватарку
-            const avatarUrl = this.getDefaultAvatarUrl();
+            // Для приватных чатов
+            const avatarUrl = conversation.avatarUrl || this.getDefaultAvatarUrl();
             convElement.innerHTML = `
                 <div class="conv-info">
                     <div class="conv-header">
                         <span class="conv-name">
-                            <img src="${avatarUrl}" class="conversation-avatar" alt="${conversation.username}">
+                            <img src="${avatarUrl}" class="conversation-avatar" alt="${conversation.username}" 
+                                 onerror="this.src='${this.getDefaultAvatarUrl()}'">
                             ${conversation.username} ${onlineIndicator}
                         </span>
                         ${lastMsg ? `<span class="conv-time">${lastMsg.timestamp}</span>` : ''}
@@ -2537,6 +2556,7 @@ displayConversationsWithDefaultAvatars() {
                 </div>
             `;
         } else {
+            // Для групповых чатов
             const memberInfo = `<div class="conv-members">${conversation.memberCount || conversation.members?.length || 0} участников</div>`;
             
             convElement.innerHTML = `
@@ -2561,8 +2581,190 @@ displayConversationsWithDefaultAvatars() {
                 this.startChat(conversation.username);
             }
         });
+        
         container.appendChild(convElement);
     });
+}
+displayConversationsWithDefaultAvatars() {
+    const container = document.getElementById('conversationsList');
+    if (!container) {
+        console.error('❌ Conversations list container not found');
+        return;
+    }
+    
+    container.innerHTML = '';
+
+    if (this.conversations.length === 0) {
+        container.innerHTML = '<div class="conversation-item empty">📝 Нет диалогов</div>';
+        return;
+    }
+
+    console.log(`🔄 Displaying ${this.conversations.length} conversations with default avatars`);
+
+    this.conversations.forEach(conversation => {
+        if (!conversation) return;
+        
+        const convElement = document.createElement('div');
+        const isGroup = conversation.isGroup;
+        const currentUser = document.getElementById('username')?.textContent;
+        
+        // Определяем активен ли чат
+        let isActive = false;
+        if (isGroup) {
+            isActive = window.groupChatManager?.currentGroup && 
+                      window.groupChatManager.currentGroup.id === conversation.id;
+        } else {
+            isActive = conversation.username === this.currentChat;
+        }
+        
+        convElement.className = `conversation-item ${isActive ? 'active' : ''} ${isGroup ? 'group-item' : ''}`;
+        
+        // Обрабатываем последнее сообщение
+        const lastMsg = conversation.lastMessage;
+        let preview = '📝 Нет сообщений';
+        let timestamp = '';
+        
+        if (lastMsg) {
+            // Форматируем текст предпросмотра
+            let messageText = lastMsg.text || '📄 Вложение';
+            if (lastMsg.type === 'voice') {
+                messageText = '🎤 Голосовое сообщение';
+            } else if (lastMsg.type === 'file') {
+                messageText = '📎 Файл';
+            } else if (lastMsg.type === 'image') {
+                messageText = '🖼️ Изображение';
+            }
+            
+            preview = lastMsg.isOwn ? `Вы: ${messageText}` : 
+                     isGroup ? `${lastMsg.sender}: ${messageText}` : messageText;
+            
+            // Обрезаем длинный текст
+            if (preview.length > 35) {
+                preview = preview.substring(0, 35) + '...';
+            }
+            
+            // Форматируем время
+            timestamp = lastMsg.timestamp || this.formatMessageTime(lastMsg.date);
+        }
+
+        // Статус онлайн для приватных чатов
+        const isOnline = !isGroup && this.onlineUsers.has(conversation.username);
+        const onlineIndicator = isOnline ? '<span class="online-dot" title="В сети"></span>' : '';
+        
+        if (!isGroup) {
+            // Приватный чат
+            const avatarUrl = this.getDefaultAvatarUrl();
+            const displayName = conversation.username || 'Неизвестный';
+            
+            convElement.innerHTML = `
+                <div class="conv-info">
+                    <div class="conv-header">
+                        <div class="conv-name-wrapper">
+                            <span class="conv-name">
+                                <img src="${avatarUrl}" class="conversation-avatar" alt="${displayName}" 
+                                     onerror="this.src='${this.getDefaultAvatarUrl()}'">
+                                <span class="username-text">${displayName}</span>
+                                ${onlineIndicator}
+                            </span>
+                            ${timestamp ? `<span class="conv-time">${timestamp}</span>` : ''}
+                        </div>
+                    </div>
+                    <div class="conv-preview">${preview}</div>
+                    ${isOnline ? '<div class="conv-status online">🟢 онлайн</div>' : '<div class="conv-status offline">⚫ не в сети</div>'}
+                </div>
+            `;
+        } else {
+            // Групповой чат
+            const memberCount = conversation.memberCount || conversation.members?.length || 0;
+            const displayName = conversation.name || conversation.username || 'Без названия';
+            const createdBy = conversation.createdBy ? `Создал: ${conversation.createdBy}` : '';
+            
+            convElement.innerHTML = `
+                <div class="conv-info">
+                    <div class="conv-header">
+                        <div class="conv-name-wrapper">
+                            <span class="conv-name">
+                                <div class="group-avatar">👥</div>
+                                <span class="group-name-text">${displayName}</span>
+                            </span>
+                            ${timestamp ? `<span class="conv-time">${timestamp}</span>` : ''}
+                        </div>
+                    </div>
+                    <div class="conv-preview">${preview}</div>
+                    <div class="conv-meta">
+                        <span class="conv-members">👤 ${memberCount} участников</span>
+                        ${createdBy ? `<span class="conv-creator">${createdBy}</span>` : ''}
+                    </div>
+                </div>
+            `;
+        }
+
+        // Обработчик клика
+        convElement.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            
+            console.log(`💬 Opening chat:`, {
+                isGroup: isGroup,
+                name: conversation.name || conversation.username,
+                id: conversation.id
+            });
+            
+            if (isGroup) {
+                this.startChat(conversation.name || conversation.username, true, conversation.id);
+            } else {
+                this.startChat(conversation.username);
+            }
+        });
+
+        // Эффекты при наведении
+        convElement.addEventListener('mouseenter', () => {
+            if (!isActive) {
+                convElement.style.backgroundColor = '#f8f9fa';
+            }
+        });
+
+        convElement.addEventListener('mouseleave', () => {
+            if (!isActive) {
+                convElement.style.backgroundColor = '';
+            }
+        });
+
+        container.appendChild(convElement);
+    });
+
+    console.log('✅ Conversations displayed with default avatars');
+}
+
+// Вспомогательный метод для форматирования времени (если его нет)
+formatMessageTime(timestamp) {
+    if (!timestamp) return 'только что';
+    
+    try {
+        const date = new Date(timestamp);
+        if (isNaN(date.getTime())) return 'только что';
+        
+        const now = new Date();
+        const diffMs = now - date;
+        const diffMins = Math.floor(diffMs / 60000);
+        const diffHours = Math.floor(diffMs / 3600000);
+        const diffDays = Math.floor(diffMs / 86400000);
+        
+        if (diffMins < 1) return 'только что';
+        if (diffMins < 60) return `${diffMins} мин назад`;
+        if (diffHours < 24) return `${diffHours} ч назад`;
+        if (diffDays < 7) return `${diffDays} дн назад`;
+        
+        return date.toLocaleDateString('ru-RU', {
+            day: '2-digit',
+            month: '2-digit',
+            year: '2-digit'
+        });
+        
+    } catch (error) {
+        console.error('Error formatting time:', error);
+        return 'только что';
+    }
 }
     displayMessage(message, shouldScroll = true) {
         const container = document.getElementById('privateMessages');
@@ -3298,6 +3500,522 @@ displayConversationsWithDefaultAvatars() {
             console.log('🔄 Force refreshing group chat...');
             this.loadGroupMessages(this.currentGroup.id);
         }
+    }
+openUserProfile(username) {
+    if (!username || username === this.currentUser) return;
+    
+    console.log('👤 Opening profile for:', username);
+    
+    // Закрываем существующее модальное окно если есть
+    const existingModal = document.getElementById('userProfileModal');
+    if (existingModal) {
+        existingModal.remove();
+    }
+    
+    // Создаем модальное окно профиля
+    const modal = document.createElement('div');
+    modal.id = 'userProfileModal';
+    modal.className = 'modal-overlay';
+    modal.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0,0,0,0.5);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 10000;
+    `;
+
+    modal.innerHTML = `
+        <div class="modal-content" style="
+            background: white;
+            padding: 25px;
+            border-radius: 15px;
+            width: 400px;
+            max-width: 90%;
+            max-height: 80vh;
+            overflow-y: auto;
+        ">
+            <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding-bottom: 15px; border-bottom: 1px solid #e9ecef;">
+                <h3 style="margin: 0;">👤 Профиль пользователя</h3>
+                <button class="close-modal" style="background: none; border: none; font-size: 20px; cursor: pointer; color: #666;">✕</button>
+            </div>
+            
+            <div class="profile-content">
+                <div class="profile-header" style="text-align: center; margin-bottom: 20px;">
+                    <div class="profile-avatar" style="width: 100px; height: 100px; border-radius: 50%; overflow: hidden; margin: 0 auto 15px; border: 3px solid #007bff;">
+                        <img id="profileAvatarImg" src="${this.getDefaultAvatarUrl()}" alt="${username}" style="width: 100%; height: 100%; object-fit: cover;">
+                    </div>
+                    <h4 id="profileUsername" style="margin: 0 0 5px 0; color: #333;">${username}</h4>
+                    <div class="user-status" id="profileUserStatus" style="color: #6c757d;">Загрузка...</div>
+                </div>
+                
+                <div class="profile-actions" style="display: flex; gap: 10px; margin-bottom: 20px;">
+                    <button class="btn-primary" onclick="window.privateChatInstance.startChat('${username}')" style="flex: 1; padding: 10px; background: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer;">
+                        💬 Написать сообщение
+                    </button>
+                    <button class="btn-secondary" onclick="window.privateChatInstance.openGiftForUser('${username}')" style="flex: 1; padding: 10px; background: #28a745; color: white; border: none; border-radius: 5px; cursor: pointer;">
+                        🎁 Отправить подарок
+                    </button>
+                </div>
+                
+                <div class="profile-info">
+                    <div class="info-section" style="margin-bottom: 15px;">
+                        <h5 style="margin-bottom: 10px; color: #495057;">📊 Статистика</h5>
+                        <div class="stats-grid" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px;">
+                            <div class="stat-item" style="text-align: center; padding: 10px; background: #f8f9fa; border-radius: 8px;">
+                                <div style="font-size: 12px; color: #6c757d;">В сети</div>
+                                <div id="profileOnlineStatus" style="font-weight: bold; color: #28a745;">Проверка...</div>
+                            </div>
+                            <div class="stat-item" style="text-align: center; padding: 10px; background: #f8f9fa; border-radius: 8px;">
+                                <div style="font-size: 12px; color: #6c757d;">Баланс</div>
+                                <div id="profileBalance" style="font-weight: bold;">🪙 ...</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Добавляем секцию био -->
+                    <div class="bio-section" style="margin-bottom: 15px; display: none;" id="profileBioSection">
+                        <h5 style="margin-bottom: 10px; color: #495057;">📝 О себе</h5>
+                        <div id="profileBio" style="color: #333; line-height: 1.4; font-size: 14px; padding: 10px; background: #f8f9fa; border-radius: 5px;"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+
+    document.body.appendChild(modal);
+
+    // Загружаем данные профиля
+    this.loadProfileData(username);
+
+    // Обработчики закрытия
+    const closeBtn = modal.querySelector('.close-modal');
+    closeBtn.addEventListener('click', () => {
+        modal.remove();
+    });
+
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) {
+            modal.remove();
+        }
+    });
+    
+    // Предотвращаем всплытие события
+    modal.querySelector('.modal-content').addEventListener('click', (e) => {
+        e.stopPropagation();
+    });
+}
+async loadProfileData(username) {
+    try {
+        console.log('👤 Loading profile data for:', username);
+        
+        // Сначала устанавливаем базовую информацию
+        const profileUsername = document.getElementById('profileUsername');
+        const profileUserStatus = document.getElementById('profileUserStatus');
+        const profileAvatarImg = document.getElementById('profileAvatarImg');
+        
+        if (profileUsername) profileUsername.textContent = username;
+        if (profileUserStatus) profileUserStatus.textContent = 'Загрузка...';
+        if (profileAvatarImg) profileAvatarImg.src = this.getDefaultAvatarUrl();
+
+        // Обновляем статус онлайн сразу
+        const onlineStatus = document.getElementById('profileOnlineStatus');
+        const userStatus = document.getElementById('profileUserStatus');
+        if (onlineStatus && userStatus) {
+            const isOnline = this.onlineUsers.has(username);
+            onlineStatus.textContent = isOnline ? '🟢 Online' : '🔴 Offline';
+            onlineStatus.style.color = isOnline ? '#28a745' : '#dc3545';
+            userStatus.textContent = isOnline ? 'В сети' : 'Не в сети';
+        }
+
+        // Параллельно загружаем данные пользователя и баланс
+        const [userDataResponse, balanceResponse] = await Promise.allSettled([
+            fetch(`/api/user/${username}`),
+            fetch(`/api/user/${username}/currency`)
+        ]);
+
+        // Обрабатываем данные пользователя
+        if (userDataResponse.status === 'fulfilled' && userDataResponse.value.ok) {
+            const userData = await userDataResponse.value.json();
+            
+            // Обновляем аватар если есть
+            const avatarImg = document.getElementById('profileAvatarImg');
+            if (avatarImg && userData.avatar) {
+                // Проверяем, что аватар действительно существует
+                const avatarExists = await this.checkImageExists(userData.avatar);
+                if (avatarExists) {
+                    avatarImg.src = userData.avatar;
+                } else {
+                    console.log('⚠️ Avatar not found, using default');
+                    avatarImg.src = this.getDefaultAvatarUrl();
+                }
+            }
+            
+            // Обновляем другую информацию пользователя если есть
+            if (userData.bio) {
+                const bioElement = document.getElementById('profileBio');
+                if (bioElement) {
+                    bioElement.textContent = userData.bio;
+                }
+            }
+        } else {
+            console.log('⚠️ User data not available, using default avatar');
+            const avatarImg = document.getElementById('profileAvatarImg');
+            if (avatarImg) {
+                avatarImg.src = this.getDefaultAvatarUrl();
+            }
+        }
+
+        // Обрабатываем баланс
+        if (balanceResponse.status === 'fulfilled' && balanceResponse.value.ok) {
+            const currencyData = await balanceResponse.value.json();
+            const balanceElement = document.getElementById('profileBalance');
+            if (balanceElement) {
+                balanceElement.textContent = `🪙 ${currencyData.balance || 0}`;
+            }
+        } else {
+            console.log('⚠️ Balance not available for user:', username);
+            const balanceElement = document.getElementById('profileBalance');
+            if (balanceElement) {
+                balanceElement.textContent = '🪙 0';
+            }
+        }
+
+        console.log('✅ Profile data loaded successfully for:', username);
+        
+    } catch (error) {
+        console.error('❌ Error loading profile data:', error);
+        
+        // Устанавливаем дефолтные значения при ошибке
+        const avatarImg = document.getElementById('profileAvatarImg');
+        if (avatarImg) {
+            avatarImg.src = this.getDefaultAvatarUrl();
+        }
+        
+        const balanceElement = document.getElementById('profileBalance');
+        if (balanceElement) {
+            balanceElement.textContent = '🪙 0';
+        }
+        
+        const onlineStatus = document.getElementById('profileOnlineStatus');
+        const userStatus = document.getElementById('profileUserStatus');
+        if (onlineStatus && userStatus) {
+            onlineStatus.textContent = '🔴 Offline';
+            onlineStatus.style.color = '#dc3545';
+            userStatus.textContent = 'Не в сети';
+        }
+        
+        this.showNotification('Ошибка загрузки профиля', 'error');
+    }
+}
+
+
+// Метод для загрузки баланса пользователя
+async loadUserBalance(username) {
+    try {
+        const response = await fetch(`/api/user/${username}/currency`);
+        if (response.ok) {
+            const currencyData = await response.json();
+            const balanceElement = document.getElementById('profileBalance');
+            if (balanceElement) {
+                balanceElement.textContent = `🪙 ${currencyData.balance || 0}`;
+            }
+        }
+    } catch (error) {
+        console.log('Balance not available for user:', username);
+        const balanceElement = document.getElementById('profileBalance');
+        if (balanceElement) {
+            balanceElement.textContent = '🪙 0';
+        }
+    }
+}
+openGiftForUser(username) {
+        if (!window.currencyManager || !window.giftManager) {
+            this.showNotification('Система подарков временно недоступна', 'error');
+            return;
+        }
+        const profileModal = document.getElementById('userProfileModal');
+        if (profileModal) {
+            profileModal.remove();
+        }
+        this.openGiftSelectionModal(username);
+    }
+     openGiftSelectionModal(targetUser) {
+        const currentUser = this.getCurrentUser();
+        const userGifts = window.giftManager.getUserGifts(currentUser);
+        
+        const modal = document.createElement('div');
+        modal.id = 'giftSelectionModal';
+        modal.className = 'modal-overlay';
+        modal.style.cssText = `
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 10000;
+        `;
+
+        modal.innerHTML = `
+            <div class="modal-content" style="
+                background: white;
+                padding: 25px;
+                border-radius: 15px;
+                width: 700px;
+                max-width: 95%;
+                max-height: 80vh;
+                overflow: hidden;
+                display: flex;
+                flex-direction: column;
+            ">
+                <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding-bottom: 15px; border-bottom: 1px solid #e9ecef;">
+                    <h3 style="margin: 0; color: #333;">🎁 Отправить подарок пользователю ${targetUser}</h3>
+                    <button class="close-modal" style="background: none; border: none; font-size: 20px; cursor: pointer; color: #666;">✕</button>
+                </div>
+                
+                <div class="gift-selection-tabs" style="display: flex; gap: 10px; margin-bottom: 20px; border-bottom: 1px solid #e9ecef; padding-bottom: 15px;">
+                    <button class="gift-tab-btn active" data-tab="inventory" style="padding: 10px 15px; background: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer;">
+                        📦 Мои подарки (${userGifts.length})
+                    </button>
+                    <button class="gift-tab-btn" data-tab="shop" style="padding: 10px 15px; background: #6c757d; color: white; border: none; border-radius: 5px; cursor: pointer;">
+                        🛒 Купить новый
+                    </button>
+                </div>
+                
+                <div class="gift-selection-content" style="flex: 1; overflow-y: auto;">
+                    <div id="giftInventoryTab" class="gift-tab-content active">
+                        ${this.renderGiftInventory(userGifts, targetUser)}
+                    </div>
+                    <div id="giftShopTab" class="gift-tab-content" style="display: none;">
+                        <div style="text-align: center; padding: 20px;">
+                            <button class="open-gift-shop-btn" style="padding: 12px 24px; background: #ffc107; color: #212529; border: none; border-radius: 8px; cursor: pointer; font-size: 16px; font-weight: bold;">
+                                🛒 Открыть магазин подарков
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        document.body.appendChild(modal);
+        this.setupGiftSelectionModalEvents(modal, targetUser);
+    }
+    renderGiftInventory(userGifts, targetUser) {
+        if (userGifts.length === 0) {
+            return `
+                <div style="text-align: center; padding: 40px; color: #6c757d;">
+                    <div style="font-size: 48px; margin-bottom: 15px;">🎁</div>
+                    <div style="margin-bottom: 15px; font-size: 16px;">У вас пока нет подарков</div>
+                    <div style="margin-bottom: 20px; font-size: 14px;">Приобретите подарки в магазине, чтобы отправить их друзьям</div>
+                    <button class="open-gift-shop-inventory-btn" style="padding: 12px 24px; background: #ffc107; color: #212529; border: none; border-radius: 8px; cursor: pointer; font-size: 16px;">
+                        🛒 Перейти в магазин
+                    </button>
+                </div>
+            `;
+        }
+
+        return `
+            <div style="margin-bottom: 15px; font-size: 14px; color: #6c757d; text-align: center;">
+                Выберите подарок из вашей коллекции для отправки
+            </div>
+            <div class="inventory-grid" style="
+                display: grid;
+                grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+                gap: 15px;
+                padding: 10px;
+            ">
+                ${userGifts.map(gift => this.renderInventoryGiftItem(gift, targetUser)).join('')}
+            </div>
+        `;
+    }
+      renderInventoryGiftItem(gift, targetUser) {
+        const isEquipped = window.giftManager.isGiftEquipped(this.getCurrentUser(), gift.id);
+        
+        return `
+            <div class="inventory-gift-item" data-gift-id="${gift.id}" style="
+                border: 2px solid ${isEquipped ? '#007bff' : '#dee2e6'};
+                border-radius: 10px;
+                padding: 15px;
+                text-align: center;
+                cursor: pointer;
+                transition: all 0.3s ease;
+                background: white;
+                position: relative;
+            ">
+                ${isEquipped ? '<div style="position: absolute; top: 5px; right: 5px; color: #007bff; font-size: 12px;">🎽</div>' : ''}
+                
+                <div class="gift-icon" style="font-size: 40px; margin-bottom: 10px;">${gift.name.split(' ')[0]}</div>
+                
+                <div class="gift-name" style="font-weight: bold; margin-bottom: 5px; font-size: 14px; height: 40px; overflow: hidden;">
+                    ${gift.name}
+                </div>
+                
+                <div class="gift-description" style="font-size: 11px; color: #6c757d; margin-bottom: 10px; height: 30px; overflow: hidden;">
+                    ${gift.description}
+                </div>
+                
+                ${gift.from ? `
+                    <div style="font-size: 10px; color: #28a745; background: #d4edda; padding: 2px 5px; border-radius: 3px; margin-bottom: 8px;">
+                        от ${gift.from}
+                    </div>
+                ` : ''}
+                
+                <button class="send-gift-from-inventory-btn" data-gift-id="${gift.id}" style="
+                    width: 100%;
+                    padding: 8px;
+                    background: #28a745;
+                    color: white;
+                    border: none;
+                    border-radius: 5px;
+                    cursor: pointer;
+                    font-size: 12px;
+                    transition: all 0.3s ease;
+                ">
+                    🎁 Отправить
+                </button>
+            </div>
+        `;
+    }
+        setupGiftSelectionModalEvents(modal, targetUser) {
+        const closeBtn = modal.querySelector('.close-modal');
+        const tabBtns = modal.querySelectorAll('.gift-tab-btn');
+        const openShopBtn = modal.querySelector('.open-gift-shop-btn');
+        const openShopInventoryBtn = modal.querySelector('.open-gift-shop-inventory-btn');
+        
+        const closeModal = () => {
+            modal.remove();
+        };
+        
+        closeBtn.addEventListener('click', closeModal);
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) closeModal();
+        });
+        
+        // Переключение вкладок
+        tabBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                const tabName = btn.getAttribute('data-tab');
+                
+                // Обновляем активные кнопки
+                tabBtns.forEach(b => b.style.background = '#6c757d');
+                btn.style.background = '#007bff';
+                
+                // Показываем соответствующий контент
+                document.querySelectorAll('.gift-tab-content').forEach(content => {
+                    content.style.display = 'none';
+                });
+                
+                const activeContent = document.getElementById(`gift${tabName.charAt(0).toUpperCase() + tabName.slice(1)}Tab`);
+                if (activeContent) {
+                    activeContent.style.display = 'block';
+                }
+            });
+        });
+        
+        // Кнопки открытия магазина
+        const openGiftShop = () => {
+            closeModal();
+            if (window.currencyManager) {
+                window.currencyManager.openGiftShop(targetUser);
+            }
+        };
+        
+        if (openShopBtn) openShopBtn.addEventListener('click', openGiftShop);
+        if (openShopInventoryBtn) openShopInventoryBtn.addEventListener('click', openGiftShop);
+        
+        // Обработчики отправки подарков из инвентаря
+        modal.querySelectorAll('.send-gift-from-inventory-btn').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                e.stopPropagation();
+                const giftId = btn.getAttribute('data-gift-id');
+                await this.sendGiftFromInventory(giftId, targetUser, modal);
+            });
+        });
+        
+        // Выбор подарка по клику на карточку
+        modal.querySelectorAll('.inventory-gift-item').forEach(item => {
+            item.addEventListener('click', (e) => {
+                if (!e.target.classList.contains('send-gift-from-inventory-btn')) {
+                    const giftId = item.getAttribute('data-gift-id');
+                    const sendBtn = item.querySelector('.send-gift-from-inventory-btn');
+                    sendBtn.click();
+                }
+            });
+        });
+    }
+
+    async sendGiftFromInventory(giftId, targetUser, modal) {
+        const currentUser = this.getCurrentUser();
+        
+        if (!currentUser || !targetUser) {
+            this.showNotification('Ошибка: пользователь не определен', 'error');
+            return;
+        }
+        
+        if (currentUser === targetUser) {
+            this.showNotification('Нельзя отправить подарок самому себе', 'error');
+            return;
+        }
+        
+        try {
+            const gift = window.giftManager.getUserGift(currentUser, giftId);
+            if (!gift) {
+                throw new Error('Подарок не найден');
+            }
+            
+            // Показываем подтверждение
+            if (!confirm(`Вы уверены, что хотите отправить подарок "${gift.name}" пользователю ${targetUser}?`)) {
+                return;
+            }
+            
+            // Показываем индикатор загрузки
+            const sendBtn = modal.querySelector(`[data-gift-id="${giftId}"] .send-gift-from-inventory-btn`);
+            const originalText = sendBtn.innerHTML;
+            sendBtn.innerHTML = '⏳ Отправка...';
+            sendBtn.disabled = true;
+            
+            // Отправляем подарок
+            await window.giftManager.sendGiftFromInventory(currentUser, targetUser, giftId);
+            
+            // Закрываем модальное окно
+            modal.remove();
+            
+            // Показываем уведомление об успехе
+            this.showNotification(`Подарок "${gift.name}" успешно отправлен пользователю ${targetUser}!`, 'success');
+            
+            // Обновляем профили если они открыты
+            if (window.profileManager) {
+                if (window.profileManager.currentProfile?.username === targetUser) {
+                    window.profileManager.viewProfile(targetUser);
+                }
+                if (window.profileManager.currentProfile?.username === currentUser) {
+                    window.profileManager.viewProfile(currentUser);
+                }
+            }
+            
+        } catch (error) {
+            console.error('Error sending gift from inventory:', error);
+            this.showNotification(error.message, 'error');
+            
+            // Восстанавливаем кнопку
+            const sendBtn = modal.querySelector(`[data-gift-id="${giftId}"] .send-gift-from-inventory-btn`);
+            if (sendBtn) {
+                sendBtn.innerHTML = '🎁 Отправить';
+                sendBtn.disabled = false;
+            }
+        }
+    }
+
+    getCurrentUser() {
+        return document.getElementById('username')?.textContent || 'anonymous';
     }
 }
 
@@ -9781,7 +10499,85 @@ loadGiftsToSettingsShop() {
             }
         });
     }
+async saveUserData() {
+    try {
+        const currentUser = this.currentUser;
+        if (!currentUser) {
+            console.error('❌ No current user for saving currency data');
+            return false;
+        }
 
+        const dataToSave = {
+            username: currentUser,
+            balance: this.balance,
+            dailyStreak: this.dailyStreak,
+            lastDailyReward: this.lastDailyReward,
+            transactionHistory: this.transactionHistory
+        };
+
+        console.log('💾 Attempting to save currency data for:', currentUser);
+        console.log('📦 Data to save:', dataToSave);
+
+        // Пробуем разные эндпоинты
+        const endpoints = [
+            '/api/currency/save',
+            '/api/currency/user/save', 
+            '/api/user/currency/save'
+        ];
+        
+        let success = false;
+        
+        for (const endpoint of endpoints) {
+            try {
+                console.log(`🔍 Trying to save to: ${endpoint}`);
+                
+                const response = await fetch(endpoint, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(dataToSave)
+                });
+
+                console.log(`📨 Response from ${endpoint}:`, response.status);
+                
+                if (response.ok) {
+                    const result = await response.json();
+                    console.log('✅ Currency data saved successfully via:', endpoint, result);
+                    success = true;
+                    break;
+                } else {
+                    console.log(`❌ ${endpoint} returned ${response.status}`);
+                    // Пробуем прочитать текст ошибки
+                    try {
+                        const errorText = await response.text();
+                        console.log(`❌ Error response: ${errorText}`);
+                    } catch (e) {
+                        console.log('❌ Could not read error response');
+                    }
+                }
+            } catch (error) {
+                console.log(`❌ Endpoint ${endpoint} failed:`, error.message);
+                continue;
+            }
+        }
+
+        if (!success) {
+            // Сохраняем локально если сервер недоступен
+            console.log('💾 All endpoints failed, saving locally');
+            this.saveLocalData();
+        } else {
+            // Также сохраняем локально для резерва
+            this.saveLocalData();
+        }
+
+        return true;
+    } catch (error) {
+        console.error('❌ Error saving currency data:', error);
+        this.saveLocalData(); // Всегда сохраняем локально при ошибке
+        return false;
+    }
+}
     async buyGiftFromSettings(gift) {
         if (!window.giftManager) {
             this.showNotification('Магазин подарков недоступен', 'error');
@@ -10148,7 +10944,56 @@ async claimDailyReward() {
         this.showNotification('Ошибка получения награды: ' + error.message, 'error');
     }
 }
-
+async loadUserData() {
+    try {
+        console.log('🔄 Loading currency data for:', this.currentUser);
+        
+        const endpoints = [
+            `/api/user/${this.currentUser}/currency`,
+            `/api/currency/user/${this.currentUser}`,
+            `/api/currency/${this.currentUser}`
+        ];
+        
+        let success = false;
+        
+        for (const endpoint of endpoints) {
+            try {
+                console.log(`🔍 Trying currency endpoint: ${endpoint}`);
+                const response = await fetch(endpoint);
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    this.balance = data.balance || 0;
+                    this.dailyStreak = data.dailyStreak || 0;
+                    this.lastDailyReward = data.lastDailyReward;
+                    this.transactionHistory = data.transactionHistory || [];
+                    
+                    console.log('✅ Currency data loaded from:', endpoint);
+                    success = true;
+                    break;
+                } else if (response.status === 403) {
+                    console.log('⚠️ No permission to access currency data');
+                    // Используем локальные данные
+                    await this.loadLocalData();
+                    success = true;
+                    break;
+                }
+            } catch (error) {
+                console.log(`❌ Endpoint ${endpoint} failed:`, error.message);
+                continue;
+            }
+        }
+        
+        if (!success) {
+            console.log('⚠️ All currency endpoints failed, using local data');
+            await this.loadLocalData();
+        }
+        
+    } catch (error) {
+        console.error('❌ Error loading currency data:', error);
+        await this.loadLocalData();
+    }
+}
 // Добавьте метод для расчета локальной награды
 calculateLocalReward() {
     const baseReward = 50;
@@ -10318,15 +11163,20 @@ async loadUsersCurrencyList() {
             }, 3000);
         }
     }
-
-    // Методы для администратора
- async addCurrencyToUser(username, amount, reason = '') {
+async addCurrencyToUser(username, amount, reason = '') {
     if (!this.isAdmin) {
         this.showNotification('Недостаточно прав', 'error');
         return false;
     }
 
     try {
+        // Если это текущий пользователь, обновляем мгновенно
+        if (username === this.currentUser) {
+            this.addBalance(amount, reason);
+            return true;
+        }
+
+        // Для других пользователей используем API
         const endpoints = [
             '/api/currency/add',
             '/api/currency/admin/add',
@@ -10351,18 +11201,6 @@ async loadUsersCurrencyList() {
                 });
 
                 if (response.ok) {
-                    // ОБНОВЛЯЕМ БАЛАНС ЛОКАЛЬНО ДЛЯ МГНОВЕННОГО ОТОБРАЖЕНИЯ
-                    if (username === this.currentUser) {
-                        this.balance += amount;
-                        this.addTransaction({
-                            type: 'admin_add',
-                            amount: amount,
-                            description: reason || 'Административное начисление',
-                            timestamp: new Date().toISOString()
-                        });
-                        this.updateDisplay(); // ОБНОВЛЯЕМ ОТОБРАЖЕНИЕ
-                    }
-                    
                     this.showNotification(`Добавлено ${amount} монет пользователю ${username}`, 'success');
                     success = true;
                     break;
@@ -10375,16 +11213,6 @@ async loadUsersCurrencyList() {
 
         if (!success) {
             // Локальная логика для демонстрации
-            if (username === this.currentUser) {
-                this.balance += amount;
-                this.addTransaction({
-                    type: 'admin_add',
-                    amount: amount,
-                    description: reason || '[ДЕМО] Административное начисление',
-                    timestamp: new Date().toISOString()
-                });
-                this.updateDisplay(); // ОБНОВЛЯЕМ ОТОБРАЖЕНИЕ
-            }
             this.showNotification(`[ДЕМО] Добавлено ${amount} монет пользователю ${username}`, 'info');
             success = true;
         }
@@ -10396,6 +11224,109 @@ async loadUsersCurrencyList() {
         return false;
     }
 }
+async updateBalance(newBalance) {
+    const oldBalance = this.balance;
+    this.balance = newBalance;
+    
+    console.log('💰 Balance update:', {
+        user: this.currentUser,
+        oldBalance: oldBalance,
+        newBalance: newBalance,
+        difference: newBalance - oldBalance
+    });
+    
+    this.updateDisplay();
+    
+    // Сохраняем данные
+    try {
+        await this.saveUserData();
+        console.log('✅ Balance saved successfully');
+    } catch (error) {
+        console.error('❌ Error saving balance:', error);
+    }
+}
+async forceSaveAllData() {
+    console.log('💾 Force saving all currency data...');
+    await this.saveUserData();
+}
+debugCurrency() {
+    return {
+        currentUser: this.currentUser,
+        balance: this.balance,
+        dailyStreak: this.dailyStreak,
+        lastDailyReward: this.lastDailyReward,
+        transactionHistory: this.transactionHistory,
+        isAdmin: this.isAdmin
+    };
+}
+addBalance(amount, reason = '') {
+    const newBalance = this.balance + amount;
+    this.updateBalance(newBalance);
+    
+    // Добавляем в историю
+    this.addTransaction({
+        type: 'balance_add',
+        amount: amount,
+        description: reason || 'Пополнение баланса',
+        timestamp: new Date().toISOString()
+    });
+    
+    this.showNotification(`Баланс пополнен на ${amount} монет`, 'success');
+}
+subtractBalance(amount, reason = '') {
+    if (this.balance < amount) {
+        this.showNotification('Недостаточно средств', 'error');
+        return false;
+    }
+    
+    const newBalance = this.balance - amount;
+    this.updateBalance(newBalance);
+    
+    // Добавляем в историю
+    this.addTransaction({
+        type: 'balance_subtract',
+        amount: -amount,
+        description: reason || 'Списание с баланса',
+        timestamp: new Date().toISOString()
+    });
+    
+    this.showNotification(`Списано ${amount} монет`, 'info');
+    return true;
+}
+setupSocketListeners() {
+    if (!window.socket) return;
+    
+    // Слушаем обновления баланса от сервера
+    window.socket.on('currency_balance_updated', (data) => {
+        if (data.username === this.currentUser) {
+            console.log('💰 Balance update received from server:', data.balance);
+            this.updateBalance(data.balance);
+        }
+    });
+    
+    // Слушаем транзакции
+    window.socket.on('currency_transaction', (data) => {
+        if (data.username === this.currentUser) {
+            this.addTransaction(data.transaction);
+            this.updateHistoryDisplay();
+        }
+    });
+}
+
+// Вызываем этот метод в init()
+async init() {
+    this.currentUser = document.getElementById('username')?.textContent;
+    this.isAdmin = this.currentUser === 'admin';
+    
+    await this.loadUserData();
+    await this.loadLocalData();
+    
+    this.setupEventListeners();
+    this.setupSocketListeners(); // Добавляем слушатели сокетов
+    this.updateDisplay();
+    
+    console.log('✅ CurrencyManager initialized');
+}
 async removeCurrencyFromUser(username, amount, reason = '') {
     if (!this.isAdmin) {
         this.showNotification('Недостаточно прав', 'error');
@@ -10403,6 +11334,13 @@ async removeCurrencyFromUser(username, amount, reason = '') {
     }
 
     try {
+        // Если это текущий пользователь, обновляем мгновенно
+        if (username === this.currentUser) {
+            const success = this.subtractBalance(amount, reason);
+            return success;
+        }
+
+        // Для других пользователей используем API
         const endpoints = [
             '/api/currency/remove',
             '/api/currency/admin/remove',
@@ -10427,18 +11365,6 @@ async removeCurrencyFromUser(username, amount, reason = '') {
                 });
 
                 if (response.ok) {
-                    // ОБНОВЛЯЕМ БАЛАНС ЛОКАЛЬНО ДЛЯ МГНОВЕННОГО ОТОБРАЖЕНИЯ
-                    if (username === this.currentUser) {
-                        this.balance -= amount;
-                        this.addTransaction({
-                            type: 'admin_remove',
-                            amount: -amount,
-                            description: reason || 'Административное списание',
-                            timestamp: new Date().toISOString()
-                        });
-                        this.updateDisplay(); // ОБНОВЛЯЕМ ОТОБРАЖЕНИЕ
-                    }
-                    
                     this.showNotification(`Списано ${amount} монет у пользователя ${username}`, 'success');
                     success = true;
                     break;
@@ -10451,16 +11377,6 @@ async removeCurrencyFromUser(username, amount, reason = '') {
 
         if (!success) {
             // Локальная логика для демонстрации
-            if (username === this.currentUser) {
-                this.balance -= amount;
-                this.addTransaction({
-                    type: 'admin_remove',
-                    amount: -amount,
-                    description: reason || '[ДЕМО] Административное списание',
-                    timestamp: new Date().toISOString()
-                });
-                this.updateDisplay(); // ОБНОВЛЯЕМ ОТОБРАЖЕНИЕ
-            }
             this.showNotification(`[ДЕМО] Списано ${amount} монет у пользователя ${username}`, 'info');
             success = true;
         }
@@ -10472,9 +11388,273 @@ async removeCurrencyFromUser(username, amount, reason = '') {
         return false;
     }
 }
+openGiftShop(targetUser = null) {
+        console.log('🎁 Opening gift shop for user:', targetUser);
+        
+        const modal = document.createElement('div');
+        modal.id = 'giftShopModal';
+        modal.className = 'modal-overlay';
+        modal.style.cssText = `
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 10000;
+        `;
+
+        modal.innerHTML = `
+            <div class="modal-content" style="
+                background: white;
+                padding: 25px;
+                border-radius: 15px;
+                width: 800px;
+                max-width: 95%;
+                max-height: 90vh;
+                overflow: hidden;
+                display: flex;
+                flex-direction: column;
+            ">
+                <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding-bottom: 15px; border-bottom: 1px solid #e9ecef;">
+                    <h3 style="margin: 0; color: #333;">🛒 Магазин подарков</h3>
+                    <button class="close-modal" style="background: none; border: none; font-size: 20px; cursor: pointer; color: #666;">✕</button>
+                </div>
+                
+                <div class="gift-shop-content" style="flex: 1; overflow-y: auto;">
+                    <div class="gift-shop-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                        <div class="user-balance" style="font-size: 18px; font-weight: bold; color: #28a745;">
+                            Ваш баланс: <span id="giftShopBalance">${this.balance}</span> 🪙
+                        </div>
+                        ${targetUser ? `
+                            <div class="gift-target" style="font-size: 14px; color: #666;">
+                                Получатель: <strong>${targetUser}</strong>
+                            </div>
+                        ` : ''}
+                    </div>
+                    
+                    <div id="giftsGrid" class="gifts-grid" style="
+                        display: grid;
+                        grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+                        gap: 15px;
+                        padding: 10px;
+                    ">
+                        <div style="grid-column: 1 / -1; text-align: center; padding: 40px; color: #6c757d;">
+                            Загрузка подарков...
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="gift-shop-footer" style="margin-top: 20px; padding-top: 15px; border-top: 1px solid #e9ecef;">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <div style="font-size: 14px; color: #6c757d;">
+                            ${targetUser ? `Выберите подарок для ${targetUser}` : 'Выберите подарок для покупки'}
+                        </div>
+                        <button class="close-gift-shop btn-secondary" style="padding: 10px 20px; background: #6c757d; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 14px;">
+                            Закрыть
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        document.body.appendChild(modal);
+        this.loadGiftsToShop(modal, targetUser);
+        this.setupGiftShopEvents(modal, targetUser);
+    }
+
+    loadGiftsToShop(modal, targetUser = null) {
+        const giftsGrid = modal.querySelector('#giftsGrid');
+        if (!giftsGrid) return;
+
+        if (!window.giftManager) {
+            giftsGrid.innerHTML = '<div style="text-align: center; color: #dc3545; padding: 20px;">Магазин подарков недоступен</div>';
+            return;
+        }
+
+        giftsGrid.innerHTML = '';
+
+        const availableGifts = window.giftManager.getAvailableGifts();
+        
+        if (availableGifts.length === 0) {
+            giftsGrid.innerHTML = `
+                <div style="grid-column: 1 / -1; text-align: center; padding: 40px; color: #6c757d;">
+                    <div style="font-size: 48px; margin-bottom: 15px;">🎁</div>
+                    <div>Все подарки уже куплены!</div>
+                </div>
+            `;
+            return;
+        }
+
+        availableGifts.forEach(gift => {
+            const giftElement = document.createElement('div');
+            giftElement.className = `gift-item ${gift.type}`;
+            giftElement.style.cssText = `
+                border: 1px solid #dee2e6;
+                border-radius: 10px;
+                padding: 15px;
+                text-align: center;
+                cursor: pointer;
+                transition: all 0.3s ease;
+                background: white;
+            `;
+
+            const canAfford = this.balance >= gift.price;
+            
+            giftElement.innerHTML = `
+                <div class="gift-icon" style="font-size: 40px; margin-bottom: 10px;">${gift.name.split(' ')[0]}</div>
+                <div class="gift-name" style="font-weight: bold; margin-bottom: 5px; font-size: 14px;">${gift.name}</div>
+                <div class="gift-price" style="color: #28a745; font-weight: bold; margin-bottom: 10px;">${gift.price} 🪙</div>
+                <div class="gift-description" style="font-size: 11px; color: #6c757d; margin-bottom: 10px; height: 40px; overflow: hidden;">
+                    ${gift.description}
+                </div>
+                <div class="gift-type-badge" style="margin-bottom: 10px;">
+                    ${window.giftManager.getGiftTypeBadge(gift.type)}
+                </div>
+                <button class="buy-gift-btn" 
+                        style="width: 100%; padding: 8px; border: none; border-radius: 5px; cursor: ${canAfford ? 'pointer' : 'not-allowed'}; 
+                               background: ${canAfford ? '#007bff' : '#6c757d'}; color: white;"
+                        ${!canAfford ? 'disabled' : ''}>
+                    ${canAfford ? '🛒 Купить' : '💸 Не хватает'}
+                </button>
+            `;
+
+            if (canAfford) {
+                giftElement.addEventListener('click', (e) => {
+                    if (!e.target.classList.contains('buy-gift-btn')) {
+                        this.handleGiftPurchase(gift, targetUser, modal);
+                    }
+                });
+
+                const buyBtn = giftElement.querySelector('.buy-gift-btn');
+                buyBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    this.handleGiftPurchase(gift, targetUser, modal);
+                });
+            }
+
+            giftsGrid.appendChild(giftElement);
+        });
+    }
+
+    async handleGiftPurchase(gift, targetUser, modal) {
+        try {
+            if (targetUser) {
+                // Покупка и отправка подарка другому пользователю
+                await this.buyAndSendGift(gift, targetUser);
+            } else {
+                // Покупка подарка для себя
+                await window.giftManager.buyGift(gift);
+                this.showNotification(`Подарок "${gift.name}" успешно куплен!`, 'success');
+            }
+            
+            // Обновляем отображение магазина
+            this.loadGiftsToShop(modal, targetUser);
+            this.updateGiftShopBalance();
+            
+        } catch (error) {
+            console.error('Error handling gift purchase:', error);
+            this.showNotification(error.message, 'error');
+        }
+    }
+
+    async buyAndSendGift(gift, targetUser) {
+        const currentUser = this.getCurrentUser();
+        
+        if (!window.giftManager) {
+            throw new Error('Система подарков недоступна');
+        }
+
+        // Покупаем подарок
+        await window.giftManager.buyGift(gift);
+        
+        // Немедленно отправляем его целевому пользователю
+        await window.giftManager.sendGiftFromInventory(currentUser, targetUser, gift.id);
+        
+        this.showNotification(`Подарок "${gift.name}" куплен и отправлен пользователю ${targetUser}!`, 'success');
+    }
+
+    setupGiftShopEvents(modal, targetUser) {
+        const closeBtn = modal.querySelector('.close-modal');
+        const closeGiftShopBtn = modal.querySelector('.close-gift-shop');
+        
+        const closeModal = () => {
+            modal.remove();
+        };
+        
+        closeBtn.addEventListener('click', closeModal);
+        closeGiftShopBtn.addEventListener('click', closeModal);
+        
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) {
+                closeModal();
+            }
+        });
+    }
+
+    updateGiftShopBalance() {
+        const balanceElement = document.getElementById('giftShopBalance');
+        if (balanceElement) {
+            balanceElement.textContent = this.balance;
+        }
+    }
+
+    getCurrentUser() {
+        return document.getElementById('username')?.textContent || 'anonymous';
+    }
+async handleGiftSelection(gift, targetUser = null) {
+    try {
+        if (targetUser) {
+            // Покупка подарка для другого пользователя
+            await this.buyGiftForUser(gift, targetUser);
+        } else {
+            // Покупка подарка для себя
+            await window.giftManager.buyGift(gift);
+            this.showNotification(`Подарок "${gift.name}" успешно куплен!`, 'success');
+        }
+        
+        // Обновляем отображение магазина
+        const modal = document.getElementById('giftShopModal');
+        if (modal) {
+            this.loadGiftsToShop(modal, targetUser);
+            this.updateGiftShopBalance();
+        }
+        
+    } catch (error) {
+        console.error('Error handling gift selection:', error);
+        this.showNotification(error.message, 'error');
+    }
 }
 
+async buyGiftForUser(gift, targetUser) {
+    if (!window.giftManager) {
+        throw new Error('Система подарков недоступна');
+    }
 
+    // Сначала покупаем подарок для себя
+    await window.giftManager.buyGift(gift);
+    
+    // Затем отправляем его целевому пользователю
+    const currentUser = this.getCurrentUser();
+    await window.giftManager.sendGift(currentUser, targetUser, gift.id);
+    
+    this.showNotification(`Подарок "${gift.name}" отправлен пользователю ${targetUser}!`, 'success');
+}
+
+updateGiftShopBalance() {
+    const balanceElement = document.getElementById('giftShopBalance');
+    if (balanceElement) {
+        balanceElement.textContent = this.balance;
+    }
+}
+
+getCurrentUser() {
+    return document.getElementById('username')?.textContent || 'anonymous';
+}
+}
 class GiftManager {
     constructor() {
         this.gifts = [
@@ -10713,7 +11893,7 @@ class GiftManager {
         return this.gifts.find(gift => gift.id === giftId);
     }
 
- async buyGift(gift) {
+    async buyGift(gift) {
         const currentUser = this.getCurrentUser();
         if (!currentUser || currentUser === 'anonymous') {
             throw new Error('Пользователь не найден');
@@ -10748,11 +11928,10 @@ class GiftManager {
             // Сохраняем изменения
             await this.saveUserGifts();
             
-            // Сохраняем данные валюты (используем существующий метод)
+            // Сохраняем данные валюты
             if (window.currencyManager.saveUserData) {
                 await window.currencyManager.saveUserData();
             } else {
-                // Если метода нет, сохраняем локально
                 window.currencyManager.saveLocalData();
             }
 
@@ -10777,18 +11956,19 @@ class GiftManager {
         }
     }
 
-    // Отправка подарка другому пользователю
-    async sendGift(sender, receiver, giftId) {
+    // Отправка подарка другому пользователю из инвентаря
+    async sendGiftFromInventory(sender, receiver, giftId) {
         if (!sender || !receiver) {
             throw new Error('Не указан отправитель или получатель');
         }
 
-        if (!this.isGiftOwned(giftId, sender)) {
-            throw new Error('У вас нет этого подарка');
-        }
-
         if (sender === receiver) {
             throw new Error('Нельзя отправить подарок самому себе');
+        }
+
+        // Проверяем, есть ли подарок у отправителя
+        if (!this.isGiftOwned(giftId, sender)) {
+            throw new Error('У вас нет этого подарка');
         }
 
         try {
@@ -10804,41 +11984,70 @@ class GiftManager {
                 throw new Error('Подарок не найден у отправителя');
             }
 
-            senderGifts.splice(giftIndex, 1);
+            const [sentGift] = senderGifts.splice(giftIndex, 1);
             this.userGifts.set(sender, senderGifts);
 
             // Добавляем подарок получателю
             const receiverGifts = this.getUserGifts(receiver);
             receiverGifts.push({
-                ...gift,
+                ...sentGift,
                 from: sender,
                 receivedDate: new Date().toISOString(),
-                originalPurchaseDate: gift.purchaseDate
+                originalPurchaseDate: sentGift.purchaseDate,
+                isSentGift: true
             });
-            
+
             this.userGifts.set(receiver, receiverGifts);
 
             // Сохраняем изменения
             await this.saveUserGifts();
 
-            // Отправляем уведомление
+            // Отправляем уведомление через сокет
             if (window.socket) {
                 window.socket.emit('gift_sent', {
                     sender: sender,
                     receiver: receiver,
-                    gift: gift,
+                    gift: sentGift,
                     timestamp: new Date().toISOString()
                 });
             }
 
             // Показываем уведомление
-            this.showNotification(`Подарок "${gift.name}" отправлен пользователю ${receiver}`, 'success');
+            this.showNotification(`Подарок "${sentGift.name}" отправлен пользователю ${receiver}`, 'success');
 
-            console.log('✅ Gift sent:', gift.name, 'from', sender, 'to', receiver);
+            console.log('✅ Gift sent from inventory:', sentGift.name, 'from', sender, 'to', receiver);
+            return true;
+
+        } catch (error) {
+            console.error('❌ Error sending gift from inventory:', error);
+            throw error;
+        }
+    }
+
+    // Покупка и мгновенная отправка подарка
+    async buyAndSendGift(gift, receiver) {
+        const sender = this.getCurrentUser();
+        
+        if (!sender || !receiver) {
+            throw new Error('Не указан отправитель или получатель');
+        }
+
+        if (sender === receiver) {
+            throw new Error('Нельзя отправить подарок самому себе');
+        }
+
+        try {
+            // Покупаем подарок
+            await this.buyGift(gift);
+            
+            // Немедленно отправляем его
+            await this.sendGiftFromInventory(sender, receiver, gift.id);
+            
+            this.showNotification(`Подарок "${gift.name}" куплен и отправлен пользователю ${receiver}!`, 'success');
             return true;
             
         } catch (error) {
-            console.error('❌ Error sending gift:', error);
+            console.error('❌ Error buying and sending gift:', error);
             throw error;
         }
     }
@@ -10982,15 +12191,15 @@ class GiftManager {
         return this.gifts.filter(gift => gift.type === type);
     }
 
-    // Получение редких подарков
-    getRareGifts() {
-        return this.gifts.filter(gift => gift.type === 'rare' || gift.type === 'epic' || gift.type === 'legendary');
-    }
-
     // Получение доступных для покупки подарков
     getAvailableGifts(username = null) {
         const user = username || this.getCurrentUser();
         return this.gifts.filter(gift => !this.isGiftOwned(gift.id, user));
+    }
+
+    // Получение редких подарков
+    getRareGifts() {
+        return this.gifts.filter(gift => gift.type === 'rare' || gift.type === 'epic' || gift.type === 'legendary');
     }
 
     // Восстановление подарков (для админа)
@@ -11054,38 +12263,82 @@ class GiftManager {
             }
         }
     }
-
-    // Вспомогательные методы
-    showNotification(message, type = 'info') {
-        if (window.privateChatInstance) {
-            window.privateChatInstance.showNotification(message, type);
-        } else {
-            // Простая реализация уведомления
-            const notification = document.createElement('div');
-            notification.className = `gift-notification ${type}`;
-            notification.textContent = message;
-            notification.style.cssText = `
-                position: fixed;
-                top: 20px;
-                right: 20px;
-                padding: 12px 20px;
-                border-radius: 8px;
-                color: white;
-                font-weight: bold;
-                z-index: 10010;
-                background: ${type === 'error' ? '#dc3545' : type === 'success' ? '#28a745' : '#17a2b8'};
-            `;
-            
-            document.body.appendChild(notification);
-            
-            setTimeout(() => {
-                if (notification.parentElement) {
-                    notification.remove();
-                }
-            }, 3000);
-        }
+async sendGift(sender, receiver, giftId) {
+    if (!sender || !receiver) {
+        throw new Error('Не указан отправитель или получатель');
     }
 
+    if (sender === receiver) {
+        throw new Error('Нельзя отправить подарок самому себе');
+    }
+
+    // Проверяем, есть ли подарок у отправителя
+    if (!this.isGiftOwned(giftId, sender)) {
+        throw new Error('У вас нет этого подарка');
+    }
+
+    try {
+        const gift = this.getUserGift(sender, giftId);
+        if (!gift) {
+            throw new Error('Подарок не найден');
+        }
+
+        // Удаляем подарок у отправителя
+        const senderGifts = this.getUserGifts(sender);
+        const giftIndex = senderGifts.findIndex(g => g.id === giftId);
+        if (giftIndex === -1) {
+            throw new Error('Подарок не найден у отправителя');
+        }
+
+        const [sentGift] = senderGifts.splice(giftIndex, 1);
+        this.userGifts.set(sender, senderGifts);
+
+        // Добавляем подарок получателю
+        const receiverGifts = this.getUserGifts(receiver);
+        receiverGifts.push({
+            ...sentGift,
+            from: sender,
+            receivedDate: new Date().toISOString(),
+            originalPurchaseDate: sentGift.purchaseDate,
+            isSentGift: true
+        });
+
+        this.userGifts.set(receiver, receiverGifts);
+
+        // Сохраняем изменения
+        await this.saveUserGifts();
+
+        // Отправляем уведомление через сокет
+        if (window.socket) {
+            window.socket.emit('gift_sent', {
+                sender: sender,
+                receiver: receiver,
+                gift: sentGift,
+                timestamp: new Date().toISOString()
+            });
+
+            // Также отправляем событие получения
+            window.socket.emit('gift_received', {
+                sender: sender,
+                receiver: receiver,
+                gift: sentGift,
+                timestamp: new Date().toISOString()
+            });
+        }
+
+        console.log('✅ Gift sent:', sentGift.name, 'from', sender, 'to', receiver);
+        return true;
+
+    } catch (error) {
+        console.error('❌ Error sending gift:', error);
+        throw error;
+    }
+}
+
+// Обновите метод sendGiftFromInventory
+async sendGiftFromInventory(sender, receiver, giftId) {
+    return await this.sendGift(sender, receiver, giftId);
+}
     // Получение информации о подарке для отображения
     getGiftDisplayInfo(gift) {
         return {
@@ -11101,6 +12354,17 @@ class GiftManager {
             isNew: !gift.purchaseDate,
             from: gift.from
         };
+    }
+
+    // Получение бейджа типа подарка
+    getGiftTypeBadge(type) {
+        const badges = {
+            'common': '<span style="background: #6c757d; color: white; padding: 2px 6px; border-radius: 10px; font-size: 9px;">Обычный</span>',
+            'rare': '<span style="background: #007bff; color: white; padding: 2px 6px; border-radius: 10px; font-size: 9px;">Редкий</span>',
+            'epic': '<span style="background: #6f42c1; color: white; padding: 2px 6px; border-radius: 10px; font-size: 9px;">Эпический</span>',
+            'legendary': '<span style="background: #fd7e14; color: white; padding: 2px 6px; border-radius: 10px; font-size: 9px;">Легендарный</span>'
+        };
+        return badges[type] || badges.common;
     }
 
     // Экспорт данных пользователя (для бэкапа)
@@ -11150,8 +12414,149 @@ class GiftManager {
         this.showNotification('Данные подарков очищены', 'info');
         return true;
     }
+
+    // Получение случайного подарка (для событий, наград)
+    getRandomGift(rarity = 'common') {
+        const giftsByRarity = this.gifts.filter(gift => gift.type === rarity);
+        if (giftsByRarity.length === 0) {
+            // Если нет подарков указанной редкости, возвращаем любой обычный
+            return this.gifts.find(gift => gift.type === 'common') || this.gifts[0];
+        }
+        
+        const randomIndex = Math.floor(Math.random() * giftsByRarity.length);
+        return giftsByRifts[randomIndex];
+    }
+
+    // Проверка, можно ли надеть подарок
+    canEquipGift(username, giftId) {
+        const gift = this.getUserGift(username, giftId);
+        if (!gift) return false;
+        
+        return gift.wearable && !this.isGiftEquipped(username, giftId);
+    }
+
+    // Получение свободных слотов
+    getFreeSlots(username = null) {
+        const user = username || this.getCurrentUser();
+        const equipped = this.getEquippedGifts(user);
+        const userGifts = this.getUserGifts(user);
+        
+        const freeSlots = {
+            head: true,
+            badge: true,
+            background: true,
+            effect: true
+        };
+        
+        // Отмечаем занятые слоты
+        Object.keys(equipped).forEach(slot => {
+            if (equipped[slot]) {
+                freeSlots[slot] = false;
+            }
+        });
+        
+        return freeSlots;
+    }
+
+    // Получение рекомендованных подарков (на основе уже имеющихся)
+    getRecommendedGifts(username = null) {
+        const user = username || this.getCurrentUser();
+        const userGifts = this.getUserGifts(user);
+        const userCategories = new Set(userGifts.map(gift => gift.category));
+        
+        // Рекомендуем подарки из категорий, которых у пользователя нет
+        const recommended = this.gifts.filter(gift => 
+            !userCategories.has(gift.category) && 
+            !this.isGiftOwned(gift.id, user)
+        );
+        
+        // Если таких нет, рекомендуем редкие подарки
+        if (recommended.length === 0) {
+            return this.getRareGifts().filter(gift => !this.isGiftOwned(gift.id, user));
+        }
+        
+        return recommended;
+    }
+
+    // Вспомогательные методы
+    showNotification(message, type = 'info') {
+        if (window.privateChatInstance) {
+            window.privateChatInstance.showNotification(message, type);
+        } else {
+            // Простая реализация уведомления
+            const notification = document.createElement('div');
+            notification.className = `gift-notification ${type}`;
+            notification.textContent = message;
+            notification.style.cssText = `
+                position: fixed;
+                top: 20px;
+                right: 20px;
+                padding: 12px 20px;
+                border-radius: 8px;
+                color: white;
+                font-weight: bold;
+                z-index: 10010;
+                background: ${type === 'error' ? '#dc3545' : type === 'success' ? '#28a745' : '#17a2b8'};
+            `;
+            
+            document.body.appendChild(notification);
+            
+            setTimeout(() => {
+                if (notification.parentElement) {
+                    notification.remove();
+                }
+            }, 3000);
+        }
+    }
+
+    // Отладочные методы
+    debugUserGifts(username = null) {
+        const user = username || this.getCurrentUser();
+        const userGifts = this.getUserGifts(user);
+        const equipped = this.getEquippedGifts(user);
+        
+        return {
+            username: user,
+            totalGifts: userGifts.length,
+            gifts: userGifts,
+            equipped: equipped,
+            stats: this.getUserGiftStats(user)
+        };
+    }
+
+    // Сброс кэша (для разработки)
+    clearCache() {
+        this.userGifts.clear();
+        this.equippedGifts.clear();
+        localStorage.removeItem('userGifts');
+        localStorage.removeItem('equippedGifts');
+        console.log('🗑️ Gift cache cleared');
+    }
 }
 
+// Инициализация при загрузке страницы
+document.addEventListener('DOMContentLoaded', function() {
+    if (!window.giftManager) {
+        window.giftManager = new GiftManager();
+        console.log('✅ GiftManager initialized globally');
+    }
+});
+
+// Глобальные методы для отладки
+window.debugGifts = function(username = null) {
+    if (window.giftManager) {
+        return window.giftManager.debugUserGifts(username);
+    }
+    return { error: 'GiftManager not available' };
+};
+
+window.clearGiftCache = function() {
+    if (window.giftManager) {
+        window.giftManager.clearCache();
+        return 'Gift cache cleared';
+    }
+    return 'GiftManager not available';
+};
 // Добавляем методы для глобального доступа
 GiftManager.prototype.getGiftTypeBadge = function(type) {
     const badges = {
@@ -11368,47 +12773,45 @@ class ProfileManager {
         
         return html;
     }
-
-    // Рендер элемента подарка
-    renderGiftItem(gift, username, isOwnProfile) {
-        const isEquipped = window.giftManager ? window.giftManager.isGiftEquipped(username, gift.id) : false;
-        const canEquip = gift.wearable && isOwnProfile;
-        
-        return `
-            <div class="gift-item-profile ${isEquipped ? 'equipped' : ''}" 
-                 style="text-align: center; padding: 10px; background: ${isEquipped ? '#e7f3ff' : 'white'}; border-radius: 8px; border: 1px solid ${isEquipped ? '#007bff' : '#dee2e6'}; position: relative;"
-                 data-gift-id="${gift.id}">
-                ${isEquipped ? '<div style="position: absolute; top: 5px; right: 5px; color: #007bff; font-size: 12px;">✓</div>' : ''}
-                <div style="font-size: 24px; margin-bottom: 5px;">${gift.name.split(' ')[0]}</div>
-                <div style="font-size: 10px; color: #6c757d; margin-bottom: 8px; height: 30px; overflow: hidden;">${gift.name}</div>
-                ${gift.from ? `
-                    <div style="font-size: 9px; color: #28a745; margin-bottom: 5px;">
-                        от ${gift.from}
-                    </div>
-                ` : ''}
-                ${canEquip ? `
-                    <button class="equip-gift-btn" style="
-                        padding: 3px 8px; 
-                        background: ${isEquipped ? '#dc3545' : '#28a745'}; 
-                        color: white; 
-                        border: none; 
-                        border-radius: 3px; 
-                        cursor: pointer; 
-                        font-size: 10px;
-                        width: 100%;
-                    ">
-                        ${isEquipped ? 'Снять' : 'Надеть'}
-                    </button>
-                ` : ''}
-                ${!isOwnProfile && window.giftManager ? `
-                    <div style="font-size: 9px; color: #6c757d;">
-                        ${gift.wearable ? '🎽 Можно надеть' : '📦 Коллекционный'}
-                    </div>
-                ` : ''}
-            </div>
-        `;
-    }
-
+renderGiftItem(gift, username, isOwnProfile) {
+    const isEquipped = window.giftManager ? window.giftManager.isGiftEquipped(username, gift.id) : false;
+    const canEquip = gift.wearable && isOwnProfile;
+    const isFromSomeone = gift.from && gift.from !== username;
+    
+    return `
+        <div class="gift-item-profile ${isEquipped ? 'equipped' : ''}" 
+             style="text-align: center; padding: 10px; background: ${isEquipped ? '#e7f3ff' : 'white'}; border-radius: 8px; border: 1px solid ${isEquipped ? '#007bff' : '#dee2e6'}; position: relative;"
+             data-gift-id="${gift.id}">
+            ${isEquipped ? '<div style="position: absolute; top: 5px; right: 5px; color: #007bff; font-size: 12px;">✓</div>' : ''}
+            <div style="font-size: 24px; margin-bottom: 5px;">${gift.name.split(' ')[0]}</div>
+            <div style="font-size: 10px; color: #6c757d; margin-bottom: 8px; height: 30px; overflow: hidden;">${gift.name}</div>
+            ${isFromSomeone ? `
+                <div style="font-size: 9px; color: #28a745; margin-bottom: 5px; background: #d4edda; padding: 2px 5px; border-radius: 3px;">
+                    от ${gift.from}
+                </div>
+            ` : ''}
+            ${canEquip ? `
+                <button class="equip-gift-btn" style="
+                    padding: 3px 8px; 
+                    background: ${isEquipped ? '#dc3545' : '#28a745'}; 
+                    color: white; 
+                    border: none; 
+                    border-radius: 3px; 
+                    cursor: pointer; 
+                    font-size: 10px;
+                    width: 100%;
+                ">
+                    ${isEquipped ? 'Снять' : 'Надеть'}
+                </button>
+            ` : ''}
+            ${!isOwnProfile && window.giftManager ? `
+                <div style="font-size: 9px; color: #6c757d;">
+                    ${gift.wearable ? '🎽 Можно надеть' : '📦 Коллекционный'}
+                </div>
+            ` : ''}
+        </div>
+    `;
+}
     // Обновленная настройка обработчиков событий
     setupProfileEventHandlers(isOwnProfile, username) {
         if (isOwnProfile) {
@@ -11465,162 +12868,264 @@ class ProfileManager {
             });
         }
     }
-
-    // Модальное окно отправки подарка
     openSendGiftModal(receiverUsername) {
-        const currentUser = document.getElementById('username')?.textContent;
-        const userGifts = window.giftManager ? window.giftManager.userGifts.get(currentUser) || [] : [];
-        
-        const modal = document.createElement('div');
-        modal.className = 'modal-overlay';
-        modal.style.cssText = `
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0,0,0,0.5);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            z-index: 10000;
-        `;
+    const currentUser = this.getCurrentUser();
+    const userGifts = window.giftManager ? window.giftManager.getUserGifts(currentUser) : [];
 
-        modal.innerHTML = `
-            <div class="modal-content" style="
-                background: white;
-                padding: 25px;
-                border-radius: 15px;
-                width: 500px;
-                max-width: 95%;
-                max-height: 80vh;
-                overflow-y: auto;
-            ">
-                <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding-bottom: 15px; border-bottom: 1px solid #e9ecef;">
-                    <h3 style="margin: 0; color: #333;">🎁 Отправить подарок</h3>
-                    <button class="close-modal" style="background: none; border: none; font-size: 20px; cursor: pointer; color: #666;">✕</button>
+    const modal = document.createElement('div');
+    modal.className = 'modal-overlay';
+    modal.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0,0,0,0.5);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 10000;
+    `;
+
+    modal.innerHTML = `
+        <div class="modal-content" style="
+            background: white;
+            padding: 25px;
+            border-radius: 15px;
+            width: 600px;
+            max-width: 95%;
+            max-height: 80vh;
+            overflow-y: auto;
+        ">
+            <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding-bottom: 15px; border-bottom: 1px solid #e9ecef;">
+                <h3 style="margin: 0; color: #333;">🎁 Отправить подарок</h3>
+                <button class="close-modal" style="background: none; border: none; font-size: 20px; cursor: pointer; color: #666;">✕</button>
+            </div>
+            
+            <div style="text-align: center; margin-bottom: 20px;">
+                <div>Отправка подарка пользователю</div>
+                <div style="font-weight: bold; font-size: 18px; color: #007bff;">${receiverUsername}</div>
+                <div style="font-size: 14px; color: #6c757d; margin-top: 10px;">
+                    Выберите подарок из вашей коллекции
                 </div>
-                
-                <div style="text-align: center; margin-bottom: 20px;">
-                    <div>Отправка подарка пользователю</div>
-                    <div style="font-weight: bold; font-size: 18px; color: #007bff;">${receiverUsername}</div>
-                </div>
-                
-                ${userGifts.length > 0 ? `
-                    <div style="margin-bottom: 20px;">
-                        <h4 style="margin-bottom: 15px;">Ваши подарки:</h4>
-                        <div class="send-gifts-grid" style="
-                            display: grid;
-                            grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
-                            gap: 10px;
-                            max-height: 300px;
-                            overflow-y: auto;
-                        ">
-                            ${userGifts.map(gift => `
-                                <div class="send-gift-item" data-gift-id="${gift.id}" style="
-                                    border: 1px solid #dee2e6;
-                                    border-radius: 8px;
-                                    padding: 10px;
-                                    text-align: center;
-                                    cursor: pointer;
-                                    transition: all 0.3s ease;
-                                ">
-                                    <div style="font-size: 24px; margin-bottom: 5px;">${gift.name.split(' ')[0]}</div>
-                                    <div style="font-size: 11px; color: #6c757d;">${gift.name}</div>
+            </div>
+            
+            ${userGifts.length > 0 ? `
+                <div style="margin-bottom: 20px;">
+                    <div class="send-gifts-grid" style="
+                        display: grid;
+                        grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+                        gap: 15px;
+                        max-height: 400px;
+                        overflow-y: auto;
+                        padding: 10px;
+                    ">
+                        ${userGifts.map(gift => `
+                            <div class="send-gift-item" data-gift-id="${gift.id}" style="
+                                border: 2px solid #dee2e6;
+                                border-radius: 10px;
+                                padding: 15px;
+                                text-align: center;
+                                cursor: pointer;
+                                transition: all 0.3s ease;
+                                background: white;
+                                position: relative;
+                            ">
+                                <div style="font-size: 32px; margin-bottom: 8px;">${gift.name.split(' ')[0]}</div>
+                                <div style="font-size: 12px; color: #495057; margin-bottom: 5px; font-weight: 500;">${gift.name}</div>
+                                <div style="font-size: 10px; color: #6c757d; margin-bottom: 8px; height: 30px; overflow: hidden;">
+                                    ${gift.description}
                                 </div>
-                            `).join('')}
-                        </div>
+                                ${gift.from ? `
+                                    <div style="font-size: 9px; color: #28a745; background: #d4edda; padding: 2px 5px; border-radius: 3px;">
+                                        от ${gift.from}
+                                    </div>
+                                ` : ''}
+                                <div class="selection-indicator" style="
+                                    position: absolute;
+                                    top: 5px;
+                                    right: 5px;
+                                    width: 20px;
+                                    height: 20px;
+                                    border: 2px solid #dee2e6;
+                                    border-radius: 50%;
+                                    background: white;
+                                    transition: all 0.3s ease;
+                                "></div>
+                            </div>
+                        `).join('')}
                     </div>
-                    
+                </div>
+                
+                <div class="gift-preview" id="giftPreview" style="
+                    display: none;
+                    margin-bottom: 20px;
+                    padding: 15px;
+                    background: #f8f9fa;
+                    border-radius: 10px;
+                    text-align: center;
+                ">
+                    <div style="font-size: 20px; margin-bottom: 10px;">Выбранный подарок:</div>
+                    <div id="selectedGiftInfo"></div>
+                </div>
+                
+                <div style="display: flex; gap: 10px;">
                     <button id="confirmSendGift" class="btn-primary" disabled style="
-                        width: 100%; 
+                        flex: 1;
                         padding: 12px; 
                         background: #6c757d; 
                         color: white; 
                         border: none; 
                         border-radius: 8px; 
                         cursor: not-allowed;
+                        font-size: 16px;
+                        font-weight: bold;
                     ">
-                        Выберите подарок для отправки
+                        🎁 Отправить подарок
                     </button>
-                ` : `
-                    <div style="text-align: center; padding: 40px; color: #6c757d;">
-                        <div style="font-size: 48px; margin-bottom: 15px;">🎁</div>
-                        <div style="margin-bottom: 15px;">У вас нет подарков для отправки</div>
-                        <button class="open-gift-shop-btn" style="padding: 10px 20px; background: #ffc107; color: #212529; border: none; border-radius: 5px; cursor: pointer;">
-                            🛒 Перейти в магазин
-                        </button>
-                    </div>
-                `}
-            </div>
-        `;
+                    <button class="btn-secondary" onclick="window.currencyManager.openGiftShop('${receiverUsername}')" style="
+                        padding: 12px 20px;
+                        background: #ffc107;
+                        color: #212529;
+                        border: none;
+                        border-radius: 8px;
+                        cursor: pointer;
+                        font-size: 14px;
+                        white-space: nowrap;
+                    ">
+                        🛒 Купить новый
+                    </button>
+                </div>
+            ` : `
+                <div style="text-align: center; padding: 40px; color: #6c757d;">
+                    <div style="font-size: 48px; margin-bottom: 15px;">🎁</div>
+                    <div style="margin-bottom: 15px; font-size: 16px;">У вас нет подарков для отправки</div>
+                    <div style="margin-bottom: 20px; font-size: 14px;">Приобретите подарки в магазине, чтобы отправить их друзьям</div>
+                    <button class="open-gift-shop-btn" style="padding: 12px 24px; background: #ffc107; color: #212529; border: none; border-radius: 8px; cursor: pointer; font-size: 16px;">
+                        🛒 Перейти в магазин
+                    </button>
+                </div>
+            `}
+        </div>
+    `;
 
-        document.body.appendChild(modal);
+    document.body.appendChild(modal);
 
-        let selectedGiftId = null;
+    let selectedGiftId = null;
+    let selectedGift = null;
 
-        // Обработчики событий
-        const closeBtn = modal.querySelector('.close-modal');
-        const confirmBtn = modal.querySelector('#confirmSendGift');
-        const giftShopBtn = modal.querySelector('.open-gift-shop-btn');
+    // Обработчики событий
+    const closeBtn = modal.querySelector('.close-modal');
+    const confirmBtn = modal.querySelector('#confirmSendGift');
+    const giftShopBtn = modal.querySelector('.open-gift-shop-btn');
+    const giftPreview = modal.querySelector('#giftPreview');
+    const selectedGiftInfo = modal.querySelector('#selectedGiftInfo');
 
-        closeBtn.addEventListener('click', () => {
-            modal.remove();
-        });
+    const closeModal = () => {
+        modal.remove();
+    };
 
-        modal.addEventListener('click', (e) => {
-            if (e.target === modal) {
-                modal.remove();
-            }
-        });
+    closeBtn.addEventListener('click', closeModal);
 
-        // Выбор подарка
-        modal.querySelectorAll('.send-gift-item').forEach(item => {
-            item.addEventListener('click', () => {
-                modal.querySelectorAll('.send-gift-item').forEach(i => {
-                    i.style.background = 'white';
-                    i.style.borderColor = '#dee2e6';
-                });
-                
-                item.style.background = '#e7f3ff';
-                item.style.borderColor = '#007bff';
-                
-                selectedGiftId = item.getAttribute('data-gift-id');
-                confirmBtn.disabled = false;
-                confirmBtn.style.background = '#28a745';
-                confirmBtn.style.cursor = 'pointer';
-                confirmBtn.textContent = '🎁 Отправить подарок';
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) {
+            closeModal();
+        }
+    });
+
+    // Выбор подарка
+    modal.querySelectorAll('.send-gift-item').forEach(item => {
+        item.addEventListener('click', () => {
+            // Сбрасываем выделение у всех подарков
+            modal.querySelectorAll('.send-gift-item').forEach(i => {
+                i.style.background = 'white';
+                i.style.borderColor = '#dee2e6';
+                i.querySelector('.selection-indicator').style.background = 'white';
+                i.querySelector('.selection-indicator').style.borderColor = '#dee2e6';
             });
-        });
-
-        // Подтверждение отправки
-        confirmBtn.addEventListener('click', async () => {
-            if (!selectedGiftId) return;
-
-            try {
-                await window.giftManager.sendGift(currentUser, receiverUsername, selectedGiftId);
-                this.showNotification('Подарок успешно отправлен!', 'success');
-                modal.remove();
-                
-                // Обновляем профиль если он открыт
-                if (this.currentProfile?.username === receiverUsername) {
-                    this.viewProfile(receiverUsername);
-                }
-                
-            } catch (error) {
-                this.showNotification(error.message, 'error');
+            
+            // Выделяем выбранный подарок
+            item.style.background = '#e7f3ff';
+            item.style.borderColor = '#007bff';
+            item.querySelector('.selection-indicator').style.background = '#007bff';
+            item.querySelector('.selection-indicator').style.borderColor = '#007bff';
+            
+            selectedGiftId = item.getAttribute('data-gift-id');
+            selectedGift = userGifts.find(g => g.id === selectedGiftId);
+            
+            // Показываем превью выбранного подарка
+            if (selectedGift) {
+                selectedGiftInfo.innerHTML = `
+                    <div style="display: flex; align-items: center; gap: 15px; justify-content: center;">
+                        <div style="font-size: 40px;">${selectedGift.name.split(' ')[0]}</div>
+                        <div style="text-align: left;">
+                            <div style="font-weight: bold; font-size: 16px;">${selectedGift.name}</div>
+                            <div style="font-size: 14px; color: #6c757d;">${selectedGift.description}</div>
+                            ${selectedGift.wearable ? `
+                                <div style="font-size: 12px; color: #28a745;">🎽 Можно надеть</div>
+                            ` : `
+                                <div style="font-size: 12px; color: #6c757d;">📦 Коллекционный</div>
+                            `}
+                        </div>
+                    </div>
+                `;
+                giftPreview.style.display = 'block';
             }
+            
+            // Активируем кнопку отправки
+            confirmBtn.disabled = false;
+            confirmBtn.style.background = '#28a745';
+            confirmBtn.style.cursor = 'pointer';
+            confirmBtn.innerHTML = '🎁 Отправить подарок';
         });
+    });
 
-        // Переход в магазин
-        giftShopBtn?.addEventListener('click', () => {
-            modal.remove();
-            if (window.currencyManager) {
-                window.currencyManager.openGiftShop();
+    // Подтверждение отправки
+    confirmBtn.addEventListener('click', async () => {
+        if (!selectedGiftId || !selectedGift) return;
+
+        // Показываем подтверждение
+        if (!confirm(`Вы уверены, что хотите отправить подарок "${selectedGift.name}" пользователю ${receiverUsername}?`)) {
+            return;
+        }
+
+        confirmBtn.disabled = true;
+        confirmBtn.innerHTML = '⏳ Отправка...';
+        confirmBtn.style.background = '#6c757d';
+
+        try {
+            await window.giftManager.sendGiftFromInventory(currentUser, receiverUsername, selectedGiftId);
+            this.showNotification(`Подарок "${selectedGift.name}" успешно отправлен пользователю ${receiverUsername}!`, 'success');
+            
+            // Закрываем модальное окно
+            closeModal();
+            
+            // Обновляем профиль если он открыт
+            if (this.currentProfile?.username === receiverUsername) {
+                this.viewProfile(receiverUsername);
             }
-        });
-    }
+            
+            // Обновляем свой профиль (т.к. подарок исчез из инвентаря)
+            if (this.currentProfile?.username === currentUser) {
+                this.viewProfile(currentUser);
+            }
+            
+        } catch (error) {
+            this.showNotification(error.message, 'error');
+            confirmBtn.disabled = false;
+            confirmBtn.innerHTML = '🎁 Отправить подарок';
+            confirmBtn.style.background = '#28a745';
+        }
+    });
 
+    // Переход в магазин
+    giftShopBtn?.addEventListener('click', () => {
+        closeModal();
+        if (window.currencyManager) {
+            window.currencyManager.openGiftShop(receiverUsername);
+        }
+    });
+}
     // Управление подарками
     openGiftManagement() {
         this.showNotification('Управление подарками будет доступно в следующем обновлении', 'info');
@@ -11718,6 +13223,59 @@ document.addEventListener('click', function(e) {
         }, 100);
     }
 });
+window.debugCurrency = function() {
+    if (window.currencyManager) {
+        return window.currencyManager.debugCurrency();
+    }
+    return { error: 'CurrencyManager not available' };
+};
+
+window.forceSaveCurrency = function() {
+    if (window.currencyManager) {
+        return window.currencyManager.forceSaveAllData();
+    }
+    return false;
+};
+
+// Тестирование эндпоинтов
+window.testCurrencyEndpoints = async function() {
+    const endpoints = [
+        '/api/currency/save',
+        '/api/currency/user/save',
+        '/api/user/currency/save'
+    ];
+    
+    const results = {};
+    
+    for (const endpoint of endpoints) {
+        try {
+            const response = await fetch(endpoint, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    username: 'test',
+                    balance: 100,
+                    dailyStreak: 1,
+                    transactionHistory: []
+                })
+            });
+            
+            results[endpoint] = {
+                status: response.status,
+                ok: response.ok
+            };
+        } catch (error) {
+            results[endpoint] = {
+                error: error.message
+            };
+        }
+    }
+    
+    console.log('🔍 Currency endpoints test results:', results);
+    return results;
+};
 // Экспорт классов для глобального доступа
 window.PrivateChat = PrivateChat;
 window.GroupChatManager = GroupChatManager;
