@@ -11996,3 +11996,44 @@ header {
         font-size: 12px;
     }
 }
+.create-group-btn {
+    background: linear-gradient(45deg, #28a745, #20c997);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    padding: 8px 12px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.create-group-btn:hover {
+    background: linear-gradient(45deg, #218838, #1e9e8a);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(40, 167, 69, 0.3);
+}
+
+.create-group-btn:active {
+    transform: translateY(0);
+}
+
+.sidebar-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 15px;
+    border-bottom: 1px solid #e9ecef;
+}
+
+.sidebar-header h3 {
+    margin: 0;
+    color: #333;
+}
+
+.header-buttons {
+    display: flex;
+    gap: 8px;
+}

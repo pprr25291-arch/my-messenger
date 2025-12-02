@@ -243,5 +243,118 @@
     "date": "2025-11-12T03:46:30.979Z",
     "messageType": "gift",
     "fileData": null
+  },
+  {
+    "sender": "admin",
+    "receiver": "aaa",
+    "message": "2",
+    "timestamp": "08:07:44",
+    "type": "private",
+    "date": "2025-11-27T03:07:44.699Z",
+    "messageType": "text",
+    "fileData": null
+  },
+  {
+    "id": "msg_1764213013844_jwb45b6ld",
+    "sender": "admin",
+    "groupId": "group_1761810051409_fynpu8cv0",
+    "message": "admin",
+    "timestamp": "08:10:13",
+    "type": "group",
+    "date": "2025-11-27T03:10:13.844Z",
+    "messageType": "text",
+    "fileData": null
+  },
+  {
+    "sender": "aaa",
+    "receiver": "admin",
+    "message": "3",
+    "timestamp": "08:37:46",
+    "type": "private",
+    "date": "2025-11-28T03:37:46.528Z",
+    "messageType": "text",
+    "fileData": null
+  },
+  {
+    "id": "msg_1764304390790_jzkv35mbb",
+    "sender": "admin",
+    "groupId": "group_1764304386870_13ncl0xmj",
+    "message": "п",
+    "timestamp": "09:33:10",
+    "type": "group",
+    "date": "2025-11-28T04:33:10.790Z",
+    "messageType": "text",
+    "fileData": null
+  },
+  {
+    "id": "msg_1764304401301_51d6uacvd",
+    "sender": "aaa",
+    "groupId": "group_1764304386870_13ncl0xmj",
+    "message": "33",
+    "timestamp": "09:33:21",
+    "type": "group",
+    "date": "2025-11-28T04:33:21.301Z",
+    "messageType": "text",
+    "fileData": null
+  },
+  {
+    "id": "msg_1764304404253_50752e9ge",
+    "sender": "aaa",
+    "groupId": "group_1764304386870_13ncl0xmj",
+    "message": "Голосовое сообщение",
+    "timestamp": "09:33:24",
+    "type": "group",
+    "date": "2025-11-28T04:33:24.253Z",
+    "messageType": "voice",
+    "fileData": {
+      "originalName": "group_voice_1764304404211.webm",
+      "filename": "1764304404223-326438426.webm",
+      "path": "/uploads/1764304404223-326438426.webm",
+      "size": 28397,
+      "mimetype": "audio/webm",
+      "uploadDate": "2025-11-28T04:33:24.240Z",
+      "type": "voice",
+      "duration": 1745
+    }
+  },
+  {
+    "id": "msg_1764304430724_ohy7iy813",
+    "sender": "aaa",
+    "groupId": "group_1764304386870_13ncl0xmj",
+    "message": "Голосовое сообщение",
+    "timestamp": "09:33:50",
+    "type": "group",
+    "date": "2025-11-28T04:33:50.724Z",
+    "messageType": "voice",
+    "fileData": {
+      "originalName": "group_voice_1764304430685.webm",
+      "filename": "1764304430691-282525804.webm",
+      "path": "/uploads/1764304430691-282525804.webm",
+      "size": 117023,
+      "mimetype": "audio/webm",
+      "uploadDate": "2025-11-28T04:33:50.709Z",
+      "type": "voice",
+      "duration": 7212
+    }
+  },
+  {
+    "sender": "admin",
+    "receiver": "aaa",
+    "message": "2",
+    "timestamp": "10:05:01",
+    "type": "private",
+    "date": "2025-12-02T05:05:01.313Z",
+    "messageType": "text",
+    "fileData": null
+  },
+  {
+    "sender": "admin",
+    "receiver": "aaa",
+    "message": "цц",
+    "timestamp": "12:34:07",
+    "type": "private",
+    "date": "2025-12-02T07:34:07.714Z",
+    "messageType": "text",
+    "fileData": null
   }
 ]

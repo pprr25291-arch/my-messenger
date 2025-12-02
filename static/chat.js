@@ -1,9 +1,10 @@
-// chat.js - Исправленная версия
+// chat.js - Основной файл инициализации
 
 let socket = null;
 let reconnectAttempts = 0;
 const MAX_RECONNECT_ATTEMPTS = 5;
 
+// Основные функции управления соединением
 function initSocket() {
     try {
         socket = io({
@@ -20,7 +21,6 @@ function initSocket() {
             reconnectAttempts = 0;
             showConnectionStatus('Подключено к серверу', 'success');
             
-            // Аутентифицируем пользователя
             const username = document.getElementById('username')?.textContent;
             if (username) {
                 socket.emit('user authenticated', username);
@@ -55,7 +55,6 @@ function initSocket() {
             loadNotifications();
         });
 
-        // Периодическая проверка соединения
         socket.on('ping', () => {
             socket.emit('pong');
         });
@@ -112,7 +111,6 @@ function displayNotification(data, isNew = false) {
     const notificationsContainer = document.getElementById('notifications');
     if (!notificationsContainer) return;
     
-    // Убираем сообщение "нет уведомлений"
     const noNotifications = notificationsContainer.querySelector('.no-notifications');
     if (noNotifications) {
         noNotifications.remove();
@@ -198,7 +196,6 @@ function showNotificationsError() {
 }
 
 function showConnectionStatus(message, type = 'info') {
-    // Удаляем старый статус
     const oldStatus = document.getElementById('connectionStatus');
     if (oldStatus) {
         oldStatus.remove();
@@ -280,7 +277,6 @@ function logout() {
         });
 }
 
-// Обработчики для переключения между уведомлениями и приватными сообщениями
 function setupChatNavigation() {
     const notificationsBtn = document.getElementById('notificationsBtn');
     const privateBtn = document.getElementById('privateBtn');
@@ -294,59 +290,6 @@ function setupChatNavigation() {
     }
     
     console.log('✅ Chat navigation setup complete');
-}
-
-// Функция переключения на уведомления
-function switchToNotifications() {
-    const notificationsPanel = document.getElementById('notificationsPanel');
-    const privateChat = document.getElementById('privateChat');
-    const notificationsBtn = document.getElementById('notificationsBtn');
-    const privateBtn = document.getElementById('privateBtn');
-    
-    if (notificationsPanel) {
-        notificationsPanel.style.display = 'block';
-    }
-    if (privateChat) {
-        privateChat.style.display = 'none';
-    }
-    
-    // Обновляем активные кнопки
-    if (notificationsBtn) {
-        notificationsBtn.classList.add('active');
-    }
-    if (privateBtn) {
-        privateBtn.classList.remove('active');
-    }
-    
-    // Загружаем уведомления
-    loadNotifications();
-    
-    console.log('📢 Switched to notifications');
-}
-
-// Функция переключения на приватные сообщения
-function switchToPrivate() {
-    const notificationsPanel = document.getElementById('notificationsPanel');
-    const privateChat = document.getElementById('privateChat');
-    const notificationsBtn = document.getElementById('notificationsBtn');
-    const privateBtn = document.getElementById('privateBtn');
-    
-    if (notificationsPanel) {
-        notificationsPanel.style.display = 'none';
-    }
-    if (privateChat) {
-        privateChat.style.display = 'block';
-    }
-    
-    // Обновляем активные кнопки
-    if (notificationsBtn) {
-        notificationsBtn.classList.remove('active');
-    }
-    if (privateBtn) {
-        privateBtn.classList.add('active');
-    }
-    
-    console.log('💬 Switched to private messages');
 }
 
 // Делаем функции глобальными для доступа из других файлов
@@ -383,45 +326,3 @@ document.addEventListener('DOMContentLoaded', function() {
     
     console.log('✅ Application initialization complete');
 });
-
-// Функция для получения аватара пользователя с fallback на SVG
-function getUserAvatar(user) {
-    if (!user) return '/default-avatar.svg';
-    
-    // Если user - это объект с полем avatar
-    if (typeof user === 'object' && user.avatar) {
-        return user.avatar;
-    }
-    
-    // Если user - это строка (имя пользователя), пытаемся найти его аватар
-    if (typeof user === 'string') {
-        // Здесь можно добавить логику получения аватара по имени пользователя
-        return '/default-avatar.svg';
-    }
-    
-    return '/default-avatar.svg';
-}
-
-// Переопределяем функцию отображения пользователей, если она есть
-if (window.PrivateChat) {
-    const originalDisplayUser = window.PrivateChat.prototype.displayUser;
-    window.PrivateChat.prototype.displayUser = function(user) {
-        // Исправляем аватар перед отображением
-        if (user && typeof user === 'object') {
-            user.avatar = getUserAvatar(user);
-        }
-        return originalDisplayUser.call(this, user);
-    };
-}
-
-// Переопределяем функцию отображения сообщений, если она есть
-if (window.PrivateChat) {
-    const originalDisplayMessage = window.PrivateChat.prototype.displayMessage;
-    window.PrivateChat.prototype.displayMessage = function(message) {
-        // Исправляем аватар в сообщениях
-        if (message && message.senderInfo) {
-            message.senderInfo.avatar = getUserAvatar(message.senderInfo);
-        }
-        return originalDisplayMessage.call(this, message);
-    };
-}

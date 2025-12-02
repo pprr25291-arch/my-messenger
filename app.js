@@ -8,6 +8,7 @@ const fs = require('fs').promises;
 const path = require('path');
 const multer = require('multer');
 const sharp = require('sharp');
+const axios = require('axios');
 
 const app = express();
 const server = http.createServer(app);
@@ -24,6 +25,13 @@ const io = socketIo(server, {
 const JWT_SECRET = process.env.JWT_SECRET || 'fallback-secret-key-for-development';
 const PORT = process.env.PORT || 3000;
 
+// Конфигурация Яндекс.Диска
+const YANDEX_CONFIG = {
+    token: 'y0__xCXsfukBhjblgMg7d-LuxUwy5m-5wf4MgYP4jPJApeis_NtFkAx9qxD6A',
+    clientId: 'e4a3d62faa3843e29b7a7a7117356eab',
+    clientSecret: 'b25dd90fdb9545dd98f957cdbebd9211'
+};
+
 const dataDir = path.join(__dirname, 'data');
 const uploadsDir = path.join(__dirname, 'uploads');
 const avatarsDir = path.join(__dirname, 'uploads', 'avatars');
@@ -37,10 +45,8 @@ const userSockets = new Map();
 const onlineUsers = new Set();
 const activeCalls = new Map();
 const screenShares = new Map();
-let giftsData = {};
-
-// Хранилище для валюты
 let currencyData = {};
+let giftsData = {};
 
 async function ensureDirectories() {
     try {
@@ -54,6 +60,173 @@ async function ensureDirectories() {
         console.log('✅ Directories ensured');
     } catch (error) {
         console.error('❌ Error creating directories:', error);
+    }
+}
+
+// Яндекс.Диск функции
+async function initYandexStorage() {
+    try {
+        console.log('🔄 Инициализация хранилища Яндекс.Диск...');
+        
+        // Проверяем доступность токена
+        const checkResponse = await axios.get('https://cloud-api.yandex.net/v1/disk/', {
+            headers: {
+                'Authorization': `OAuth ${YANDEX_CONFIG.token}`
+            }
+        });
+        
+        console.log('✅ Яндекс.Диск доступен, пользователь:', checkResponse.data.user.display_name);
+        
+        // Создаем базовые папки
+        const folders = ['messenger', 'messenger/data', 'messenger/uploads', 'messenger/avatars'];
+        
+        for (const folder of folders) {
+            try {
+                await axios.put(`https://cloud-api.yandex.net/v1/disk/resources?path=app:/${folder}`, {}, {
+                    headers: {
+                        'Authorization': `OAuth ${YANDEX_CONFIG.token}`
+                    }
+                });
+                console.log(`✅ Папка создана: ${folder}`);
+            } catch (error) {
+                if (error.response && error.response.status === 409) {
+                    console.log(`ℹ️ Папка уже существует: ${folder}`);
+                } else {
+                    console.error(`⚠️ Ошибка создания папки ${folder}:`, error.message);
+                }
+            }
+        }
+        
+        console.log('✅ Хранилище Яндекс.Диск инициализировано');
+        return true;
+    } catch (error) {
+        console.error('❌ Ошибка инициализации Яндекс.Диска:', error.message);
+        return false;
+    }
+}
+
+async function saveToYandex(filename, data, folder = 'messenger/data') {
+    try {
+        const jsonData = JSON.stringify(data, null, 2);
+        
+        // Получаем URL для загрузки
+        const uploadResponse = await axios.get(
+            `https://cloud-api.yandex.net/v1/disk/resources/upload?path=app:/${folder}/${filename}&overwrite=true`,
+            {
+                headers: {
+                    'Authorization': `OAuth ${YANDEX_CONFIG.token}`
+                }
+            }
+        );
+        
+        // Загружаем данные
+        await axios.put(uploadResponse.data.href, jsonData, {
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        });
+        
+        console.log(`✅ Данные сохранены на Яндекс.Диск: ${folder}/${filename}`);
+        return true;
+    } catch (error) {
+        console.error(`❌ Ошибка сохранения на Яндекс.Диск (${filename}):`, error.message);
+        return false;
+    }
+}
+
+async function loadFromYandex(filename, folder = 'messenger/data') {
+    try {
+        // Получаем URL для скачивания
+        const downloadResponse = await axios.get(
+            `https://cloud-api.yandex.net/v1/disk/resources/download?path=app:/${folder}/${filename}`,
+            {
+                headers: {
+                    'Authorization': `OAuth ${YANDEX_CONFIG.token}`
+                }
+            }
+        );
+        
+        // Скачиваем данные
+        const response = await axios.get(downloadResponse.data.href);
+        
+        if (response.data) {
+            const data = JSON.parse(response.data);
+            console.log(`✅ Данные загружены с Яндекс.Диска: ${folder}/${filename}`);
+            return data;
+        }
+        
+        return null;
+    } catch (error) {
+        if (error.response && error.response.status === 404) {
+            console.log(`ℹ️ Файл не найден на Яндекс.Диске: ${folder}/${filename}`);
+            return null;
+        }
+        console.error(`❌ Ошибка загрузки с Яндекс.Диска (${filename}):`, error.message);
+        return null;
+    }
+}
+
+async function uploadFileToYandex(fileBuffer, filename, folder = 'messenger/uploads') {
+    try {
+        // Получаем URL для загрузки
+        const uploadResponse = await axios.get(
+            `https://cloud-api.yandex.net/v1/disk/resources/upload?path=app:/${folder}/${filename}&overwrite=true`,
+            {
+                headers: {
+                    'Authorization': `OAuth ${YANDEX_CONFIG.token}`
+                }
+            }
+        );
+        
+        // Загружаем файл
+        await axios.put(uploadResponse.data.href, fileBuffer, {
+            headers: {
+                'Content-Type': 'application/octet-stream'
+            }
+        });
+        
+        console.log(`✅ Файл загружен на Яндекс.Диск: ${folder}/${filename}`);
+        
+        // Получаем публичную ссылку
+        const publishResponse = await axios.put(
+            `https://cloud-api.yandex.net/v1/disk/resources/publish?path=app:/${folder}/${filename}`,
+            {},
+            {
+                headers: {
+                    'Authorization': `OAuth ${YANDEX_CONFIG.token}`
+                }
+            }
+        );
+        
+        // Получаем информацию о файле
+        const fileInfoResponse = await axios.get(
+            `https://cloud-api.yandex.net/v1/disk/resources?path=app:/${folder}/${filename}`,
+            {
+                headers: {
+                    'Authorization': `OAuth ${YANDEX_CONFIG.token}`
+                }
+            }
+        );
+        
+        if (fileInfoResponse.data.public_url) {
+            return fileInfoResponse.data.public_url;
+        }
+        
+        // Если нет публичной ссылки, получаем прямую ссылку
+        const downloadResponse = await axios.get(
+            `https://cloud-api.yandex.net/v1/disk/resources/download?path=app:/${folder}/${filename}`,
+            {
+                headers: {
+                    'Authorization': `OAuth ${YANDEX_CONFIG.token}`
+                }
+            }
+        );
+        
+        return downloadResponse.data.href;
+        
+    } catch (error) {
+        console.error(`❌ Ошибка загрузки файла на Яндекс.Диск (${filename}):`, error.message);
+        return null;
     }
 }
 
@@ -185,13 +358,23 @@ const avatarUpload = multer({
     }
 });
 
-// Загрузка данных
+// Загрузка данных с Яндекс.Диска
 async function loadUsers() {
     try {
-        const data = await fs.readFile(path.join(dataDir, 'users.json'), 'utf8');
-        users = JSON.parse(data);
-        console.log('✅ Users loaded:', users.length);
+        // Пробуем загрузить с Яндекс.Диска
+        const remoteUsers = await loadFromYandex('users.json');
+        
+        if (remoteUsers) {
+            users = remoteUsers;
+            console.log('✅ Users loaded from Yandex.Disk:', users.length);
+        } else {
+            // Пробуем загрузить локально
+            const data = await fs.readFile(path.join(dataDir, 'users.json'), 'utf8');
+            users = JSON.parse(data);
+            console.log('✅ Users loaded locally:', users.length);
+        }
     } catch (error) {
+        console.log('⚠️ No users found, starting with empty array');
         users = [];
         await saveUsers();
     }
@@ -199,9 +382,16 @@ async function loadUsers() {
 
 async function loadMessages() {
     try {
-        const data = await fs.readFile(path.join(dataDir, 'messages.json'), 'utf8');
-        messages = JSON.parse(data);
-        console.log('✅ Messages loaded:', messages.length);
+        const remoteMessages = await loadFromYandex('messages.json');
+        
+        if (remoteMessages) {
+            messages = remoteMessages;
+            console.log('✅ Messages loaded from Yandex.Disk:', messages.length);
+        } else {
+            const data = await fs.readFile(path.join(dataDir, 'messages.json'), 'utf8');
+            messages = JSON.parse(data);
+            console.log('✅ Messages loaded locally:', messages.length);
+        }
     } catch (error) {
         messages = [];
         await saveMessages();
@@ -210,57 +400,106 @@ async function loadMessages() {
 
 async function loadGroups() {
     try {
-        const data = await fs.readFile(path.join(dataDir, 'groups.json'), 'utf8');
-        groups = JSON.parse(data);
-        console.log('✅ Groups loaded:', groups.length);
+        const remoteGroups = await loadFromYandex('groups.json');
+        
+        if (remoteGroups) {
+            groups = remoteGroups;
+            console.log('✅ Groups loaded from Yandex.Disk:', groups.length);
+        } else {
+            const data = await fs.readFile(path.join(dataDir, 'groups.json'), 'utf8');
+            groups = JSON.parse(data);
+            console.log('✅ Groups loaded locally:', groups.length);
+        }
     } catch (error) {
         groups = [];
         await saveGroups();
     }
 }
 
-// Загрузка данных валюты
 async function loadCurrencyData() {
     try {
-        const data = await fs.readFile(path.join(dataDir, 'currency.json'), 'utf8');
-        currencyData = JSON.parse(data);
-        console.log('✅ Currency data loaded');
+        const remoteCurrency = await loadFromYandex('currency.json');
+        
+        if (remoteCurrency) {
+            currencyData = remoteCurrency;
+            console.log('✅ Currency data loaded from Yandex.Disk');
+        } else {
+            const data = await fs.readFile(path.join(dataDir, 'currency.json'), 'utf8');
+            currencyData = JSON.parse(data);
+            console.log('✅ Currency data loaded locally');
+        }
     } catch (error) {
         currencyData = {};
         await saveCurrencyData();
     }
 }
 
+async function loadGiftsData() {
+    try {
+        const remoteGifts = await loadFromYandex('gifts.json');
+        
+        if (remoteGifts) {
+            giftsData = remoteGifts;
+            console.log('✅ Gifts data loaded from Yandex.Disk');
+        } else {
+            const data = await fs.readFile(path.join(dataDir, 'gifts.json'), 'utf8');
+            giftsData = JSON.parse(data);
+            console.log('✅ Gifts data loaded locally');
+        }
+    } catch (error) {
+        giftsData = {};
+        await saveGiftsData();
+    }
+}
+
+// Сохранение данных на Яндекс.Диск
 async function saveUsers() {
     try {
+        // Сохраняем локально
         await fs.writeFile(path.join(dataDir, 'users.json'), JSON.stringify(users, null, 2));
+        
+        // Сохраняем на Яндекс.Диск
+        await saveToYandex('users.json', users);
+        
+        console.log('✅ Users saved both locally and to Yandex.Disk');
     } catch (error) {
-        console.error('❌ Error saving users:', error);
+        console.error('❌ Error saving users:', error.message);
     }
 }
 
 async function saveMessages() {
     try {
         await fs.writeFile(path.join(dataDir, 'messages.json'), JSON.stringify(messages, null, 2));
+        await saveToYandex('messages.json', messages);
     } catch (error) {
-        console.error('❌ Error saving messages:', error);
+        console.error('❌ Error saving messages:', error.message);
     }
 }
 
 async function saveGroups() {
     try {
         await fs.writeFile(path.join(dataDir, 'groups.json'), JSON.stringify(groups, null, 2));
+        await saveToYandex('groups.json', groups);
     } catch (error) {
-        console.error('❌ Error saving groups:', error);
+        console.error('❌ Error saving groups:', error.message);
     }
 }
 
-// Сохранение данных валюты
 async function saveCurrencyData() {
     try {
         await fs.writeFile(path.join(dataDir, 'currency.json'), JSON.stringify(currencyData, null, 2));
+        await saveToYandex('currency.json', currencyData);
     } catch (error) {
-        console.error('❌ Error saving currency data:', error);
+        console.error('❌ Error saving currency data:', error.message);
+    }
+}
+
+async function saveGiftsData() {
+    try {
+        await fs.writeFile(path.join(dataDir, 'gifts.json'), JSON.stringify(giftsData, null, 2));
+        await saveToYandex('gifts.json', giftsData);
+    } catch (error) {
+        console.error('❌ Error saving gifts data:', error.message);
     }
 }
 
@@ -275,6 +514,22 @@ function initUserCurrency(username) {
         };
     }
     return currencyData[username];
+}
+
+// Инициализация подарков пользователя
+function initUserGifts(username) {
+    if (!giftsData[username]) {
+        giftsData[username] = {
+            received: [],
+            sent: []
+        };
+    }
+    return giftsData[username];
+}
+
+// Получение подарков пользователя
+function getUserGifts(username) {
+    return giftsData[username] || { received: [], sent: [] };
 }
 
 // Аутентификация
@@ -312,34 +567,44 @@ input, button { padding: 10px; margin: 5px 0; width: 100%; box-sizing: border-bo
         try {
             await fs.access(avatarPath);
         } catch {
-            await fs.writeFile(avatarPath, '');
-            console.log('✅ Created placeholder default-avatar.png');
+            // Создаем простой PNG файл программно
+            const { createCanvas } = require('canvas');
+            const canvas = createCanvas(200, 200);
+            const ctx = canvas.getContext('2d');
+            
+            // Рисуем градиентный фон
+            const gradient = ctx.createLinearGradient(0, 0, 200, 200);
+            gradient.addColorStop(0, '#4facfe');
+            gradient.addColorStop(1, '#00f2fe');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, 200, 200);
+            
+            // Рисуем круг
+            ctx.beginPath();
+            ctx.arc(100, 100, 80, 0, Math.PI * 2);
+            ctx.fillStyle = '#ffffff';
+            ctx.fill();
+            
+            // Рисуем иконку пользователя
+            ctx.beginPath();
+            ctx.arc(100, 70, 30, 0, Math.PI * 2);
+            ctx.fillStyle = '#4facfe';
+            ctx.fill();
+            
+            ctx.beginPath();
+            ctx.rect(70, 100, 60, 50);
+            ctx.fillStyle = '#4facfe';
+            ctx.fill();
+            
+            // Сохраняем файл
+            const buffer = canvas.toBuffer('image/png');
+            await fs.writeFile(avatarPath, buffer);
+            console.log('✅ Created default-avatar.png');
         }
     } catch (error) {
         console.error('❌ Error creating static files:', error);
     }
 }
-
-// Статические файлы и рендеринг
-app.get('/style.css', (req, res) => {
-    res.sendFile(path.join(__dirname, 'static', 'style.css'));
-});
-
-app.get('/auth.js', (req, res) => {
-    res.sendFile(path.join(__dirname, 'static', 'auth.js'));
-});
-
-app.get('/chat.js', (req, res) => {
-    res.sendFile(path.join(__dirname, 'static', 'chat.js'));
-});
-
-app.get('/private-chat.js', (req, res) => {
-    res.sendFile(path.join(__dirname, 'static', 'private-chat.js'));
-});
-
-app.get('/socket.io/socket.io.js', (req, res) => {
-    res.sendFile(path.join(__dirname, 'node_modules', 'socket.io', 'client-dist', 'socket.io.js'));
-});
 
 // Создаем директорию templates если её нет
 async function ensureTemplates() {
@@ -403,6 +668,27 @@ app.get('/chat', authenticateToken, (req, res) => {
     });
 });
 
+// Статические файлы
+app.get('/style.css', (req, res) => {
+    res.sendFile(path.join(__dirname, 'static', 'style.css'));
+});
+
+app.get('/auth.js', (req, res) => {
+    res.sendFile(path.join(__dirname, 'static', 'auth.js'));
+});
+
+app.get('/chat.js', (req, res) => {
+    res.sendFile(path.join(__dirname, 'static', 'chat.js'));
+});
+
+app.get('/private-chat.js', (req, res) => {
+    res.sendFile(path.join(__dirname, 'static', 'private-chat.js'));
+});
+
+app.get('/socket.io/socket.io.js', (req, res) => {
+    res.sendFile(path.join(__dirname, 'node_modules', 'socket.io', 'client-dist', 'socket.io.js'));
+});
+
 // API Роуты
 
 app.post('/api/register', avatarUpload.single('avatar'), async (req, res) => {
@@ -437,6 +723,10 @@ app.post('/api/register', avatarUpload.single('avatar'), async (req, res) => {
             await fs.rename(req.file.path, newAvatarPath);
             
             avatarPath = `/uploads/avatars/${uniqueName}`;
+            
+            // Также загружаем на Яндекс.Диск
+            const fileBuffer = await fs.readFile(newAvatarPath);
+            await uploadFileToYandex(fileBuffer, uniqueName, 'messenger/avatars');
         }
         
         const newUser = { 
@@ -452,6 +742,10 @@ app.post('/api/register', avatarUpload.single('avatar'), async (req, res) => {
         // Инициализируем валюту для нового пользователя
         initUserCurrency(username);
         await saveCurrencyData();
+        
+        // Инициализируем подарки
+        initUserGifts(username);
+        await saveGiftsData();
 
         const token = jwt.sign({ username }, JWT_SECRET);
         res.cookie('token', token, { httpOnly: true, maxAge: 24 * 60 * 60 * 1000 });
@@ -547,7 +841,11 @@ app.post('/api/user/avatar', authenticateToken, avatarUpload.single('avatar'), a
         
         await fs.rename(req.file.path, newAvatarPath);
         
-        user.avatar = `/uploads/avatars/${uniqueName}`;
+        // Загружаем на Яндекс.Диск
+        const fileBuffer = await fs.readFile(newAvatarPath);
+        const yandexUrl = await uploadFileToYandex(fileBuffer, uniqueName, 'messenger/avatars');
+        
+        user.avatar = yandexUrl || `/uploads/avatars/${uniqueName}`;
         await saveUsers();
         
         io.emit('user_avatar_updated', {
@@ -703,36 +1001,45 @@ app.post('/api/upload', authenticateToken, upload.single('file'), async (req, re
             return res.status(400).json({ error: 'Файл не загружен' });
         }
 
-        let thumbnailPath = null;
+        // Читаем файл
+        const fileBuffer = await fs.readFile(req.file.path);
         
+        // Загружаем на Яндекс.Диск
+        const yandexFilename = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}${path.extname(req.file.originalname)}`;
+        const yandexUrl = await uploadFileToYandex(fileBuffer, yandexFilename);
+        
+        let thumbnailUrl = null;
+        
+        // Создаем превью для изображений
         if (req.file.mimetype.startsWith('image/')) {
             try {
-                const thumbName = `thumb-${req.file.filename}`;
-                const thumbFullPath = path.join(uploadsDir, thumbName);
-                
-                await sharp(req.file.path)
+                const thumbnailBuffer = await sharp(req.file.path)
                     .resize(200, 200, {
                         fit: 'inside',
                         withoutEnlargement: true
                     })
                     .jpeg({ quality: 80 })
-                    .toFile(thumbFullPath);
+                    .toBuffer();
                 
-                thumbnailPath = `/uploads/${thumbName}`;
+                const thumbnailYandexFilename = `thumb-${yandexFilename}`;
+                thumbnailUrl = await uploadFileToYandex(thumbnailBuffer, thumbnailYandexFilename);
                 
             } catch (sharpError) {
                 console.error('❌ Thumbnail creation error:', sharpError);
-                thumbnailPath = `/uploads/${req.file.filename}`;
+                thumbnailUrl = yandexUrl;
             }
         }
+
+        // Удаляем локальный файл после загрузки на Яндекс.Диск
+        await fs.unlink(req.file.path).catch(console.error);
 
         const fileResponse = {
             success: true,
             file: {
                 originalName: req.file.originalname,
-                filename: req.file.filename,
-                path: `/uploads/${req.file.filename}`,
-                thumbnail: thumbnailPath,
+                filename: yandexFilename,
+                path: yandexUrl,
+                thumbnail: thumbnailUrl,
                 size: req.file.size,
                 mimetype: req.file.mimetype,
                 uploadDate: new Date().toISOString()
@@ -743,172 +1050,15 @@ app.post('/api/upload', authenticateToken, upload.single('file'), async (req, re
 
     } catch (error) {
         console.error('❌ Upload error:', error);
+        
+        if (req.file) {
+            await fs.unlink(req.file.path).catch(console.error);
+        }
+        
         res.status(500).json({ error: 'Ошибка загрузки файла: ' + error.message });
     }
 });
-// API для получения подарков пользователя
-app.get('/api/user/:username/gifts', authenticateToken, async (req, res) => {
-    try {
-        const { username } = req.params;
-        
-        if (req.user.username !== username && req.user.username !== 'admin') {
-            return res.status(403).json({ error: 'Доступ запрещен' });
-        }
 
-        const userGifts = getUserGifts(username);
-        res.json(userGifts);
-        
-    } catch (error) {
-        console.error('❌ User gifts error:', error);
-        res.status(500).json({ error: 'Ошибка загрузки подарков' });
-    }
-});
-
-// API для отправки подарка
-app.post('/api/gifts/send', authenticateToken, async (req, res) => {
-    try {
-        const { sender, receiver, giftId, giftName, giftPrice, giftImage } = req.body;
-        
-        if (req.user.username !== sender) {
-            return res.status(403).json({
-                success: false,
-                error: 'Доступ запрещен'
-            });
-        }
-
-        // Проверяем существование пользователя
-        const receiverUser = users.find(u => u.username === receiver);
-        if (!receiverUser) {
-            return res.status(404).json({
-                success: false,
-                error: 'Пользователь не найден'
-            });
-        }
-
-        // Проверяем баланс отправителя
-        const senderCurrency = initUserCurrency(sender);
-        if (senderCurrency.balance < giftPrice) {
-            return res.status(400).json({
-                success: false,
-                error: 'Недостаточно монет для покупки подарка'
-            });
-        }
-
-        // Инициализируем подарки для обоих пользователей
-        const senderGifts = initUserGifts(sender);
-        const receiverGifts = initUserGifts(receiver);
-
-        // Создаем объект подарка
-        const gift = {
-            id: `gift_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-            giftId: giftId,
-            name: giftName,
-            price: giftPrice,
-            image: giftImage,
-            sender: sender,
-            receiver: receiver,
-            sentAt: new Date().toISOString(),
-            isRead: false
-        };
-
-        // Добавляем подарок получателю
-        receiverGifts.received.unshift(gift);
-        
-        // Добавляем запись отправителю
-        senderGifts.sent.unshift({
-            ...gift,
-            received: true
-        });
-
-        // Списание средств у отправителя
-        senderCurrency.balance -= giftPrice;
-
-        // Добавляем записи в историю транзакций
-        senderCurrency.transactionHistory.unshift({
-            type: 'gift_sent',
-            amount: -giftPrice,
-            description: `Подарок для ${receiver}: ${giftName}`,
-            timestamp: new Date().toISOString()
-        });
-
-        // Начисляем бонус получателю (например, 10% от стоимости)
-        const receiverBonus = Math.floor(giftPrice * 0.1);
-        const receiverCurrency = initUserCurrency(receiver);
-        receiverCurrency.balance += receiverBonus;
-
-        receiverCurrency.transactionHistory.unshift({
-            type: 'gift_received',
-            amount: receiverBonus,
-            description: `Бонус за подарок от ${sender}: ${giftName}`,
-            timestamp: new Date().toISOString()
-        });
-
-        // Сохраняем все данные
-        await saveGiftsData();
-        await saveCurrencyData();
-
-        // Отправляем уведомление получателю через WebSocket
-        const receiverSocketId = userSockets.get(receiver);
-        if (receiverSocketId) {
-            io.to(receiverSocketId).emit('gift_received', {
-                gift: gift,
-                bonus: receiverBonus,
-                newBalance: receiverCurrency.balance
-            });
-        }
-
-        // Отправляем подтверждение отправителю
-        const senderSocketId = userSockets.get(sender);
-        if (senderSocketId) {
-            io.to(senderSocketId).emit('gift_sent_success', {
-                gift: gift,
-                newBalance: senderCurrency.balance
-            });
-        }
-
-        console.log(`🎁 Gift sent: ${sender} -> ${receiver} (${giftName})`);
-
-        res.json({
-            success: true,
-            message: `Подарок "${giftName}" успешно отправлен пользователю ${receiver}!`,
-            gift: gift,
-            senderNewBalance: senderCurrency.balance,
-            receiverBonus: receiverBonus
-        });
-
-    } catch (error) {
-        console.error('❌ Gift send error:', error);
-        res.status(500).json({
-            success: false,
-            error: 'Ошибка отправки подарка'
-        });
-    }
-});
-
-// API для отметки подарка как прочитанного
-app.post('/api/gifts/mark-read', authenticateToken, async (req, res) => {
-    try {
-        const { username, giftId } = req.body;
-        
-        if (req.user.username !== username) {
-            return res.status(403).json({ error: 'Доступ запрещен' });
-        }
-
-        const userGifts = getUserGifts(username);
-        const gift = userGifts.received.find(g => g.id === giftId);
-        
-        if (gift) {
-            gift.isRead = true;
-            await saveGiftsData();
-        }
-
-        res.json({ success: true });
-        
-    } catch (error) {
-        console.error('❌ Mark gift read error:', error);
-        res.status(500).json({ error: 'Ошибка обновления статуса подарка' });
-    }
-});
 // Загрузка голосовых сообщений
 app.post('/api/upload-voice', authenticateToken, voiceUpload.single('file'), async (req, res) => {
     try {
@@ -916,12 +1066,22 @@ app.post('/api/upload-voice', authenticateToken, voiceUpload.single('file'), asy
             return res.status(400).json({ error: 'Файл не загружен' });
         }
 
+        // Читаем файл
+        const fileBuffer = await fs.readFile(req.file.path);
+        
+        // Загружаем на Яндекс.Диск
+        const yandexFilename = `voice_${Date.now()}-${Math.random().toString(36).substr(2, 9)}${path.extname(req.file.originalname)}`;
+        const yandexUrl = await uploadFileToYandex(fileBuffer, yandexFilename);
+
+        // Удаляем локальный файл
+        await fs.unlink(req.file.path).catch(console.error);
+
         const fileResponse = {
             success: true,
             file: {
                 originalName: req.file.originalname,
-                filename: req.file.filename,
-                path: `/uploads/${req.file.filename}`,
+                filename: yandexFilename,
+                path: yandexUrl,
                 size: req.file.size,
                 mimetype: req.file.mimetype,
                 uploadDate: new Date().toISOString(),
@@ -929,7 +1089,7 @@ app.post('/api/upload-voice', authenticateToken, voiceUpload.single('file'), asy
             }
         };
 
-        console.log('✅ Voice message uploaded:', fileResponse.file.originalName);
+        console.log('✅ Voice message uploaded to Yandex.Disk:', fileResponse.file.originalName);
         res.json(fileResponse);
 
     } catch (error) {
@@ -947,8 +1107,6 @@ app.post('/api/upload-voice', authenticateToken, voiceUpload.single('file'), asy
 app.get('/api/user/groups', authenticateToken, async (req, res) => {
     try {
         const currentUser = req.user.username;
-        
-        console.log('🔄 Fetching groups for user:', currentUser);
         
         const userGroups = groups
             .filter(group => {
@@ -981,8 +1139,6 @@ app.get('/api/user/groups', authenticateToken, async (req, res) => {
                     } : null
                 };
             });
-        
-        console.log(`✅ Found ${userGroups.length} groups for user ${currentUser}`);
         
         res.json(userGroups);
         
@@ -1084,7 +1240,6 @@ app.get('/api/groups/:groupId/messages', authenticateToken, (req, res) => {
             msg.type === 'group' && msg.groupId === groupId
         );
         
-        console.log(`✅ Loaded ${groupMessages.length} messages for group ${groupId}`);
         res.json(groupMessages);
     } catch (error) {
         console.error('❌ Group messages error:', error);
@@ -1224,19 +1379,19 @@ app.post('/api/currency/daily-reward', authenticateToken, async (req, res) => {
                 });
             }
             
-            // Проверяем серию (если прошло меньше 48 часов, увеличиваем серию)
+            // Проверяем серию
             if (hoursSinceLastReward < 48) {
                 userCurrency.dailyStreak += 1;
             } else {
-                userCurrency.dailyStreak = 1; // Сбрасываем серию
+                userCurrency.dailyStreak = 1;
             }
         } else {
-            userCurrency.dailyStreak = 1; // Первая награда
+            userCurrency.dailyStreak = 1;
         }
 
         // Расчет награды
         const baseReward = 50;
-        const streakBonus = Math.min(userCurrency.dailyStreak * 5, 100); // Максимум 100 бонусных монет
+        const streakBonus = Math.min(userCurrency.dailyStreak * 5, 100);
         const totalReward = baseReward + streakBonus;
         
         // Обновляем баланс
@@ -1251,7 +1406,6 @@ app.post('/api/currency/daily-reward', authenticateToken, async (req, res) => {
             timestamp: now.toISOString()
         });
         
-        // Сохраняем только последние 50 транзакций
         if (userCurrency.transactionHistory.length > 50) {
             userCurrency.transactionHistory = userCurrency.transactionHistory.slice(0, 50);
         }
@@ -1274,30 +1428,7 @@ app.post('/api/currency/daily-reward', authenticateToken, async (req, res) => {
         });
     }
 });
-app.get('/api/user/:username', authenticateToken, (req, res) => {
-    try {
-        const { username } = req.params;
-        const user = users.find(u => u.username === username);
-        
-        if (!user) {
-            return res.status(404).json({ error: 'User not found' });
-        }
-        
-        const publicUserInfo = {
-            username: user.username,
-            avatar: user.avatar || '/default-avatar.png',
-            createdAt: user.createdAt,
-            isOnline: onlineUsers.has(username)
-        };
-        
-        res.json(publicUserInfo);
-    } catch (error) {
-        console.error('❌ User info error:', error);
-        res.status(500).json({ error: 'Failed to get user info' });
-    }
-});
 
-// Альтернативный endpoint для информации о пользователе
 app.get('/api/users/:username', authenticateToken, (req, res) => {
     try {
         const { username } = req.params;
@@ -1353,47 +1484,11 @@ app.get('/api/user/:username/avatar', authenticateToken, async (req, res) => {
         res.redirect('/default-avatar.png');
     }
 });
+
 app.post('/api/currency/save', authenticateToken, async (req, res) => {
     try {
         const { username, balance, dailyStreak, lastDailyReward, transactionHistory } = req.body;
         
-        console.log('💾 Saving currency data for:', username);
-        
-        if (req.user.username !== username && req.user.username !== 'admin') {
-            return res.status(403).json({ error: 'Доступ запрещен' });
-        }
-
-        if (!currencyData[username]) {
-            currencyData[username] = {};
-        }
-
-        // Обновляем данные
-        currencyData[username].balance = balance !== undefined ? balance : 0;
-        currencyData[username].dailyStreak = dailyStreak !== undefined ? dailyStreak : 0;
-        currencyData[username].lastDailyReward = lastDailyReward;
-        currencyData[username].transactionHistory = transactionHistory || [];
-
-        await saveCurrencyData();
-
-        console.log('✅ Currency data saved for:', username, 'Balance:', currencyData[username].balance);
-        
-        res.json({ 
-            success: true, 
-            message: 'Данные валюты сохранены',
-            balance: currencyData[username].balance
-        });
-        
-    } catch (error) {
-        console.error('❌ Currency save error:', error);
-        res.status(500).json({ error: 'Ошибка сохранения данных валюты' });
-    }
-});
-app.post('/api/currency/user/save', authenticateToken, async (req, res) => {
-    try {
-        const { username, balance, dailyStreak, lastDailyReward, transactionHistory } = req.body;
-        
-        console.log('💾 Saving currency data via user/save for:', username);
-        
         if (req.user.username !== username && req.user.username !== 'admin') {
             return res.status(403).json({ error: 'Доступ запрещен' });
         }
@@ -1408,8 +1503,6 @@ app.post('/api/currency/user/save', authenticateToken, async (req, res) => {
         currencyData[username].transactionHistory = transactionHistory || [];
 
         await saveCurrencyData();
-
-        console.log('✅ Currency data saved via user/save for:', username);
         
         res.json({ 
             success: true, 
@@ -1423,150 +1516,6 @@ app.post('/api/currency/user/save', authenticateToken, async (req, res) => {
     }
 });
 
-app.post('/api/user/currency/save', authenticateToken, async (req, res) => {
-    try {
-        const { username, balance, dailyStreak, lastDailyReward, transactionHistory } = req.body;
-        
-        console.log('💾 Saving currency data via user/currency/save for:', username);
-        
-        if (req.user.username !== username && req.user.username !== 'admin') {
-            return res.status(403).json({ error: 'Доступ запрещен' });
-        }
-
-        if (!currencyData[username]) {
-            currencyData[username] = {};
-        }
-
-        currencyData[username].balance = balance !== undefined ? balance : 0;
-        currencyData[username].dailyStreak = dailyStreak !== undefined ? dailyStreak : 0;
-        currencyData[username].lastDailyReward = lastDailyReward;
-        currencyData[username].transactionHistory = transactionHistory || [];
-
-        await saveCurrencyData();
-
-        console.log('✅ Currency data saved via user/currency/save for:', username);
-        
-        res.json({ 
-            success: true, 
-            message: 'Данные валюты сохранены',
-            balance: currencyData[username].balance
-        });
-        
-    } catch (error) {
-        console.error('❌ Currency save error:', error);
-        res.status(500).json({ error: 'Ошибка сохранения данных валюты' });
-    }
-});
-
-app.post('/api/user/currency/save', authenticateToken, async (req, res) => {
-    try {
-        const { username, balance, dailyStreak, lastDailyReward, transactionHistory } = req.body;
-        
-        if (req.user.username !== username && req.user.username !== 'admin') {
-            return res.status(403).json({ error: 'Доступ запрещен' });
-        }
-
-        if (!currencyData[username]) {
-            currencyData[username] = {};
-        }
-
-        currencyData[username].balance = balance || 0;
-        currencyData[username].dailyStreak = dailyStreak || 0;
-        currencyData[username].lastDailyReward = lastDailyReward;
-        currencyData[username].transactionHistory = transactionHistory || [];
-
-        await saveCurrencyData();
-
-        res.json({ success: true, message: 'Данные валюты сохранены' });
-        
-    } catch (error) {
-        console.error('❌ Currency save error:', error);
-        res.status(500).json({ error: 'Ошибка сохранения данных валюты' });
-    }
-});
-app.post('/api/currency/reward/daily', authenticateToken, async (req, res) => {
-    try {
-        const { username } = req.body;
-        
-        if (!username) {
-            return res.status(400).json({
-                success: false,
-                error: 'Имя пользователя обязательно'
-            });
-        }
-
-        if (req.user.username !== username) {
-            return res.status(403).json({
-                success: false,
-                error: 'Доступ запрещен'
-            });
-        }
-
-        const userCurrency = initUserCurrency(username);
-        const now = new Date();
-        
-        // Проверяем, можно ли получить награду
-        if (userCurrency.lastDailyReward) {
-            const lastReward = new Date(userCurrency.lastDailyReward);
-            const hoursSinceLastReward = (now - lastReward) / (1000 * 60 * 60);
-            
-            if (hoursSinceLastReward < 23) {
-                return res.status(400).json({
-                    success: false,
-                    error: 'Вы уже получали награду сегодня'
-                });
-            }
-            
-            // Проверяем серию (если прошло меньше 48 часов, увеличиваем серию)
-            if (hoursSinceLastReward < 48) {
-                userCurrency.dailyStreak += 1;
-            } else {
-                userCurrency.dailyStreak = 1; // Сбрасываем серию
-            }
-        } else {
-            userCurrency.dailyStreak = 1; // Первая награда
-        }
-
-        // Расчет награды
-        const baseReward = 50;
-        const streakBonus = Math.min(userCurrency.dailyStreak * 5, 100);
-        const totalReward = baseReward + streakBonus;
-        
-        // Обновляем баланс
-        userCurrency.balance += totalReward;
-        userCurrency.lastDailyReward = now.toISOString();
-        
-        // Добавляем в историю
-        userCurrency.transactionHistory.unshift({
-            type: 'daily_reward',
-            amount: totalReward,
-            description: `Ежедневная награда (серия: ${userCurrency.dailyStreak} дней)`,
-            timestamp: now.toISOString()
-        });
-        
-        if (userCurrency.transactionHistory.length > 50) {
-            userCurrency.transactionHistory = userCurrency.transactionHistory.slice(0, 50);
-        }
-        
-        await saveCurrencyData();
-
-        res.json({
-            success: true,
-            newBalance: userCurrency.balance,
-            rewardAmount: totalReward,
-            streak: userCurrency.dailyStreak,
-            message: `Получено ${totalReward} монет! Серия: ${userCurrency.dailyStreak} дней`
-        });
-        
-    } catch (error) {
-        console.error('❌ Daily reward error:', error);
-        res.status(500).json({
-            success: false,
-            error: 'Ошибка получения награды'
-        });
-    }
-});
-// В server.js, в API endpoints для валюты
 app.post('/api/currency/add', authenticateToken, async (req, res) => {
     try {
         const { targetUser, amount, reason, admin } = req.body;
@@ -1598,15 +1547,6 @@ app.post('/api/currency/add', authenticateToken, async (req, res) => {
         
         await saveCurrencyData();
 
-        // ОТПРАВЛЯЕМ СОБЫТИЕ ОБНОВЛЕНИЯ БАЛАНСА
-        const targetSocketId = userSockets.get(targetUser);
-        if (targetSocketId) {
-            io.to(targetSocketId).emit('currency_balance_updated', {
-                username: targetUser,
-                balance: userCurrency.balance
-            });
-        }
-
         console.log(`Admin ${admin} added ${amount} currency to ${targetUser}. Reason: ${reason}`);
         
         res.json({
@@ -1626,6 +1566,7 @@ app.post('/api/currency/add', authenticateToken, async (req, res) => {
         });
     }
 });
+
 app.post('/api/currency/remove', authenticateToken, async (req, res) => {
     try {
         const { targetUser, amount, reason, admin } = req.body;
@@ -1655,7 +1596,6 @@ app.post('/api/currency/remove', authenticateToken, async (req, res) => {
         
         userCurrency.balance -= amount;
         
-        // Добавляем в историю
         userCurrency.transactionHistory.unshift({
             type: 'admin_remove',
             amount: -amount,
@@ -1683,25 +1623,6 @@ app.post('/api/currency/remove', authenticateToken, async (req, res) => {
             success: false,
             error: 'Ошибка списания валюты'
         });
-    }
-});
-
-// Админ панель
-app.get('/api/users/online', authenticateToken, (req, res) => {
-    try {
-        if (req.user.username !== 'admin') {
-            return res.status(403).json({ error: 'Требуются права администратора' });
-        }
-        
-        const onlineUsersList = Array.from(onlineUsers).map(username => ({
-            username: username,
-            isOnline: true
-        }));
-        
-        res.json(onlineUsersList);
-    } catch (error) {
-        console.error('❌ Error loading online users:', error);
-        res.status(500).json({ error: 'Failed to load online users' });
     }
 });
 
@@ -1759,6 +1680,169 @@ app.post('/api/admin/send-notification', authenticateToken, async (req, res) => 
         res.status(500).json({ error: 'Ошибка отправки уведомления: ' + error.message });
     }
 });
+
+// API для подарков
+app.get('/api/user/:username/gifts', authenticateToken, async (req, res) => {
+    try {
+        const { username } = req.params;
+        
+        if (req.user.username !== username && req.user.username !== 'admin') {
+            return res.status(403).json({ error: 'Доступ запрещен' });
+        }
+
+        const userGifts = getUserGifts(username);
+        res.json(userGifts);
+        
+    } catch (error) {
+        console.error('❌ User gifts error:', error);
+        res.status(500).json({ error: 'Ошибка загрузки подарков' });
+    }
+});
+
+app.post('/api/gifts/send', authenticateToken, async (req, res) => {
+    try {
+        const { sender, receiver, giftId, giftName, giftPrice, giftImage } = req.body;
+        
+        if (req.user.username !== sender) {
+            return res.status(403).json({
+                success: false,
+                error: 'Доступ запрещен'
+            });
+        }
+
+        // Проверяем существование пользователя
+        const receiverUser = users.find(u => u.username === receiver);
+        if (!receiverUser) {
+            return res.status(404).json({
+                success: false,
+                error: 'Пользователь не найден'
+            });
+        }
+
+        // Проверяем баланс отправителя
+        const senderCurrency = initUserCurrency(sender);
+        if (senderCurrency.balance < giftPrice) {
+            return res.status(400).json({
+                success: false,
+                error: 'Недостаточно монет для покупки подарка'
+            });
+        }
+
+        // Инициализируем подарки для обоих пользователей
+        const senderGifts = initUserGifts(sender);
+        const receiverGifts = initUserGifts(receiver);
+
+        // Создаем объект подарка
+        const gift = {
+            id: `gift_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+            giftId: giftId,
+            name: giftName,
+            price: giftPrice,
+            image: giftImage,
+            sender: sender,
+            receiver: receiver,
+            sentAt: new Date().toISOString(),
+            isRead: false
+        };
+
+        // Добавляем подарок получателю
+        receiverGifts.received.unshift(gift);
+        
+        // Добавляем запись отправителю
+        senderGifts.sent.unshift({
+            ...gift,
+            received: true
+        });
+
+        // Списание средств у отправителя
+        senderCurrency.balance -= giftPrice;
+
+        // Добавляем записи в историю транзакций
+        senderCurrency.transactionHistory.unshift({
+            type: 'gift_sent',
+            amount: -giftPrice,
+            description: `Подарок для ${receiver}: ${giftName}`,
+            timestamp: new Date().toISOString()
+        });
+
+        // Начисляем бонус получателю
+        const receiverBonus = Math.floor(giftPrice * 0.1);
+        const receiverCurrency = initUserCurrency(receiver);
+        receiverCurrency.balance += receiverBonus;
+
+        receiverCurrency.transactionHistory.unshift({
+            type: 'gift_received',
+            amount: receiverBonus,
+            description: `Бонус за подарок от ${sender}: ${giftName}`,
+            timestamp: new Date().toISOString()
+        });
+
+        // Сохраняем все данные
+        await saveGiftsData();
+        await saveCurrencyData();
+
+        // Отправляем уведомление получателю через WebSocket
+        const receiverSocketId = userSockets.get(receiver);
+        if (receiverSocketId) {
+            io.to(receiverSocketId).emit('gift_received', {
+                gift: gift,
+                bonus: receiverBonus,
+                newBalance: receiverCurrency.balance
+            });
+        }
+
+        // Отправляем подтверждение отправителю
+        const senderSocketId = userSockets.get(sender);
+        if (senderSocketId) {
+            io.to(senderSocketId).emit('gift_sent_success', {
+                gift: gift,
+                newBalance: senderCurrency.balance
+            });
+        }
+
+        console.log(`🎁 Gift sent: ${sender} -> ${receiver} (${giftName})`);
+
+        res.json({
+            success: true,
+            message: `Подарок "${giftName}" успешно отправлен пользователю ${receiver}!`,
+            gift: gift,
+            senderNewBalance: senderCurrency.balance,
+            receiverBonus: receiverBonus
+        });
+
+    } catch (error) {
+        console.error('❌ Gift send error:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Ошибка отправки подарка'
+        });
+    }
+});
+
+app.post('/api/gifts/mark-read', authenticateToken, async (req, res) => {
+    try {
+        const { username, giftId } = req.body;
+        
+        if (req.user.username !== username) {
+            return res.status(403).json({ error: 'Доступ запрещен' });
+        }
+
+        const userGifts = getUserGifts(username);
+        const gift = userGifts.received.find(g => g.id === giftId);
+        
+        if (gift) {
+            gift.isRead = true;
+            await saveGiftsData();
+        }
+
+        res.json({ success: true });
+        
+    } catch (error) {
+        console.error('❌ Mark gift read error:', error);
+        res.status(500).json({ error: 'Ошибка обновления статуса подарка' });
+    }
+});
+
 app.get('/health', (req, res) => {
     res.json({ 
         status: 'OK', 
@@ -1769,22 +1853,9 @@ app.get('/health', (req, res) => {
         onlineUsers: onlineUsers.size,
         notifications: systemNotifications.length,
         currencyUsers: Object.keys(currencyData).length,
-        giftsUsers: Object.keys(giftsData).length // ← Добавьте эту строку
+        giftsUsers: Object.keys(giftsData).length,
+        yandexDisk: 'configured'
     });
-});
-
-// Базовый маршрут для групп
-app.get('/api/groups', authenticateToken, (req, res) => {
-    try {
-        const currentUser = req.user.username;
-        const userGroups = groups.filter(group => 
-            group.members && group.members.includes(currentUser)
-        );
-        res.json(userGroups);
-    } catch (error) {
-        console.error('❌ Groups error:', error);
-        res.status(500).json({ error: 'Failed to load groups' });
-    }
 });
 
 // Обработка default-avatar.png
@@ -1803,270 +1874,7 @@ app.use((error, req, res, next) => {
     console.error('❌ Server error:', error);
     res.status(500).json({ error: 'Internal server error' });
 });
-// В server.js добавляем новые API endpoints
 
-// API для подарков
-app.get('/api/user/gifts', authenticateToken, async (req, res) => {
-    try {
-        // Загрузка данных о подарках пользователей
-        const giftsData = await loadGiftsData();
-        res.json(giftsData);
-    } catch (error) {
-        console.error('❌ Gifts data error:', error);
-        res.status(500).json({ error: 'Ошибка загрузки данных подарков' });
-    }
-});
-
-app.post('/api/gifts/buy', authenticateToken, async (req, res) => {
-    try {
-        const { username, giftId, giftName, price } = req.body;
-        
-        if (req.user.username !== username) {
-            return res.status(403).json({
-                success: false,
-                error: 'Доступ запрещен'
-            });
-        }
-
-        // Проверяем баланс
-        const userCurrency = initUserCurrency(username);
-        if (userCurrency.balance < price) {
-            return res.status(400).json({
-                success: false,
-                error: 'Недостаточно монет'
-            });
-        }
-
-        // Проверяем, есть ли уже такой подарок
-        const userGifts = await getUserGifts(username);
-        const alreadyOwned = userGifts.some(gift => gift.id === giftId);
-        
-        if (alreadyOwned) {
-            return res.status(400).json({
-                success: false,
-                error: 'У вас уже есть этот подарок'
-            });
-        }
-
-        // Списание средств
-        userCurrency.balance -= price;
-        
-        // Добавляем запись в историю
-        userCurrency.transactionHistory.unshift({
-            type: 'gift_purchase',
-            amount: -price,
-            description: `Покупка подарка: ${giftName}`,
-            timestamp: new Date().toISOString()
-        });
-
-        // Сохраняем подарок
-        userGifts.push({
-            id: giftId,
-            name: giftName,
-            purchaseDate: new Date().toISOString(),
-            price: price
-        });
-
-        await saveUserGifts(username, userGifts);
-        await saveCurrencyData();
-
-        res.json({
-            success: true,
-            message: `Подарок "${giftName}" успешно куплен!`,
-            newBalance: userCurrency.balance,
-            gift: userGifts[userGifts.length - 1]
-        });
-
-    } catch (error) {
-        console.error('❌ Gift purchase error:', error);
-        res.status(500).json({
-            success: false,
-            error: 'Ошибка покупки подарка'
-        });
-    }
-});
-
-// API для профилей
-app.get('/api/user/profiles', authenticateToken, async (req, res) => {
-    try {
-        const profilesData = await loadProfilesData();
-        res.json(profilesData);
-    } catch (error) {
-        console.error('❌ Profiles data error:', error);
-        res.status(500).json({ error: 'Ошибка загрузки данных профилей' });
-    }
-});
-
-app.get('/api/user/:username/profile', authenticateToken, async (req, res) => {
-    try {
-        const { username } = req.params;
-        const profile = await getUserProfile(username);
-        
-        if (!profile) {
-            // Создаем базовый профиль
-            const user = users.find(u => u.username === username);
-            if (!user) {
-                return res.status(404).json({ error: 'Пользователь не найден' });
-            }
-            
-            const newProfile = {
-                username: username,
-                avatar: user.avatar || '/default-avatar.png',
-                registrationDate: user.createdAt || new Date().toISOString(),
-                gifts: [],
-                stats: {
-                    messagesSent: messages.filter(m => m.sender === username).length,
-                    groupsCreated: groups.filter(g => g.createdBy === username).length,
-                    daysActive: 1
-                },
-                bio: '',
-                status: 'online'
-            };
-            
-            await saveUserProfile(username, newProfile);
-            res.json(newProfile);
-        } else {
-            res.json(profile);
-        }
-        
-    } catch (error) {
-        console.error('❌ Profile error:', error);
-        res.status(500).json({ error: 'Ошибка загрузки профиля' });
-    }
-});
-
-app.post('/api/user/profile/bio', authenticateToken, async (req, res) => {
-    try {
-        const { username, bio } = req.body;
-        
-        if (req.user.username !== username) {
-            return res.status(403).json({ error: 'Доступ запрещен' });
-        }
-
-        const profile = await getUserProfile(username);
-        if (!profile) {
-            return res.status(404).json({ error: 'Профиль не найден' });
-        }
-
-        profile.bio = bio;
-        await saveUserProfile(username, profile);
-
-        res.json({ success: true, message: 'Информация обновлена' });
-        
-    } catch (error) {
-        console.error('❌ Bio update error:', error);
-        res.status(500).json({ error: 'Ошибка обновления информации' });
-    }
-});
-// API для подарков
-app.get('/api/user/gifts', authenticateToken, async (req, res) => {
-    try {
-        // Здесь должна быть логика загрузки подарков пользователя
-        res.json([]);
-    } catch (error) {
-        console.error('❌ Gifts data error:', error);
-        res.status(500).json({ error: 'Ошибка загрузки данных подарков' });
-    }
-});
-
-app.post('/api/gifts/buy', authenticateToken, async (req, res) => {
-    try {
-        const { username, giftId, giftName, price } = req.body;
-        
-        if (req.user.username !== username) {
-            return res.status(403).json({
-                success: false,
-                error: 'Доступ запрещен'
-            });
-        }
-
-        // Здесь должна быть логика покупки подарка
-        res.json({
-            success: true,
-            message: `Подарок "${giftName}" успешно куплен!`
-        });
-
-    } catch (error) {
-        console.error('❌ Gift purchase error:', error);
-        res.status(500).json({
-            success: false,
-            error: 'Ошибка покупки подарка'
-        });
-    }
-});
-
-// API для профилей
-app.get('/api/user/profiles', authenticateToken, async (req, res) => {
-    try {
-        // Здесь должна быть логика загрузки профилей
-        res.json([]);
-    } catch (error) {
-        console.error('❌ Profiles data error:', error);
-        res.status(500).json({ error: 'Ошибка загрузки данных профилей' });
-    }
-});
-
-app.get('/api/user/:username/profile', authenticateToken, async (req, res) => {
-    try {
-        const { username } = req.params;
-        
-        // Здесь должна быть логика загрузки профиля
-        const profile = {
-            username: username,
-            avatar: '/default-avatar.png',
-            registrationDate: new Date().toISOString(),
-            gifts: [],
-            stats: {
-                messagesSent: 0,
-                groupsCreated: 0,
-                daysActive: 1
-            },
-            bio: '',
-            status: 'online'
-        };
-        
-        res.json(profile);
-        
-    } catch (error) {
-        console.error('❌ Profile error:', error);
-        res.status(500).json({ error: 'Ошибка загрузки профиля' });
-    }
-});
-
-app.post('/api/user/profile/bio', authenticateToken, async (req, res) => {
-    try {
-        const { username, bio } = req.body;
-        
-        if (req.user.username !== username) {
-            return res.status(403).json({ error: 'Доступ запрещен' });
-        }
-
-        // Здесь должна быть логика обновления био
-        res.json({ success: true, message: 'Информация обновлена' });
-        
-    } catch (error) {
-        console.error('❌ Bio update error:', error);
-        res.status(500).json({ error: 'Ошибка обновления информации' });
-    }
-});
-app.get('/api/user/:username/gifts', authenticateToken, async (req, res) => {
-    try {
-        const { username } = req.params;
-        
-        if (req.user.username !== username && req.user.username !== 'admin') {
-            return res.status(403).json({ error: 'Доступ запрещен' });
-        }
-
-        // Здесь должна быть логика загрузки подарков пользователя из базы данных
-        const userGifts = []; // Заглушка - в реальном приложении загружаем из БД
-        
-        res.json(userGifts);
-        
-    } catch (error) {
-        console.error('❌ User gifts error:', error);
-        res.status(500).json({ error: 'Ошибка загрузки подарков' });
-    }
-});
 // Socket.io логика
 io.on('connection', (socket) => {
     console.log('✅ User connected:', socket.id);
@@ -2111,25 +1919,26 @@ io.on('connection', (socket) => {
             console.log(`👋 User ${socket.username} disconnected`);
         }
     });
- socket.on('gift_sent', (data) => {
-    const receiverSocketId = userSockets.get(data.receiver);
-    if (receiverSocketId) {
-        io.to(receiverSocketId).emit('gift_received', {
-            sender: data.sender,
+
+    socket.on('gift_sent', (data) => {
+        const receiverSocketId = userSockets.get(data.receiver);
+        if (receiverSocketId) {
+            io.to(receiverSocketId).emit('gift_received', {
+                sender: data.sender,
+                gift: data.gift,
+                timestamp: data.timestamp
+            });
+        }
+        
+        socket.emit('gift_sent_success', {
+            receiver: data.receiver,
             gift: data.gift,
             timestamp: data.timestamp
         });
-    }
-    
-    // Отправляем уведомление отправителю
-    socket.emit('gift_sent_success', {
-        receiver: data.receiver,
-        gift: data.gift,
-        timestamp: data.timestamp
+        
+        console.log(`🎁 Gift sent: ${data.sender} -> ${data.receiver} (${data.gift.name})`);
     });
-    
-    console.log(`🎁 Gift sent: ${data.sender} -> ${data.receiver} (${data.gift.name})`);
-});
+
     socket.on('user authenticated', (username) => {
         console.log('🔐 User authenticated:', username, 'Socket ID:', socket.id);
         userSockets.set(username, socket.id);
@@ -2191,7 +2000,6 @@ io.on('connection', (socket) => {
         }
     });
 
-    // Обработчики групповых сообщений
     socket.on('group_message', (data) => {
         try {
             const group = groups.find(g => g.id === data.groupId);
@@ -2232,7 +2040,6 @@ io.on('connection', (socket) => {
         }
     });
 
-    // Обработчики обновлений групп
     socket.on('group_created', (data) => {
         console.log(`👥 Group created event: ${data.group.name}`);
         data.group.members.forEach(member => {
@@ -2243,7 +2050,6 @@ io.on('connection', (socket) => {
         });
     });
 
-    // Обработчики звонков
     socket.on('initiate_call', (data) => {
         const targetSocketId = userSockets.get(data.targetUser);
         if (targetSocketId) {
@@ -2313,45 +2119,51 @@ io.on('connection', (socket) => {
         
         console.log(`📞 Call ended: ${socket.username} ended call ${data.callId}`);
     });
-socket.on('send_gift', async (data) => {
-    try {
-        const { sender, receiver, gift, messageId } = data;
-        
-        // Сохраняем в базе данных
-        await saveGiftTransaction({
-            sender,
-            receiver, 
-            giftId: gift.id,
-            giftName: gift.name,
-            giftType: gift.type,
-            messageId,
-            timestamp: new Date()
-        });
-        
-        // Отправляем уведомление получателю
-        socket.to(receiver).emit('gift_received', {
-            sender,
-            gift,
-            messageId,
-            timestamp: new Date()
-        });
-        
-        // Подтверждаем отправителю
-        socket.emit('gift_sent', {
-            receiver,
-            gift,
-            messageId,
-            timestamp: new Date()
-        });
-        
-    } catch (error) {
-        console.error('Error processing gift:', error);
-        socket.emit('gift_error', {
-            error: 'Ошибка отправки подарка'
-        });
-    }
-});
-    // WebRTC сигналы
+
+    socket.on('send_gift', async (data) => {
+        try {
+            const { sender, receiver, gift, messageId } = data;
+            
+            const senderCurrency = initUserCurrency(sender);
+            if (senderCurrency.balance < gift.price) {
+                socket.emit('gift_error', {
+                    error: 'Недостаточно монет'
+                });
+                return;
+            }
+            
+            senderCurrency.balance -= gift.price;
+            senderCurrency.transactionHistory.unshift({
+                type: 'gift_sent',
+                amount: -gift.price,
+                description: `Подарок для ${receiver}: ${gift.name}`,
+                timestamp: new Date().toISOString()
+            });
+            
+            await saveCurrencyData();
+            
+            socket.to(receiver).emit('gift_received', {
+                sender,
+                gift,
+                messageId,
+                timestamp: new Date()
+            });
+            
+            socket.emit('gift_sent', {
+                receiver,
+                gift,
+                messageId,
+                timestamp: new Date()
+            });
+            
+        } catch (error) {
+            console.error('Error processing gift:', error);
+            socket.emit('gift_error', {
+                error: 'Ошибка отправки подарка'
+            });
+        }
+    });
+
     socket.on('webrtc_offer', (data) => {
         const targetSocketId = userSockets.get(data.targetUser);
         if (targetSocketId) {
@@ -2385,7 +2197,6 @@ socket.on('send_gift', async (data) => {
         }
     });
 
-    // Трансляция экрана
     socket.on('screen_share_started', (data) => {
         const targetSocketId = userSockets.get(data.targetUser);
         if (targetSocketId) {
@@ -2418,7 +2229,6 @@ socket.on('send_gift', async (data) => {
         }
     });
 
-    // Системные уведомления
     socket.on('system_notification', (data) => {
         const notificationData = {
             id: 'notif_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
@@ -2442,82 +2252,54 @@ socket.on('send_gift', async (data) => {
         console.log(`📢 System notification: ${notificationData.title}`);
     });
 
-    // Обновление аватара
     socket.on('user_avatar_updated', (data) => {
         io.emit('user_avatar_updated', data);
     });
 
-    // Ping для проверки соединения
     socket.on('ping', (cb) => {
         if (typeof cb === 'function') {
             cb('pong');
         }
     });
 
-    // Запрос списка онлайн пользователей
     socket.on('get_online_users', (cb) => {
         if (typeof cb === 'function') {
             cb(Array.from(onlineUsers));
         }
     });
 });
-// Загрузка данных подарков
-async function loadGiftsData() {
-    try {
-        const data = await fs.readFile(path.join(dataDir, 'gifts.json'), 'utf8');
-        giftsData = JSON.parse(data);
-        console.log('✅ Gifts data loaded:', Object.keys(giftsData).length);
-    } catch (error) {
-        giftsData = {};
-        await saveGiftsData();
-    }
-}
 
-// Сохранение данных подарков
-async function saveGiftsData() {
-    try {
-        await fs.writeFile(path.join(dataDir, 'gifts.json'), JSON.stringify(giftsData, null, 2));
-    } catch (error) {
-        console.error('❌ Error saving gifts data:', error);
-    }
-}
-
-// Инициализация подарков пользователя
-function initUserGifts(username) {
-    if (!giftsData[username]) {
-        giftsData[username] = {
-            received: [],
-            sent: []
-        };
-    }
-    return giftsData[username];
-}
-
-// Получение подарков пользователя
-function getUserGifts(username) {
-    return giftsData[username] || { received: [], sent: [] };
-}
 // Запуск сервера
 async function startServer() {
     try {
         await ensureDirectories();
         await ensureStaticFiles();
         await ensureTemplates();
+        
+        // Инициализируем Яндекс.Диск
+        const yandexInitialized = await initYandexStorage();
+        
+        if (yandexInitialized) {
+            console.log('✅ Using Yandex.Disk for storage');
+        } else {
+            console.log('⚠️ Using local storage only');
+        }
+        
+        // Загружаем данные
         await loadUsers();
         await loadMessages();
         await loadGroups();
         await loadCurrencyData();
-         await loadGiftsData(); 
+        await loadGiftsData();
         
         server.listen(PORT, '0.0.0.0', () => {
             console.log(`🚀 Server running on port ${PORT}`);
             console.log(`📊 Health check: http://localhost:${PORT}/health`);
-            console.log(`💾 Data directory: ${dataDir}`);
-            console.log(`📁 Uploads directory: ${uploadsDir}`);
-            console.log(`👤 Avatars directory: ${avatarsDir}`);
-            console.log(`👥 Groups loaded: ${groups.length}`);
+            console.log(`💾 Storage: ${yandexInitialized ? 'Yandex.Disk + Local' : 'Local only'}`);
+            console.log(`👥 Users: ${users.length}`);
+            console.log(`💬 Messages: ${messages.length}`);
             console.log(`💰 Currency users: ${Object.keys(currencyData).length}`);
-            console.log(`💬 Active features: Private Chat, Group Chat, Voice/Video Calls, Screen Sharing, File Sharing, Avatars, Currency System`);
+            console.log(`🎁 Gifts users: ${Object.keys(giftsData).length}`);
         });
     } catch (error) {
         console.error('❌ Failed to start server:', error);
