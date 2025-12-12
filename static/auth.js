@@ -55,11 +55,21 @@ async function handleRegister() {
         return;
     }
 
+    // Создаем FormData для отправки
+    const sendFormData = new FormData();
+    sendFormData.append('username', username);
+    sendFormData.append('password', password);
+    
+    // Добавляем файл аватара если есть
+    if (avatarFile && avatarFile.size > 0) {
+        sendFormData.append('avatar', avatarFile);
+    }
+
     try {
         const response = await fetch('/api/register', {
             method: 'POST',
-            body: formData // Отправляем FormData, а не JSON
-            // НЕ добавляем Content-Type - браузер установит его автоматически с boundary
+            body: sendFormData
+            // НЕ добавляем Content-Type - браузер установит его автоматически
         });
 
         const result = await response.json();

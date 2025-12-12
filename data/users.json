@@ -1,20 +1,14 @@
 [
   {
     "username": "admin",
-    "password": "$2a$10$hZ6tz4KxYXooZWX5h0dGtuTJs7I8SjkdPcAyARbPwts3fKE4AijcC",
-    "avatar": "/uploads/avatars/avatar_admin_1761886830525.jpg",
-    "lastSeen": "2025-11-18T03:33:23.287Z"
+    "password": "$2a$10$yqi77HLmWsQqKvs2MB7F0.AFo6HOgqE0eLtzQq5FCDiaZtAO8s/a6",
+    "avatar": "/uploads/avatars/avatar_admin_1765180585546.jpg",
+    "createdAt": "2025-12-08T07:56:01.576Z"
   },
   {
-    "username": "aaa",
-    "password": "$2a$10$yGyyhb0NkDOhFChi7kyHYe0bH.BWnQY9Wmn9gwSOz1wf.nqaWCSsC",
-    "avatar": "/uploads/avatars/avatar_aaa_1761816061932.jpg",
-    "lastSeen": "2025-11-18T03:33:20.255Z"
-  },
-  {
-    "username": "ааааааааааааа",
-    "password": "$2a$10$moOCmENFokFDRhUVu20KsO85CopYZiBkTUbb/5G6r8G9vrPMkTQfm",
-    "avatar": "/default-avatar.png",
-    "createdAt": "2025-10-31T05:40:23.781Z"
+    "username": "aaaaa",
+    "password": "$2a$10$pBtfmfOrydnJ25oc.t932euQcMDQZYXbK259aOPQIYCSeJLc2.vnW",
+    "avatar": "/uploads/avatars/avatar_aaaaa_1765180664000.jpg",
+    "createdAt": "2025-12-08T07:57:43.999Z"
   }
 ]

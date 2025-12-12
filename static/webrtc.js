@@ -1,480 +1,412 @@
-// Вспомогательные функции для WebRTC
+// Файл: webRTC-manager.js
+// Расширенный менеджер WebRTC соединений
+
 class WebRTCManager {
-    static async getLocalStream(video = true, audio = true) {
-        try {
-            return await navigator.mediaDevices.getUserMedia({
-                video: video ? {
-                    width: { ideal: 640 },
-                    height: { ideal: 480 },
-                    frameRate: { ideal: 24 }
-                } : false,
-                audio: audio ? {
-                    echoCancellation: true,
-                    noiseSuppression: true,
-                    sampleRate: 44100
-                } : false
-            });
-        } catch (error) {
-            console.error('Error accessing media devices:', error);
-            throw new Error('Не удалось получить доступ к камере/микрофону');
-        }
-    }
-
-    static async getDisplayMedia(options = {}) {
-        try {
-            const defaultOptions = {
-                video: {
-                    cursor: "always",
-                    displaySurface: "monitor"
-                },
-                audio: true
-            };
-
-            const mergedOptions = {
-                video: { ...defaultOptions.video, ...options.video },
-                audio: options.audio !== undefined ? options.audio : defaultOptions.audio
-            };
-
-            return await navigator.mediaDevices.getDisplayMedia(mergedOptions);
-        } catch (error) {
-            console.error('Error accessing display media:', error);
-            throw new Error('Не удалось получить доступ к экрану');
-        }
-    }
-
-    static async getDisplayMediaWithAudio() {
-        try {
-            return await navigator.mediaDevices.getDisplayMedia({
-                video: {
-                    cursor: "always",
-                    displaySurface: "monitor"
-                },
-                audio: {
-                    echoCancellation: true,
-                    noiseSuppression: true,
-                    sampleRate: 44100
-                }
-            });
-        } catch (error) {
-            console.error('Error accessing display media with audio:', error);
-            throw error;
-        }
-    }
-
-    static async switchToScreenShare(peerConnection, currentStream) {
-        try {
-            // Получаем поток с экрана
-            const screenStream = await this.getDisplayMediaWithAudio();
-            
-            // Находим видеотрек в текущем потоке
-            const videoSender = peerConnection.getSenders().find(sender => 
-                sender.track && sender.track.kind === 'video'
-            );
-            
-            if (videoSender) {
-                // Заменяем видеотрек на трек с экрана
-                const videoTrack = screenStream.getVideoTracks()[0];
-                await videoSender.replaceTrack(videoTrack);
-                
-                // Останавливаем старый видеотрек
-                if (currentStream) {
-                    currentStream.getVideoTracks().forEach(track => track.stop());
-                }
-                
-                return {
-                    stream: screenStream,
-                    videoTrack: videoTrack
-                };
+    constructor(callManager) {
+        this.callManager = callManager;
+        this.peerConnections = new Map(); // Несколько соединений для конференц-звонков
+        this.dataChannels = new Map(); // Каналы данных для текстовых сообщений в звонке
+        this.iceServers = [
+            { urls: 'stun:stun.l.google.com:19302' },
+            { urls: 'stun:stun1.l.google.com:19302' },
+            { urls: 'stun:stun2.l.google.com:19302' },
+            { urls: 'stun:stun3.l.google.com:19302' },
+            { urls: 'stun:stun4.l.google.com:19302' },
+            { 
+                urls: 'turn:turn.example.com:3478',
+                username: 'user',
+                credential: 'pass'
             }
-            
-            throw new Error('Не найден видеосендер для замены');
-        } catch (error) {
-            console.error('Error switching to screen share:', error);
-            throw error;
-        }
+        ];
+        
+        console.log('✅ WebRTCManager initialized');
     }
 
-    static async switchToCamera(peerConnection, screenStream, cameraStream) {
+    // Создание нового PeerConnection
+    createPeerConnection(callId, targetUser) {
         try {
-            // Находим видеотрек в текущем потоке
-            const videoSender = peerConnection.getSenders().find(sender => 
-                sender.track && sender.track.kind === 'video'
-            );
+            const configuration = {
+                iceServers: this.iceServers,
+                iceTransportPolicy: 'all',
+                bundlePolicy: 'max-bundle',
+                rtcpMuxPolicy: 'require'
+            };
             
-            if (videoSender && cameraStream) {
-                // Заменяем видеотрек на трек с камеры
-                const videoTrack = cameraStream.getVideoTracks()[0];
-                await videoSender.replaceTrack(videoTrack);
-                
-                // Останавливаем поток с экрана
-                if (screenStream) {
-                    screenStream.getTracks().forEach(track => track.stop());
-                }
-                
-                return cameraStream;
-            }
+            const peerConnection = new RTCPeerConnection(configuration);
             
-            throw new Error('Не удалось переключиться на камеру');
+            // Настройка обработчиков событий
+            this.setupPeerConnectionEvents(peerConnection, callId, targetUser);
+            
+            // Сохраняем соединение
+            this.peerConnections.set(callId + '_' + targetUser, {
+                connection: peerConnection,
+                targetUser: targetUser,
+                callId: callId
+            });
+            
+            console.log(`✅ PeerConnection created for ${targetUser}`);
+            return peerConnection;
+            
         } catch (error) {
-            console.error('Error switching to camera:', error);
+            console.error('❌ Error creating PeerConnection:', error);
             throw error;
         }
     }
 
-    static createPeerConnection(iceServers = null) {
-        const configuration = {
-            iceServers: iceServers || [
-                { urls: 'stun:stun.l.google.com:19302' },
-                { urls: 'stun:stun1.l.google.com:19302' },
-                { urls: 'stun:stun2.l.google.com:19302' }
-            ]
+    // Настройка обработчиков событий PeerConnection
+    setupPeerConnectionEvents(peerConnection, callId, targetUser) {
+        // ICE кандидаты
+        peerConnection.onicecandidate = (event) => {
+            if (event.candidate && window.socket) {
+                window.socket.emit('webrtc_ice_candidate', {
+                    callId: callId,
+                    targetUser: targetUser,
+                    candidate: event.candidate
+                });
+            }
         };
-
-        return new RTCPeerConnection(configuration);
+        
+        // Удаленные треки
+        peerConnection.ontrack = (event) => {
+            console.log('✅ Remote track received from', targetUser);
+            
+            const remoteStream = event.streams[0];
+            
+            // Обработка удаленного потока
+            this.callManager.handleRemoteStream(remoteStream, targetUser);
+        };
+        
+        // Изменение состояния ICE соединения
+        peerConnection.oniceconnectionstatechange = () => {
+            const state = peerConnection.iceConnectionState;
+            console.log(`ICE connection state (${targetUser}):`, state);
+            
+            this.callManager.handleIceStateChange(state, targetUser);
+            
+            if (state === 'failed' || state === 'disconnected' || state === 'closed') {
+                // Попытка восстановления соединения
+                setTimeout(() => {
+                    if (peerConnection.iceConnectionState === 'disconnected') {
+                        console.log(`🔄 Attempting to reconnect to ${targetUser}...`);
+                        this.reconnectPeer(callId, targetUser);
+                    }
+                }, 2000);
+            }
+        };
+        
+        // Изменение состояния сигнализации
+        peerConnection.onsignalingstatechange = () => {
+            console.log(`Signaling state (${targetUser}):`, peerConnection.signalingState);
+        };
+        
+        // Изменение состояния соединения
+        peerConnection.onconnectionstatechange = () => {
+            console.log(`Connection state (${targetUser}):`, peerConnection.connectionState);
+        };
+        
+        // Negotiation needed (нужно пересогласование)
+        peerConnection.onnegotiationneeded = async () => {
+            try {
+                console.log(`🔄 Negotiation needed for ${targetUser}`);
+                
+                if (this.callManager.isCaller) {
+                    const offer = await peerConnection.createOffer({
+                        offerToReceiveAudio: true,
+                        offerToReceiveVideo: this.callManager.callType === 'video'
+                    });
+                    
+                    await peerConnection.setLocalDescription(offer);
+                    
+                    if (window.socket) {
+                        window.socket.emit('webrtc_offer', {
+                            callId: callId,
+                            targetUser: targetUser,
+                            offer: offer
+                        });
+                    }
+                }
+            } catch (error) {
+                console.error('❌ Error during negotiation:', error);
+            }
+        };
+        
+        // Создание канала данных для текстовых сообщений
+        this.setupDataChannel(peerConnection, callId, targetUser);
     }
 
-    static async createOffer(peerConnection) {
-        try {
-            const offer = await peerConnection.createOffer({
-                offerToReceiveVideo: true,
-                offerToReceiveAudio: true,
-                voiceActivityDetection: true
+    // Создание канала данных
+    setupDataChannel(peerConnection, callId, targetUser) {
+        let dataChannel;
+        
+        if (this.callManager.isCaller) {
+            // Создаем канал если мы инициатор
+            dataChannel = peerConnection.createDataChannel('chat', {
+                ordered: true,
+                maxPacketLifeTime: 3000
             });
-            await peerConnection.setLocalDescription(offer);
-            return offer;
-        } catch (error) {
-            console.error('Error creating offer:', error);
-            throw error;
+            
+            this.setupDataChannelEvents(dataChannel, targetUser);
+        } else {
+            // Ожидаем канал от удаленной стороны
+            peerConnection.ondatachannel = (event) => {
+                dataChannel = event.channel;
+                this.setupDataChannelEvents(dataChannel, targetUser);
+            };
         }
+        
+        this.dataChannels.set(targetUser, dataChannel);
     }
 
-    static async createAnswer(peerConnection, offer) {
+    // Настройка обработчиков событий канала данных
+    setupDataChannelEvents(dataChannel, targetUser) {
+        dataChannel.onopen = () => {
+            console.log(`✅ Data channel opened with ${targetUser}`);
+            this.callManager.handleDataChannelOpen(targetUser);
+        };
+        
+        dataChannel.onclose = () => {
+            console.log(`❌ Data channel closed with ${targetUser}`);
+            this.dataChannels.delete(targetUser);
+        };
+        
+        dataChannel.onerror = (error) => {
+            console.error(`❌ Data channel error with ${targetUser}:`, error);
+        };
+        
+        dataChannel.onmessage = (event) => {
+            try {
+                const data = JSON.parse(event.data);
+                this.callManager.handleDataChannelMessage(targetUser, data);
+            } catch (error) {
+                console.error('❌ Error parsing data channel message:', error);
+            }
+        };
+    }
+
+    // Отправка сообщения через канал данных
+    sendDataMessage(targetUser, message) {
+        const dataChannel = this.dataChannels.get(targetUser);
+        if (dataChannel && dataChannel.readyState === 'open') {
+            try {
+                dataChannel.send(JSON.stringify({
+                    type: 'chat_message',
+                    message: message,
+                    timestamp: new Date().toISOString(),
+                    sender: document.getElementById('username')?.textContent
+                }));
+                return true;
+            } catch (error) {
+                console.error('❌ Error sending data message:', error);
+                return false;
+            }
+        }
+        return false;
+    }
+
+    // Добавление локального медиапотока в соединение
+    async addLocalStreamToConnection(peerConnection, localStream) {
+        if (!localStream) return;
+        
+        localStream.getTracks().forEach(track => {
+            peerConnection.addTrack(track, localStream);
+        });
+        
+        console.log('✅ Local stream added to PeerConnection');
+    }
+
+    // Обработка WebRTC предложения (offer)
+    async handleOffer(callId, fromUser, offer) {
         try {
-            await peerConnection.setRemoteDescription(offer);
+            let peerConnection = this.peerConnections.get(callId + '_' + fromUser)?.connection;
+            
+            if (!peerConnection) {
+                peerConnection = this.createPeerConnection(callId, fromUser);
+                
+                // Добавляем локальный поток
+                if (this.callManager.localStream) {
+                    await this.addLocalStreamToConnection(peerConnection, this.callManager.localStream);
+                }
+            }
+            
+            await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+            
+            // Создаем ответ
             const answer = await peerConnection.createAnswer();
             await peerConnection.setLocalDescription(answer);
-            return answer;
+            
+            if (window.socket) {
+                window.socket.emit('webrtc_answer', {
+                    callId: callId,
+                    targetUser: fromUser,
+                    answer: answer
+                });
+            }
+            
+            console.log(`✅ Answer sent to ${fromUser}`);
+            
         } catch (error) {
-            console.error('Error creating answer:', error);
+            console.error('❌ Error handling offer:', error);
             throw error;
         }
     }
 
-    static async addIceCandidate(peerConnection, candidate) {
+    // Обработка WebRTC ответа (answer)
+    async handleAnswer(callId, fromUser, answer) {
         try {
-            await peerConnection.addIceCandidate(candidate);
-        } catch (error) {
-            console.error('Error adding ICE candidate:', error);
-        }
-    }
-
-    static stopStream(stream) {
-        if (stream) {
-            stream.getTracks().forEach(track => {
-                track.stop();
-                track.enabled = false;
-            });
-        }
-    }
-
-    static async checkMediaPermissions() {
-        try {
-            const devices = await navigator.mediaDevices.enumerateDevices();
-            const hasVideo = devices.some(device => device.kind === 'videoinput');
-            const hasAudio = devices.some(device => device.kind === 'audioinput');
+            const peerConnection = this.peerConnections.get(callId + '_' + fromUser)?.connection;
             
-            return { hasVideo, hasAudio };
+            if (peerConnection) {
+                await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+                console.log(`✅ Answer processed from ${fromUser}`);
+            }
+            
         } catch (error) {
-            console.error('Error checking media devices:', error);
-            return { hasVideo: false, hasAudio: false };
+            console.error('❌ Error handling answer:', error);
         }
     }
 
-    static async checkScreenSharePermissions() {
+    // Обработка ICE кандидата
+    async handleIceCandidate(callId, fromUser, candidate) {
         try {
-            // Попытка запросить доступ к экрану (будет показан диалог выбора)
-            const stream = await navigator.mediaDevices.getDisplayMedia({ 
-                video: true,
-                audio: false 
-            });
-            this.stopStream(stream);
-            return true;
+            const peerConnection = this.peerConnections.get(callId + '_' + fromUser)?.connection;
+            
+            if (peerConnection && candidate) {
+                await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+            }
+            
         } catch (error) {
-            console.error('Screen share permission denied:', error);
+            console.error('❌ Error handling ICE candidate:', error);
+        }
+    }
+
+    // Переподключение при обрыве соединения
+    async reconnectPeer(callId, targetUser) {
+        try {
+            const peerData = this.peerConnections.get(callId + '_' + targetUser);
+            if (!peerData) return;
+            
+            const { connection: oldConnection } = peerData;
+            
+            // Создаем новое соединение
+            const newConnection = this.createPeerConnection(callId, targetUser);
+            
+            // Добавляем локальный поток
+            if (this.callManager.localStream) {
+                await this.addLocalStreamToConnection(newConnection, this.callManager.localStream);
+            }
+            
+            // Если мы инициатор, создаем новое предложение
+            if (this.callManager.isCaller) {
+                const offer = await newConnection.createOffer();
+                await newConnection.setLocalDescription(offer);
+                
+                if (window.socket) {
+                    window.socket.emit('webrtc_offer', {
+                        callId: callId,
+                        targetUser: targetUser,
+                        offer: offer
+                    });
+                }
+            }
+            
+            // Закрываем старое соединение
+            oldConnection.close();
+            
+            console.log(`✅ Reconnection attempt for ${targetUser}`);
+            
+        } catch (error) {
+            console.error('❌ Error reconnecting peer:', error);
+        }
+    }
+
+    // Замена видеотрека (для демонстрации экрана)
+    async replaceVideoTrack(targetUser, newTrack) {
+        try {
+            const peerData = this.peerConnections.get(this.callManager.currentCall.callId + '_' + targetUser);
+            if (!peerData) return;
+            
+            const { connection: peerConnection } = peerData;
+            const senders = peerConnection.getSenders();
+            const videoSender = senders.find(sender => sender.track?.kind === 'video');
+            
+            if (videoSender) {
+                await videoSender.replaceTrack(newTrack);
+                console.log(`✅ Video track replaced for ${targetUser}`);
+                return true;
+            }
+            
+            return false;
+            
+        } catch (error) {
+            console.error('❌ Error replacing video track:', error);
             return false;
         }
     }
 
-    static getScreenShareConstraints(quality = 'medium') {
-        const qualityPresets = {
-            low: {
-                width: { ideal: 640 },
-                height: { ideal: 480 },
-                frameRate: { ideal: 15 },
-                bitrate: 500000
-            },
-            medium: {
-                width: { ideal: 1280 },
-                height: { ideal: 720 },
-                frameRate: { ideal: 24 },
-                bitrate: 1000000
-            },
-            high: {
-                width: { ideal: 1920 },
-                height: { ideal: 1080 },
-                frameRate: { ideal: 30 },
-                bitrate: 2500000
-            },
-            ultra: {
-                width: { ideal: 3840 },
-                height: { ideal: 2160 },
-                frameRate: { ideal: 30 },
-                bitrate: 5000000
-            }
-        };
-
-        return qualityPresets[quality] || qualityPresets.medium;
-    }
-
-    static async getDisplayMediaWithQuality(quality = 'medium') {
+    // Получение статистики соединения
+    async getConnectionStats(targetUser) {
         try {
-            const constraints = this.getScreenShareConstraints(quality);
-            return await navigator.mediaDevices.getDisplayMedia({
-                video: constraints,
-                audio: true
+            const peerData = this.peerConnections.get(this.callManager.currentCall.callId + '_' + targetUser);
+            if (!peerData) return null;
+            
+            const { connection: peerConnection } = peerData;
+            const stats = await peerConnection.getStats();
+            
+            const connectionStats = {
+                timestamp: new Date().toISOString(),
+                inbound: {},
+                outbound: {}
+            };
+            
+            stats.forEach(report => {
+                if (report.type === 'inbound-rtp' && report.mediaType === 'video') {
+                    connectionStats.inbound.video = {
+                        bytesReceived: report.bytesReceived,
+                        packetsReceived: report.packetsReceived,
+                        packetsLost: report.packetsLost,
+                        jitter: report.jitter,
+                        frameWidth: report.frameWidth,
+                        frameHeight: report.frameHeight,
+                        framesPerSecond: report.framesPerSecond
+                    };
+                } else if (report.type === 'outbound-rtp' && report.mediaType === 'video') {
+                    connectionStats.outbound.video = {
+                        bytesSent: report.bytesSent,
+                        packetsSent: report.packetsSent
+                    };
+                } else if (report.type === 'candidate-pair' && report.state === 'succeeded') {
+                    connectionStats.candidatePair = {
+                        currentRoundTripTime: report.currentRoundTripTime,
+                        availableOutgoingBitrate: report.availableOutgoingBitrate,
+                        availableIncomingBitrate: report.availableIncomingBitrate
+                    };
+                }
             });
+            
+            return connectionStats;
+            
         } catch (error) {
-            console.error('Error accessing display media with quality:', error);
-            throw error;
+            console.error('❌ Error getting connection stats:', error);
+            return null;
         }
     }
 
-    static toggleTrack(stream, kind, enabled) {
-        const tracks = stream.getTracks().filter(track => track.kind === kind);
-        tracks.forEach(track => {
-            track.enabled = enabled;
-        });
-        return enabled;
-    }
-
-    static replaceTrack(peerConnection, sender, newTrack) {
-        if (sender && newTrack) {
-            return sender.replaceTrack(newTrack);
-        }
-        return Promise.resolve();
-    }
-
-    static async captureScreenFrame(stream, format = 'image/png', quality = 0.92) {
-        return new Promise((resolve, reject) => {
-            try {
-                const video = document.createElement('video');
-                video.srcObject = stream;
-                video.onloadedmetadata = () => {
-                    video.play();
-                    
-                    setTimeout(() => {
-                        const canvas = document.createElement('canvas');
-                        canvas.width = video.videoWidth;
-                        canvas.height = video.videoHeight;
-                        
-                        const ctx = canvas.getContext('2d');
-                        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-                        
-                        const imageData = canvas.toDataURL(format, quality);
-                        resolve(imageData);
-                        
-                        // Очистка
-                        video.srcObject = null;
-                    }, 100);
-                };
-                
-                video.onerror = reject;
-            } catch (error) {
-                reject(error);
+    // Очистка всех соединений
+    cleanup() {
+        // Закрываем все PeerConnection
+        this.peerConnections.forEach((peerData, key) => {
+            if (peerData.connection) {
+                peerData.connection.close();
             }
         });
-    }
-}
-
-// Функции для полноэкранного режима 
-class FullScreenManager {
-    static requestFullscreen(element) {
-        if (element.requestFullscreen) {
-            element.requestFullscreen();
-        } else if (element.mozRequestFullScreen) {
-            element.mozRequestFullScreen();
-        } else if (element.webkitRequestFullscreen) {
-            element.webkitRequestFullscreen(Element.ALLOW_KEYBOARD_INPUT);
-        } else if (element.msRequestFullscreen) {
-            element.msRequestFullscreen();
-        }
-    }
-
-    static exitFullscreen() {
-        if (document.exitFullscreen) {
-            document.exitFullscreen();
-        } else if (document.mozCancelFullScreen) {
-            document.mozCancelFullScreen();
-        } else if (document.webkitExitFullscreen) {
-            document.webkitExitFullscreen();
-        } else if (document.msExitFullscreen) {
-            document.msExitFullscreen();
-        }
-    }
-
-    static toggleFullscreen(element) {
-        if (!document.fullscreenElement &&
-            !document.mozFullScreenElement &&
-            !document.webkitFullscreenElement &&
-            !document.msFullscreenElement) {
-            this.requestFullscreen(element);
-        } else {
-            this.exitFullscreen();
-        }
-    }
-
-    static isFullscreen() {
-        return !!(document.fullscreenElement ||
-            document.mozFullScreenElement ||
-            document.webkitFullscreenElement ||
-            document.msFullscreenElement);
-    }
-
-    static addFullscreenChangeListener(callback) {
-        const events = [
-            'fullscreenchange',
-            'mozfullscreenchange',
-            'webkitfullscreenchange',
-            'msfullscreenchange'
-        ];
-
-        events.forEach(event => {
-            document.addEventListener(event, callback);
-        });
-
-        return () => {
-            events.forEach(event => {
-                document.removeEventListener(event, callback);
-            });
-        };
-    }
-}
-
-// Утилиты для работы со временем
-class TimeUtils {
-    static formatDuration(seconds) {
-        const mins = Math.floor(seconds / 60);
-        const secs = seconds % 60;
-        return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-    }
-
-    static createTimer(callback, interval = 1000) {
-        let startTime = Date.now();
-        let timerId = null;
-
-        const start = () => {
-            timerId = setInterval(() => {
-                const elapsed = Math.floor((Date.now() - startTime) / 1000);
-                callback(elapsed);
-            }, interval);
-        };
-
-        const stop = () => {
-            if (timerId) {
-                clearInterval(timerId);
-                timerId = null;
-            }
-        };
-
-        const reset = () => {
-            stop();
-            startTime = Date.now();
-        };
-
-        return { start, stop, reset };
-    }
-}
-
-// Генерация UUID
-function generateUUID() {
-    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-        const r = Math.random() * 16 | 0;
-        const v = c === 'x' ? r : (r & 0x3 | 0x8);
-        return v.toString(16);
-    });
-}
-
-// Обработка ошибок WebRTC
-class WebRTCErrorHandler {
-    static handleError(error, context = 'WebRTC operation') {
-        console.error(`${context} failed:`, error);
         
-        const errorMap = {
-            'NotAllowedError': 'Доступ к камере/микрофону запрещен',
-            'NotFoundError': 'Не удалось найти запрашиваемое медиаустройство',
-            'NotReadableError': 'Не удалось получить доступ к медиаустройству',
-            'OverconstrainedError': 'Ограничения не могут быть удовлетворены',
-            'SecurityError': 'Доступ к медиаустройству заблокирован по соображениям безопасности',
-            'TypeError': 'Недопустимые параметры',
-            'AbortError': 'Операция прервана',
-            'NotSupportedError': 'Операция не поддерживается'
-        };
-
-        const message = errorMap[error.name] || `Ошибка ${context}: ${error.message}`;
+        // Очищаем карты
+        this.peerConnections.clear();
+        this.dataChannels.clear();
         
-        return {
-            success: false,
-            error: message,
-            originalError: error
-        };
-    }
-
-    static isPermissionDenied(error) {
-        return error.name === 'NotAllowedError';
-    }
-
-    static isDeviceNotFound(error) {
-        return error.name === 'NotFoundError';
-    }
-
-    static isConstraintError(error) {
-        return error.name === 'OverconstrainedError';
+        console.log('✅ WebRTCManager cleanup completed');
     }
 }
 
-// Функция для проверки поддержки трансляции экрана
-function checkScreenShareSupport() {
-    return navigator.mediaDevices && 
-           navigator.mediaDevices.getDisplayMedia &&
-           typeof navigator.mediaDevices.getDisplayMedia === 'function';
-}
-
-// Показ предупреждения, если трансляция экрана не поддерживается
-function showScreenShareWarning() {
-    if (!checkScreenShareSupport()) {
-        const warning = document.createElement('div');
-        warning.className = 'browser-warning';
-        warning.innerHTML = `
-            <div style="padding: 15px; background: #fff3cd; border: 1px solid #ffeaa7; 
-                        border-radius: 5px; margin: 10px 0; color: #856404;">
-                <strong>Внимание:</strong> Трансляция экрана может не поддерживаться вашим браузером. 
-                Для лучшей совместимости используйте последние версии Chrome, Firefox или Edge.
-            </div>
-        `;
-        
-        // Добавьте предупреждение в нужное место вашего UI
-        const callControls = document.querySelector('.call-controls');
-        if (callControls) {
-            callControls.parentNode.insertBefore(warning, callControls);
-        }
-    }
-}
-
-// Экспорт классов для глобального использования
+// Экспортируем класс для глобального использования
 window.WebRTCManager = WebRTCManager;
-window.FullScreenManager = FullScreenManager;
-window.TimeUtils = TimeUtils;
-window.WebRTCErrorHandler = WebRTCErrorHandler;
-window.generateUUID = generateUUID;
-window.checkScreenShareSupport = checkScreenShareSupport;
-window.showScreenShareWarning = showScreenShareWarning;

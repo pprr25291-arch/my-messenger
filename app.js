@@ -1,3 +1,4 @@
+// server.js - Сервер мессенджера с автосохранением каждые 30 секунд
 const express = require('express');
 const socketIo = require('socket.io');
 const http = require('http');
@@ -8,7 +9,10 @@ const fs = require('fs').promises;
 const path = require('path');
 const multer = require('multer');
 const sharp = require('sharp');
-const axios = require('axios');
+const MegaStorage = require('./mega-storage');
+const TelegramStorage = require('./telegram-storage');
+const { exec } = require('child_process');
+const os = require('os');
 
 const app = express();
 const server = http.createServer(app);
@@ -22,21 +26,13 @@ const io = socketIo(server, {
     transports: ['websocket', 'polling']
 });
 
-const JWT_SECRET = process.env.JWT_SECRET || 'fallback-secret-key-for-development';
-const PORT = process.env.PORT || 3000;
-
-// Конфигурация Яндекс.Диска
-const YANDEX_CONFIG = {
-    token: 'y0__xCXsfukBhjblgMg7d-LuxUwy5m-5wf4MgYP4jPJApeis_NtFkAx9qxD6A',
-    clientId: 'e4a3d62faa3843e29b7a7a7117356eab',
-    clientSecret: 'b25dd90fdb9545dd98f957cdbebd9211'
-};
+const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-this';
+let PORT = process.env.PORT || 3000;
 
 const dataDir = path.join(__dirname, 'data');
 const uploadsDir = path.join(__dirname, 'uploads');
 const avatarsDir = path.join(__dirname, 'uploads', 'avatars');
 
-// Инициализация хранилищ
 let users = [];
 let messages = [];
 let systemNotifications = [];
@@ -47,6 +43,183 @@ const activeCalls = new Map();
 const screenShares = new Map();
 let currencyData = {};
 let giftsData = {};
+
+let megaStorage = null;
+let telegramStorage = null;
+let megaSyncInterval = null;
+let autoSaveInterval = null;
+
+// Функция для освобождения порта
+function killPort(port) {
+    return new Promise((resolve) => {
+        console.log(`🔍 Checking port ${port}...`);
+        
+        if (os.platform() === 'win32') {
+            exec(`netstat -ano | findstr :${port}`, (err, stdout) => {
+                if (err || !stdout) {
+                    console.log(`✅ Port ${port} is free`);
+                    resolve(false);
+                    return;
+                }
+                
+                const lines = stdout.trim().split('\n');
+                let killed = false;
+                
+                lines.forEach(line => {
+                    const parts = line.trim().split(/\s+/);
+                    const pid = parts[parts.length - 1];
+                    if (pid && !isNaN(pid)) {
+                        exec(`taskkill /F /PID ${pid}`, (err) => {
+                            if (!err) {
+                                console.log(`✅ Killed process ${pid} on port ${port}`);
+                                killed = true;
+                            }
+                        });
+                    }
+                });
+                
+                setTimeout(() => {
+                    resolve(killed);
+                }, 1000);
+            });
+        } else {
+            // Linux/Mac
+            exec(`lsof -ti:${port}`, (err, stdout) => {
+                if (err || !stdout) {
+                    console.log(`✅ Port ${port} is free`);
+                    resolve(false);
+                    return;
+                }
+                
+                const pids = stdout.trim().split('\n');
+                let killed = false;
+                
+                pids.forEach(pid => {
+                    if (pid && !isNaN(pid)) {
+                        exec(`kill -9 ${pid}`, (err) => {
+                            if (!err) {
+                                console.log(`✅ Killed process ${pid} on port ${port}`);
+                                killed = true;
+                            }
+                        });
+                    }
+                });
+                
+                setTimeout(() => {
+                    resolve(killed);
+                }, 1000);
+            });
+        }
+    });
+}
+
+// Функция для поиска свободного порта
+async function findFreePort(startPort, maxAttempts = 10) {
+    let port = startPort;
+    let attempts = 0;
+    
+    while (attempts < maxAttempts) {
+        try {
+            const inUse = await isPortInUse(port);
+            
+            if (!inUse) {
+                console.log(`✅ Found free port: ${port}`);
+                return port;
+            }
+            
+            console.log(`⚠️ Port ${port} is busy, trying ${port + 1}`);
+            port++;
+            attempts++;
+            
+        } catch (error) {
+            console.log(`❌ Error checking port ${port}: ${error.message}`);
+            port++;
+            attempts++;
+        }
+    }
+    
+    throw new Error(`Could not find free port after ${maxAttempts} attempts`);
+}
+
+// Функция проверки занятости порта
+function isPortInUse(port) {
+    return new Promise((resolve) => {
+        const tester = require('net').createServer()
+            .once('error', () => {
+                resolve(true);
+            })
+            .once('listening', () => {
+                tester.once('close', () => {
+                    resolve(false);
+                }).close();
+            })
+            .listen(port);
+    });
+}
+
+// Функция для очистки старых файлов в uploads
+async function cleanupOldUploads() {
+    try {
+        if (!fs.existsSync(uploadsDir)) {
+            return { deleted: 0, skipped: 0 };
+        }
+        
+        const files = await fs.readdir(uploadsDir);
+        const now = Date.now();
+        const oneWeekAgo = now - (7 * 24 * 60 * 60 * 1000);
+        
+        let deleted = 0;
+        let skipped = 0;
+        
+        for (const file of files) {
+            // Пропускаем аватары и системные файлы
+            if (file.includes('avatar_') || file === '.gitkeep' || file === 'avatars') {
+                skipped++;
+                continue;
+            }
+            
+            const filePath = path.join(uploadsDir, file);
+            try {
+                const stats = await fs.stat(filePath);
+                
+                // Удаляем файлы старше 7 дней
+                if (stats.mtimeMs < oneWeekAgo) {
+                    await fs.unlink(filePath);
+                    deleted++;
+                    console.log(`🗑️ Deleted old file: ${file}`);
+                } else {
+                    skipped++;
+                }
+            } catch (error) {
+                console.error(`❌ Error processing file ${file}:`, error.message);
+                skipped++;
+            }
+        }
+        
+        console.log(`✅ Cleanup completed: ${deleted} deleted, ${skipped} skipped`);
+        return { deleted, skipped };
+        
+    } catch (error) {
+        console.error('❌ Error cleaning up uploads:', error.message);
+        return { deleted: 0, skipped: 0, error: error.message };
+    }
+}
+
+// Функция для очистки дубликатов сообщений
+function removeDuplicateMessages(messagesArray) {
+    const uniqueMessages = [];
+    const seenMessages = new Set();
+    
+    for (const msg of messagesArray) {
+        const msgKey = `${msg.sender}|${msg.receiver || msg.groupId}|${msg.message}|${msg.date}`;
+        if (!seenMessages.has(msgKey)) {
+            seenMessages.add(msgKey);
+            uniqueMessages.push(msg);
+        }
+    }
+    
+    return uniqueMessages;
+}
 
 async function ensureDirectories() {
     try {
@@ -63,195 +236,80 @@ async function ensureDirectories() {
     }
 }
 
-// Яндекс.Диск функции
-async function initYandexStorage() {
-    try {
-        console.log('🔄 Инициализация хранилища Яндекс.Диск...');
-        
-        // Проверяем доступность токена
-        const checkResponse = await axios.get('https://cloud-api.yandex.net/v1/disk/', {
-            headers: {
-                'Authorization': `OAuth ${YANDEX_CONFIG.token}`
-            }
-        });
-        
-        console.log('✅ Яндекс.Диск доступен, пользователь:', checkResponse.data.user.display_name);
-        
-        // Создаем базовые папки
-        const folders = ['messenger', 'messenger/data', 'messenger/uploads', 'messenger/avatars'];
-        
-        for (const folder of folders) {
-            try {
-                await axios.put(`https://cloud-api.yandex.net/v1/disk/resources?path=app:/${folder}`, {}, {
-                    headers: {
-                        'Authorization': `OAuth ${YANDEX_CONFIG.token}`
-                    }
-                });
-                console.log(`✅ Папка создана: ${folder}`);
-            } catch (error) {
-                if (error.response && error.response.status === 409) {
-                    console.log(`ℹ️ Папка уже существует: ${folder}`);
-                } else {
-                    console.error(`⚠️ Ошибка создания папки ${folder}:`, error.message);
-                }
-            }
-        }
-        
-        console.log('✅ Хранилище Яндекс.Диск инициализировано');
-        return true;
-    } catch (error) {
-        console.error('❌ Ошибка инициализации Яндекс.Диска:', error.message);
-        return false;
-    }
-}
-
-async function saveToYandex(filename, data, folder = 'messenger/data') {
-    try {
-        const jsonData = JSON.stringify(data, null, 2);
-        
-        // Получаем URL для загрузки
-        const uploadResponse = await axios.get(
-            `https://cloud-api.yandex.net/v1/disk/resources/upload?path=app:/${folder}/${filename}&overwrite=true`,
-            {
-                headers: {
-                    'Authorization': `OAuth ${YANDEX_CONFIG.token}`
-                }
-            }
-        );
-        
-        // Загружаем данные
-        await axios.put(uploadResponse.data.href, jsonData, {
-            headers: {
-                'Content-Type': 'application/json'
-            }
-        });
-        
-        console.log(`✅ Данные сохранены на Яндекс.Диск: ${folder}/${filename}`);
-        return true;
-    } catch (error) {
-        console.error(`❌ Ошибка сохранения на Яндекс.Диск (${filename}):`, error.message);
-        return false;
-    }
-}
-
-async function loadFromYandex(filename, folder = 'messenger/data') {
-    try {
-        // Получаем URL для скачивания
-        const downloadResponse = await axios.get(
-            `https://cloud-api.yandex.net/v1/disk/resources/download?path=app:/${folder}/${filename}`,
-            {
-                headers: {
-                    'Authorization': `OAuth ${YANDEX_CONFIG.token}`
-                }
-            }
-        );
-        
-        // Скачиваем данные
-        const response = await axios.get(downloadResponse.data.href);
-        
-        if (response.data) {
-            const data = JSON.parse(response.data);
-            console.log(`✅ Данные загружены с Яндекс.Диска: ${folder}/${filename}`);
-            return data;
-        }
-        
-        return null;
-    } catch (error) {
-        if (error.response && error.response.status === 404) {
-            console.log(`ℹ️ Файл не найден на Яндекс.Диске: ${folder}/${filename}`);
-            return null;
-        }
-        console.error(`❌ Ошибка загрузки с Яндекс.Диска (${filename}):`, error.message);
-        return null;
-    }
-}
-
-async function uploadFileToYandex(fileBuffer, filename, folder = 'messenger/uploads') {
-    try {
-        // Получаем URL для загрузки
-        const uploadResponse = await axios.get(
-            `https://cloud-api.yandex.net/v1/disk/resources/upload?path=app:/${folder}/${filename}&overwrite=true`,
-            {
-                headers: {
-                    'Authorization': `OAuth ${YANDEX_CONFIG.token}`
-                }
-            }
-        );
-        
-        // Загружаем файл
-        await axios.put(uploadResponse.data.href, fileBuffer, {
-            headers: {
-                'Content-Type': 'application/octet-stream'
-            }
-        });
-        
-        console.log(`✅ Файл загружен на Яндекс.Диск: ${folder}/${filename}`);
-        
-        // Получаем публичную ссылку
-        const publishResponse = await axios.put(
-            `https://cloud-api.yandex.net/v1/disk/resources/publish?path=app:/${folder}/${filename}`,
-            {},
-            {
-                headers: {
-                    'Authorization': `OAuth ${YANDEX_CONFIG.token}`
-                }
-            }
-        );
-        
-        // Получаем информацию о файле
-        const fileInfoResponse = await axios.get(
-            `https://cloud-api.yandex.net/v1/disk/resources?path=app:/${folder}/${filename}`,
-            {
-                headers: {
-                    'Authorization': `OAuth ${YANDEX_CONFIG.token}`
-                }
-            }
-        );
-        
-        if (fileInfoResponse.data.public_url) {
-            return fileInfoResponse.data.public_url;
-        }
-        
-        // Если нет публичной ссылки, получаем прямую ссылку
-        const downloadResponse = await axios.get(
-            `https://cloud-api.yandex.net/v1/disk/resources/download?path=app:/${folder}/${filename}`,
-            {
-                headers: {
-                    'Authorization': `OAuth ${YANDEX_CONFIG.token}`
-                }
-            }
-        );
-        
-        return downloadResponse.data.href;
-        
-    } catch (error) {
-        console.error(`❌ Ошибка загрузки файла на Яндекс.Диск (${filename}):`, error.message);
-        return null;
-    }
-}
-
-// Функция для очистки старых аватаров пользователя
 async function cleanupUserAvatars(username) {
     try {
+        if (!fs.existsSync(avatarsDir)) {
+            console.log(`📁 Avatar directory does not exist: ${avatarsDir}`);
+            return;
+        }
+        
         const files = await fs.readdir(avatarsDir);
-        const userAvatarPattern = new RegExp(`^avatar_${username}_`);
+        const userAvatarPattern = new RegExp(`^avatar_${username}_\\d+\\.[a-zA-Z]+$`);
+        
+        console.log(`🗑️ Looking for old avatars for user: ${username}`);
+        console.log(`📂 Files in avatars directory: ${files.length}`);
+        
+        let deletedCount = 0;
         
         for (const file of files) {
-            if (file.match(userAvatarPattern) || 
-                file.includes(`_${username}_`) || 
-                file.startsWith(`avatar_`) && file.includes(username)) {
-                
+            if (file.startsWith(`avatar_${username}_`)) {
                 const filePath = path.join(avatarsDir, file);
-                await fs.unlink(filePath);
-                console.log(`🗑️ Deleted old avatar: ${file}`);
+                try {
+                    await fs.unlink(filePath);
+                    deletedCount++;
+                    console.log(`🗑️ Deleted old avatar: ${file}`);
+                } catch (error) {
+                    console.error(`❌ Error deleting file ${file}:`, error.message);
+                }
             }
         }
+        
+        console.log(`✅ Cleaned up ${deletedCount} old avatars for user ${username}`);
+        
     } catch (error) {
-        console.error('❌ Error cleaning up user avatars:', error);
+        console.error('❌ Error cleaning up user avatars:', error.message);
     }
 }
 
-// Middleware
+// Функция для сохранения всех данных
+async function saveAllData() {
+    try {
+        console.log('💾 Auto-saving all data...');
+        
+        // Сохраняем все данные последовательно
+        await saveUsers();
+        await saveMessages();
+        await saveGroups();
+        await saveCurrencyData();
+        await saveGiftsData();
+        
+        console.log('✅ All data auto-saved');
+        return true;
+    } catch (error) {
+        console.error('❌ Error auto-saving data:', error.message);
+        return false;
+    }
+}
+
+// Запуск автоматического сохранения данных
+async function startAutoSave() {
+    console.log('⏰ Starting auto-save every 30 seconds');
+    
+    // Сохраняем сразу при старте
+    await saveAllData();
+    
+    // Устанавливаем интервал сохранения
+    autoSaveInterval = setInterval(async () => {
+        try {
+            await saveAllData();
+        } catch (error) {
+            console.error('❌ Error in auto-save:', error.message);
+        }
+    }, 30 * 1000); // 30 секунд
+    
+    return autoSaveInterval;
+}
+
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 app.use(cookieParser());
@@ -265,7 +323,6 @@ app.use((req, res, next) => {
     next();
 });
 
-// Настройка multer для загрузки файлов
 const storage = multer.diskStorage({
     destination: async (req, file, cb) => {
         try {
@@ -333,7 +390,6 @@ const voiceUpload = multer({
     }
 });
 
-// Настройка multer для загрузки аватаров
 const avatarStorage = multer.diskStorage({
     destination: function (req, file, cb) {
         cb(null, avatarsDir);
@@ -358,21 +414,11 @@ const avatarUpload = multer({
     }
 });
 
-// Загрузка данных с Яндекс.Диска
 async function loadUsers() {
     try {
-        // Пробуем загрузить с Яндекс.Диска
-        const remoteUsers = await loadFromYandex('users.json');
-        
-        if (remoteUsers) {
-            users = remoteUsers;
-            console.log('✅ Users loaded from Yandex.Disk:', users.length);
-        } else {
-            // Пробуем загрузить локально
-            const data = await fs.readFile(path.join(dataDir, 'users.json'), 'utf8');
-            users = JSON.parse(data);
-            console.log('✅ Users loaded locally:', users.length);
-        }
+        const data = await fs.readFile(path.join(dataDir, 'users.json'), 'utf8');
+        users = JSON.parse(data);
+        console.log('✅ Users loaded:', users.length);
     } catch (error) {
         console.log('⚠️ No users found, starting with empty array');
         users = [];
@@ -382,17 +428,23 @@ async function loadUsers() {
 
 async function loadMessages() {
     try {
-        const remoteMessages = await loadFromYandex('messages.json');
+        const data = await fs.readFile(path.join(dataDir, 'messages.json'), 'utf8');
+        const loadedMessages = JSON.parse(data);
         
-        if (remoteMessages) {
-            messages = remoteMessages;
-            console.log('✅ Messages loaded from Yandex.Disk:', messages.length);
+        // Удаляем дубликаты сообщений
+        messages = removeDuplicateMessages(loadedMessages);
+        
+        const duplicatesRemoved = loadedMessages.length - messages.length;
+        if (duplicatesRemoved > 0) {
+            console.log(`✅ Messages loaded: ${messages.length} (removed ${duplicatesRemoved} duplicates)`);
+            
+            // Сохраняем очищенные данные
+            await saveMessages();
         } else {
-            const data = await fs.readFile(path.join(dataDir, 'messages.json'), 'utf8');
-            messages = JSON.parse(data);
-            console.log('✅ Messages loaded locally:', messages.length);
+            console.log('✅ Messages loaded:', messages.length);
         }
     } catch (error) {
+        console.log('⚠️ No messages found, starting with empty array');
         messages = [];
         await saveMessages();
     }
@@ -400,16 +452,9 @@ async function loadMessages() {
 
 async function loadGroups() {
     try {
-        const remoteGroups = await loadFromYandex('groups.json');
-        
-        if (remoteGroups) {
-            groups = remoteGroups;
-            console.log('✅ Groups loaded from Yandex.Disk:', groups.length);
-        } else {
-            const data = await fs.readFile(path.join(dataDir, 'groups.json'), 'utf8');
-            groups = JSON.parse(data);
-            console.log('✅ Groups loaded locally:', groups.length);
-        }
+        const data = await fs.readFile(path.join(dataDir, 'groups.json'), 'utf8');
+        groups = JSON.parse(data);
+        console.log('✅ Groups loaded:', groups.length);
     } catch (error) {
         groups = [];
         await saveGroups();
@@ -418,16 +463,9 @@ async function loadGroups() {
 
 async function loadCurrencyData() {
     try {
-        const remoteCurrency = await loadFromYandex('currency.json');
-        
-        if (remoteCurrency) {
-            currencyData = remoteCurrency;
-            console.log('✅ Currency data loaded from Yandex.Disk');
-        } else {
-            const data = await fs.readFile(path.join(dataDir, 'currency.json'), 'utf8');
-            currencyData = JSON.parse(data);
-            console.log('✅ Currency data loaded locally');
-        }
+        const data = await fs.readFile(path.join(dataDir, 'currency.json'), 'utf8');
+        currencyData = JSON.parse(data);
+        console.log('✅ Currency data loaded');
     } catch (error) {
         currencyData = {};
         await saveCurrencyData();
@@ -436,74 +474,155 @@ async function loadCurrencyData() {
 
 async function loadGiftsData() {
     try {
-        const remoteGifts = await loadFromYandex('gifts.json');
-        
-        if (remoteGifts) {
-            giftsData = remoteGifts;
-            console.log('✅ Gifts data loaded from Yandex.Disk');
-        } else {
-            const data = await fs.readFile(path.join(dataDir, 'gifts.json'), 'utf8');
-            giftsData = JSON.parse(data);
-            console.log('✅ Gifts data loaded locally');
-        }
+        const data = await fs.readFile(path.join(dataDir, 'gifts.json'), 'utf8');
+        giftsData = JSON.parse(data);
+        console.log('✅ Gifts data loaded');
     } catch (error) {
         giftsData = {};
         await saveGiftsData();
     }
 }
 
-// Сохранение данных на Яндекс.Диск
 async function saveUsers() {
     try {
-        // Сохраняем локально
-        await fs.writeFile(path.join(dataDir, 'users.json'), JSON.stringify(users, null, 2));
+        const filePath = path.join(dataDir, 'users.json');
+        const usersData = JSON.stringify(users, null, 2);
         
-        // Сохраняем на Яндекс.Диск
-        await saveToYandex('users.json', users);
+        // Всегда перезаписываем файл
+        await fs.writeFile(filePath, usersData);
+        console.log('✅ Users saved locally');
         
-        console.log('✅ Users saved both locally and to Yandex.Disk');
+        // Синхронизация с MEGA (если подключено)
+        if (megaStorage?.isInitialized && !megaStorage.syncInProgress) {
+            try {
+                const result = await megaStorage.uploadFile(filePath, 'users.json');
+                if (result && result.uploaded) {
+                    console.log(`✅ Users ${result.updated ? 'updated' : 'uploaded'} to MEGA`);
+                }
+            } catch (syncError) {
+                console.error('⚠️ MEGA sync error for users:', syncError.message);
+            }
+        }
+        
+        return true;
     } catch (error) {
         console.error('❌ Error saving users:', error.message);
+        return false;
     }
 }
 
 async function saveMessages() {
     try {
-        await fs.writeFile(path.join(dataDir, 'messages.json'), JSON.stringify(messages, null, 2));
-        await saveToYandex('messages.json', messages);
+        const filePath = path.join(dataDir, 'messages.json');
+        const messagesData = JSON.stringify(messages, null, 2);
+        
+        // Всегда перезаписываем файл
+        await fs.writeFile(filePath, messagesData);
+        console.log('✅ Messages saved locally');
+        
+        // Синхронизация с MEGA (если подключено)
+        if (megaStorage?.isInitialized && !megaStorage.syncInProgress) {
+            try {
+                const result = await megaStorage.uploadFile(filePath, 'messages.json');
+                if (result && result.uploaded) {
+                    console.log(`✅ Messages ${result.updated ? 'updated' : 'uploaded'} to MEGA`);
+                }
+            } catch (syncError) {
+                console.error('⚠️ MEGA sync error for messages:', syncError.message);
+            }
+        }
+        
+        return true;
     } catch (error) {
         console.error('❌ Error saving messages:', error.message);
+        return false;
     }
 }
 
 async function saveGroups() {
     try {
-        await fs.writeFile(path.join(dataDir, 'groups.json'), JSON.stringify(groups, null, 2));
-        await saveToYandex('groups.json', groups);
+        const filePath = path.join(dataDir, 'groups.json');
+        const groupsData = JSON.stringify(groups, null, 2);
+        
+        // Всегда перезаписываем файл
+        await fs.writeFile(filePath, groupsData);
+        console.log('✅ Groups saved locally');
+        
+        // Синхронизация с MEGA (если подключено)
+        if (megaStorage?.isInitialized && !megaStorage.syncInProgress) {
+            try {
+                const result = await megaStorage.uploadFile(filePath, 'groups.json');
+                if (result && result.uploaded) {
+                    console.log(`✅ Groups ${result.updated ? 'updated' : 'uploaded'} to MEGA`);
+                }
+            } catch (syncError) {
+                console.error('⚠️ MEGA sync error for groups:', syncError.message);
+            }
+        }
+        
+        return true;
     } catch (error) {
         console.error('❌ Error saving groups:', error.message);
+        return false;
     }
 }
 
 async function saveCurrencyData() {
     try {
-        await fs.writeFile(path.join(dataDir, 'currency.json'), JSON.stringify(currencyData, null, 2));
-        await saveToYandex('currency.json', currencyData);
+        const filePath = path.join(dataDir, 'currency.json');
+        const currencyDataStr = JSON.stringify(currencyData, null, 2);
+        
+        // Всегда перезаписываем файл
+        await fs.writeFile(filePath, currencyDataStr);
+        console.log('✅ Currency data saved locally');
+        
+        // Синхронизация с MEGA (если подключено)
+        if (megaStorage?.isInitialized && !megaStorage.syncInProgress) {
+            try {
+                const result = await megaStorage.uploadFile(filePath, 'currency.json');
+                if (result && result.uploaded) {
+                    console.log(`✅ Currency data ${result.updated ? 'updated' : 'uploaded'} to MEGA`);
+                }
+            } catch (syncError) {
+                console.error('⚠️ MEGA sync error for currency data:', syncError.message);
+            }
+        }
+        
+        return true;
     } catch (error) {
         console.error('❌ Error saving currency data:', error.message);
+        return false;
     }
 }
 
 async function saveGiftsData() {
     try {
-        await fs.writeFile(path.join(dataDir, 'gifts.json'), JSON.stringify(giftsData, null, 2));
-        await saveToYandex('gifts.json', giftsData);
+        const filePath = path.join(dataDir, 'gifts.json');
+        const giftsDataStr = JSON.stringify(giftsData, null, 2);
+        
+        // Всегда перезаписываем файл
+        await fs.writeFile(filePath, giftsDataStr);
+        console.log('✅ Gifts data saved locally');
+        
+        // Синхронизация с MEGA (если подключено)
+        if (megaStorage?.isInitialized && !megaStorage.syncInProgress) {
+            try {
+                const result = await megaStorage.uploadFile(filePath, 'gifts.json');
+                if (result && result.uploaded) {
+                    console.log(`✅ Gifts data ${result.updated ? 'updated' : 'uploaded'} to MEGA`);
+                }
+            } catch (syncError) {
+                console.error('⚠️ MEGA sync error for gifts data:', syncError.message);
+            }
+        }
+        
+        return true;
     } catch (error) {
         console.error('❌ Error saving gifts data:', error.message);
+        return false;
     }
 }
 
-// Инициализация данных валюты для пользователя
 function initUserCurrency(username) {
     if (!currencyData[username]) {
         currencyData[username] = {
@@ -516,7 +635,6 @@ function initUserCurrency(username) {
     return currencyData[username];
 }
 
-// Инициализация подарков пользователя
 function initUserGifts(username) {
     if (!giftsData[username]) {
         giftsData[username] = {
@@ -527,12 +645,10 @@ function initUserGifts(username) {
     return giftsData[username];
 }
 
-// Получение подарков пользователя
 function getUserGifts(username) {
     return giftsData[username] || { received: [], sent: [] };
 }
 
-// Аутентификация
 function authenticateToken(req, res, next) {
     const token = req.cookies.token || req.headers.authorization?.replace('Bearer ', '');
     if (!token) return res.sendStatus(401);
@@ -544,7 +660,6 @@ function authenticateToken(req, res, next) {
     });
 }
 
-// Создаем необходимые статические файлы если их нет
 async function ensureStaticFiles() {
     try {
         const staticDir = path.join(__dirname, 'static');
@@ -567,25 +682,21 @@ input, button { padding: 10px; margin: 5px 0; width: 100%; box-sizing: border-bo
         try {
             await fs.access(avatarPath);
         } catch {
-            // Создаем простой PNG файл программно
             const { createCanvas } = require('canvas');
             const canvas = createCanvas(200, 200);
             const ctx = canvas.getContext('2d');
             
-            // Рисуем градиентный фон
             const gradient = ctx.createLinearGradient(0, 0, 200, 200);
             gradient.addColorStop(0, '#4facfe');
             gradient.addColorStop(1, '#00f2fe');
             ctx.fillStyle = gradient;
             ctx.fillRect(0, 0, 200, 200);
             
-            // Рисуем круг
             ctx.beginPath();
             ctx.arc(100, 100, 80, 0, Math.PI * 2);
             ctx.fillStyle = '#ffffff';
             ctx.fill();
             
-            // Рисуем иконку пользователя
             ctx.beginPath();
             ctx.arc(100, 70, 30, 0, Math.PI * 2);
             ctx.fillStyle = '#4facfe';
@@ -596,7 +707,6 @@ input, button { padding: 10px; margin: 5px 0; width: 100%; box-sizing: border-bo
             ctx.fillStyle = '#4facfe';
             ctx.fill();
             
-            // Сохраняем файл
             const buffer = canvas.toBuffer('image/png');
             await fs.writeFile(avatarPath, buffer);
             console.log('✅ Created default-avatar.png');
@@ -606,7 +716,6 @@ input, button { padding: 10px; margin: 5px 0; width: 100%; box-sizing: border-bo
     }
 }
 
-// Создаем директорию templates если её нет
 async function ensureTemplates() {
     try {
         const templatesDir = path.join(__dirname, 'templates');
@@ -647,7 +756,6 @@ app.set('views', path.join(__dirname, 'templates'));
 app.set('view engine', 'html');
 app.engine('html', require('ejs').renderFile);
 
-// Роуты
 app.get('/', (req, res) => {
     res.render('index');
 });
@@ -668,7 +776,6 @@ app.get('/chat', authenticateToken, (req, res) => {
     });
 });
 
-// Статические файлы
 app.get('/style.css', (req, res) => {
     res.sendFile(path.join(__dirname, 'static', 'style.css'));
 });
@@ -688,8 +795,6 @@ app.get('/private-chat.js', (req, res) => {
 app.get('/socket.io/socket.io.js', (req, res) => {
     res.sendFile(path.join(__dirname, 'node_modules', 'socket.io', 'client-dist', 'socket.io.js'));
 });
-
-// API Роуты
 
 app.post('/api/register', avatarUpload.single('avatar'), async (req, res) => {
     try {
@@ -713,42 +818,57 @@ app.post('/api/register', avatarUpload.single('avatar'), async (req, res) => {
         
         const hashedPassword = await bcrypt.hash(password, 10);
         
-        let avatarPath = '/default-avatar.png';
-        if (req.file) {
-            await cleanupUserAvatars(username);
-            
-            const uniqueName = `avatar_${username}_${Date.now()}${path.extname(req.file.originalname)}`;
-            const newAvatarPath = path.join(avatarsDir, uniqueName);
-            
-            await fs.rename(req.file.path, newAvatarPath);
-            
-            avatarPath = `/uploads/avatars/${uniqueName}`;
-            
-            // Также загружаем на Яндекс.Диск
-            const fileBuffer = await fs.readFile(newAvatarPath);
-            await uploadFileToYandex(fileBuffer, uniqueName, 'messenger/avatars');
-        }
-        
         const newUser = { 
             username, 
             password: hashedPassword,
-            avatar: avatarPath,
+            avatar: '/default-avatar.png',
             createdAt: new Date().toISOString()
         };
+        
+        if (req.file) {
+            try {
+                await cleanupUserAvatars(username);
+                
+                const uniqueName = `avatar_${username}_${Date.now()}${path.extname(req.file.originalname)}`;
+                const newAvatarPath = path.join(avatarsDir, uniqueName);
+                
+                await fs.rename(req.file.path, newAvatarPath);
+                
+                newUser.avatar = `/uploads/avatars/${uniqueName}`;
+            } catch (avatarError) {
+                console.error('Avatar processing error:', avatarError);
+            }
+        }
         
         users.push(newUser);
         await saveUsers();
         
-        // Инициализируем валюту для нового пользователя
-        initUserCurrency(username);
-        await saveCurrencyData();
+        if (!currencyData[username]) {
+            currencyData[username] = {
+                balance: 100,
+                dailyStreak: 0,
+                lastDailyReward: null,
+                transactionHistory: []
+            };
+            await saveCurrencyData();
+        }
         
-        // Инициализируем подарки
-        initUserGifts(username);
-        await saveGiftsData();
+        if (!giftsData[username]) {
+            giftsData[username] = {
+                received: [],
+                sent: []
+            };
+            await saveGiftsData();
+        }
 
         const token = jwt.sign({ username }, JWT_SECRET);
-        res.cookie('token', token, { httpOnly: true, maxAge: 24 * 60 * 60 * 1000 });
+        
+        res.cookie('token', token, { 
+            httpOnly: true, 
+            maxAge: 24 * 60 * 60 * 1000,
+            sameSite: 'strict'
+        });
+        
         res.json({ 
             success: true, 
             token,
@@ -757,9 +877,13 @@ app.post('/api/register', avatarUpload.single('avatar'), async (req, res) => {
                 avatar: newUser.avatar
             }
         });
+        
     } catch (error) {
-        console.error('❌ Registration error:', error);
-        res.status(500).json({ error: 'Registration failed' });
+        console.error('❌ Registration error details:', error);
+        res.status(500).json({ 
+            error: 'Registration failed',
+            details: process.env.NODE_ENV === 'development' ? error.message : undefined
+        });
     }
 });
 
@@ -798,7 +922,6 @@ app.post('/api/logout', (req, res) => {
     res.json({ success: true });
 });
 
-// Пользовательские данные
 app.get('/api/user/:username', authenticateToken, (req, res) => {
     try {
         const { username } = req.params;
@@ -841,11 +964,7 @@ app.post('/api/user/avatar', authenticateToken, avatarUpload.single('avatar'), a
         
         await fs.rename(req.file.path, newAvatarPath);
         
-        // Загружаем на Яндекс.Диск
-        const fileBuffer = await fs.readFile(newAvatarPath);
-        const yandexUrl = await uploadFileToYandex(fileBuffer, uniqueName, 'messenger/avatars');
-        
-        user.avatar = yandexUrl || `/uploads/avatars/${uniqueName}`;
+        user.avatar = `/uploads/avatars/${uniqueName}`;
         await saveUsers();
         
         io.emit('user_avatar_updated', {
@@ -864,7 +983,6 @@ app.post('/api/user/avatar', authenticateToken, avatarUpload.single('avatar'), a
     }
 });
 
-// Системные уведомления
 app.get('/api/notifications', authenticateToken, (req, res) => {
     try {
         const recentNotifications = systemNotifications
@@ -877,7 +995,6 @@ app.get('/api/notifications', authenticateToken, (req, res) => {
     }
 });
 
-// Чаты и сообщения
 app.get('/api/conversations', authenticateToken, (req, res) => {
     try {
         const currentUser = req.user.username;
@@ -939,7 +1056,6 @@ app.get('/api/messages/private/:username', authenticateToken, (req, res) => {
     }
 });
 
-// Пользователи
 app.get('/api/users/search', authenticateToken, (req, res) => {
     try {
         const { query } = req.query;
@@ -994,57 +1110,111 @@ app.get('/api/users/all', authenticateToken, (req, res) => {
     }
 });
 
-// Загрузка файлов
 app.post('/api/upload', authenticateToken, upload.single('file'), async (req, res) => {
     try {
         if (!req.file) {
             return res.status(400).json({ error: 'Файл не загружен' });
         }
 
-        // Читаем файл
-        const fileBuffer = await fs.readFile(req.file.path);
+        // Проверяем размер файла
+        const maxSize = 50 * 1024 * 1024;
+        if (req.file.size > maxSize) {
+            await fs.unlink(req.file.path).catch(console.error);
+            return res.status(400).json({ error: 'Файл слишком большой (макс. 50MB)' });
+        }
+
+        // Проверяем, не существует ли уже такой файл
+        const existingFiles = await fs.readdir(uploadsDir);
+        const existingFile = existingFiles.find(f => {
+            if (f === req.file.filename) return false; // Это тот же файл
+            const stats = fs.statSync(path.join(uploadsDir, f));
+            return stats.size === req.file.size && 
+                   path.extname(f) === path.extname(req.file.originalname);
+        });
         
-        // Загружаем на Яндекс.Диск
-        const yandexFilename = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}${path.extname(req.file.originalname)}`;
-        const yandexUrl = await uploadFileToYandex(fileBuffer, yandexFilename);
+        if (existingFile) {
+            // Если файл уже существует, используем существующий
+            await fs.unlink(req.file.path).catch(console.error);
+            
+            const fileResponse = {
+                success: true,
+                file: {
+                    originalName: req.file.originalname,
+                    filename: existingFile,
+                    path: `/uploads/${existingFile}`,
+                    size: req.file.size,
+                    mimetype: req.file.mimetype,
+                    uploadDate: new Date().toISOString(),
+                    reused: true
+                }
+            };
+            
+            return res.json(fileResponse);
+        }
+
+        let thumbnailPath = null;
+        let telegramFileData = null;
         
-        let thumbnailUrl = null;
-        
-        // Создаем превью для изображений
+        if (telegramStorage?.isInitialized) {
+            try {
+                telegramFileData = await telegramStorage.uploadFile(
+                    req.file.path,
+                    `File: ${req.file.originalname}`
+                );
+                
+                if (telegramFileData) {
+                    console.log(`✅ Media uploaded to Telegram: ${req.file.originalname}`);
+                }
+            } catch (telegramError) {
+                console.error('⚠️ Telegram upload failed:', telegramError.message);
+            }
+        }
+
         if (req.file.mimetype.startsWith('image/')) {
             try {
-                const thumbnailBuffer = await sharp(req.file.path)
+                const thumbnailFilename = `thumb_${req.file.filename}`;
+                const thumbnailFullPath = path.join(uploadsDir, thumbnailFilename);
+                
+                await sharp(req.file.path)
                     .resize(200, 200, {
                         fit: 'inside',
                         withoutEnlargement: true
                     })
                     .jpeg({ quality: 80 })
-                    .toBuffer();
+                    .toFile(thumbnailFullPath);
                 
-                const thumbnailYandexFilename = `thumb-${yandexFilename}`;
-                thumbnailUrl = await uploadFileToYandex(thumbnailBuffer, thumbnailYandexFilename);
+                thumbnailPath = `/uploads/${thumbnailFilename}`;
                 
             } catch (sharpError) {
                 console.error('❌ Thumbnail creation error:', sharpError);
-                thumbnailUrl = yandexUrl;
+                thumbnailPath = `/uploads/${req.file.filename}`;
             }
         }
-
-        // Удаляем локальный файл после загрузки на Яндекс.Диск
-        await fs.unlink(req.file.path).catch(console.error);
 
         const fileResponse = {
             success: true,
             file: {
                 originalName: req.file.originalname,
-                filename: yandexFilename,
-                path: yandexUrl,
-                thumbnail: thumbnailUrl,
+                filename: req.file.filename,
+                path: `/uploads/${req.file.filename}`,
+                thumbnail: thumbnailPath,
                 size: req.file.size,
                 mimetype: req.file.mimetype,
-                uploadDate: new Date().toISOString()
+                uploadDate: new Date().toISOString(),
+                reused: false
             }
         };
+
+        if (telegramFileData) {
+            const directUrl = await telegramStorage.getDirectFileUrl(telegramFileData.file_id);
+            fileResponse.telegram = {
+                file_id: telegramFileData.file_id,
+                message_id: telegramFileData.message_id,
+                media_type: telegramFileData.media_type || 'document',
+                telegram_url: directUrl,
+                file_url: `/api/media/${telegramFileData.file_id}`
+            };
+        }
 
         res.json(fileResponse);
 
@@ -1059,29 +1229,53 @@ app.post('/api/upload', authenticateToken, upload.single('file'), async (req, re
     }
 });
 
-// Загрузка голосовых сообщений
+app.get('/api/media/:fileId', authenticateToken, async (req, res) => {
+    try {
+        const { fileId } = req.params;
+        
+        if (!telegramStorage?.isInitialized) {
+            return res.status(503).json({ error: 'Telegram storage not available' });
+        }
+
+        const directUrl = await telegramStorage.getDirectFileUrl(fileId);
+        
+        if (directUrl) {
+            res.redirect(directUrl);
+        } else {
+            res.status(404).json({ error: 'File not found in Telegram' });
+        }
+        
+    } catch (error) {
+        console.error('❌ Media error:', error);
+        res.status(500).json({ error: 'Failed to get media' });
+    }
+});
+
 app.post('/api/upload-voice', authenticateToken, voiceUpload.single('file'), async (req, res) => {
     try {
         if (!req.file) {
             return res.status(400).json({ error: 'Файл не загружен' });
         }
 
-        // Читаем файл
-        const fileBuffer = await fs.readFile(req.file.path);
+        let telegramFileData = null;
         
-        // Загружаем на Яндекс.Диск
-        const yandexFilename = `voice_${Date.now()}-${Math.random().toString(36).substr(2, 9)}${path.extname(req.file.originalname)}`;
-        const yandexUrl = await uploadFileToYandex(fileBuffer, yandexFilename);
-
-        // Удаляем локальный файл
-        await fs.unlink(req.file.path).catch(console.error);
+        if (telegramStorage?.isInitialized) {
+            try {
+                telegramFileData = await telegramStorage.uploadFile(
+                    req.file.path,
+                    `Voice message: ${req.file.originalname}`
+                );
+            } catch (telegramError) {
+                console.error('⚠️ Telegram voice upload failed:', telegramError.message);
+            }
+        }
 
         const fileResponse = {
             success: true,
             file: {
                 originalName: req.file.originalname,
-                filename: yandexFilename,
-                path: yandexUrl,
+                filename: req.file.filename,
+                path: `/uploads/${req.file.filename}`,
                 size: req.file.size,
                 mimetype: req.file.mimetype,
                 uploadDate: new Date().toISOString(),
@@ -1089,7 +1283,18 @@ app.post('/api/upload-voice', authenticateToken, voiceUpload.single('file'), asy
             }
         };
 
-        console.log('✅ Voice message uploaded to Yandex.Disk:', fileResponse.file.originalName);
+        if (telegramFileData) {
+            const directUrl = await telegramStorage.getDirectFileUrl(telegramFileData.file_id);
+            fileResponse.telegram = {
+                file_id: telegramFileData.file_id,
+                message_id: telegramFileData.message_id,
+                media_type: 'audio',
+                telegram_url: directUrl,
+                file_url: `/api/media/${telegramFileData.file_id}`
+            };
+        }
+
+        console.log('✅ Voice message uploaded:', req.file.originalname);
         res.json(fileResponse);
 
     } catch (error) {
@@ -1103,7 +1308,6 @@ app.post('/api/upload-voice', authenticateToken, voiceUpload.single('file'), asy
     }
 });
 
-// Группы
 app.get('/api/user/groups', authenticateToken, async (req, res) => {
     try {
         const currentUser = req.user.username;
@@ -1225,7 +1429,6 @@ app.get('/api/groups', authenticateToken, (req, res) => {
     }
 });
 
-// Групповые сообщения
 app.get('/api/groups/:groupId/messages', authenticateToken, (req, res) => {
     try {
         const { groupId } = req.params;
@@ -1247,7 +1450,6 @@ app.get('/api/groups/:groupId/messages', authenticateToken, (req, res) => {
     }
 });
 
-// Отправка сообщений в группу
 app.post('/api/groups/:groupId/messages', authenticateToken, async (req, res) => {
     try {
         const { groupId } = req.params;
@@ -1295,7 +1497,6 @@ app.post('/api/groups/:groupId/messages', authenticateToken, async (req, res) =>
     }
 });
 
-// Получение информации о группе
 app.get('/api/groups/:groupId', authenticateToken, (req, res) => {
     try {
         const { groupId } = req.params;
@@ -1327,7 +1528,6 @@ app.get('/api/groups/:groupId', authenticateToken, (req, res) => {
     }
 });
 
-// API для валюты
 app.get('/api/user/:username/currency', authenticateToken, (req, res) => {
     try {
         const { username } = req.params;
@@ -1367,7 +1567,6 @@ app.post('/api/currency/daily-reward', authenticateToken, async (req, res) => {
         const userCurrency = initUserCurrency(username);
         const now = new Date();
         
-        // Проверяем, можно ли получить награду
         if (userCurrency.lastDailyReward) {
             const lastReward = new Date(userCurrency.lastDailyReward);
             const hoursSinceLastReward = (now - lastReward) / (1000 * 60 * 60);
@@ -1379,7 +1578,6 @@ app.post('/api/currency/daily-reward', authenticateToken, async (req, res) => {
                 });
             }
             
-            // Проверяем серию
             if (hoursSinceLastReward < 48) {
                 userCurrency.dailyStreak += 1;
             } else {
@@ -1389,16 +1587,13 @@ app.post('/api/currency/daily-reward', authenticateToken, async (req, res) => {
             userCurrency.dailyStreak = 1;
         }
 
-        // Расчет награды
         const baseReward = 50;
         const streakBonus = Math.min(userCurrency.dailyStreak * 5, 100);
         const totalReward = baseReward + streakBonus;
         
-        // Обновляем баланс
         userCurrency.balance += totalReward;
         userCurrency.lastDailyReward = now.toISOString();
         
-        // Добавляем в историю
         userCurrency.transactionHistory.unshift({
             type: 'daily_reward',
             amount: totalReward,
@@ -1452,7 +1647,6 @@ app.get('/api/users/:username', authenticateToken, (req, res) => {
     }
 });
 
-// Endpoint для проверки аватара
 app.get('/api/user/:username/avatar', authenticateToken, async (req, res) => {
     try {
         const { username } = req.params;
@@ -1464,7 +1658,6 @@ app.get('/api/user/:username/avatar', authenticateToken, async (req, res) => {
         
         const avatarPath = user.avatar || '/default-avatar.png';
         
-        // Если это путь к файлу, отдаем файл
         if (avatarPath.startsWith('/uploads/avatars/')) {
             const fullPath = path.join(__dirname, avatarPath);
             try {
@@ -1476,7 +1669,6 @@ app.get('/api/user/:username/avatar', authenticateToken, async (req, res) => {
             }
         }
         
-        // Если это URL, делаем редирект
         res.redirect(avatarPath);
         
     } catch (error) {
@@ -1681,7 +1873,6 @@ app.post('/api/admin/send-notification', authenticateToken, async (req, res) => 
     }
 });
 
-// API для подарков
 app.get('/api/user/:username/gifts', authenticateToken, async (req, res) => {
     try {
         const { username } = req.params;
@@ -1710,7 +1901,6 @@ app.post('/api/gifts/send', authenticateToken, async (req, res) => {
             });
         }
 
-        // Проверяем существование пользователя
         const receiverUser = users.find(u => u.username === receiver);
         if (!receiverUser) {
             return res.status(404).json({
@@ -1719,7 +1909,6 @@ app.post('/api/gifts/send', authenticateToken, async (req, res) => {
             });
         }
 
-        // Проверяем баланс отправителя
         const senderCurrency = initUserCurrency(sender);
         if (senderCurrency.balance < giftPrice) {
             return res.status(400).json({
@@ -1728,11 +1917,9 @@ app.post('/api/gifts/send', authenticateToken, async (req, res) => {
             });
         }
 
-        // Инициализируем подарки для обоих пользователей
         const senderGifts = initUserGifts(sender);
         const receiverGifts = initUserGifts(receiver);
 
-        // Создаем объект подарка
         const gift = {
             id: `gift_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
             giftId: giftId,
@@ -1745,19 +1932,15 @@ app.post('/api/gifts/send', authenticateToken, async (req, res) => {
             isRead: false
         };
 
-        // Добавляем подарок получателю
         receiverGifts.received.unshift(gift);
         
-        // Добавляем запись отправителю
         senderGifts.sent.unshift({
             ...gift,
             received: true
         });
 
-        // Списание средств у отправителя
         senderCurrency.balance -= giftPrice;
 
-        // Добавляем записи в историю транзакций
         senderCurrency.transactionHistory.unshift({
             type: 'gift_sent',
             amount: -giftPrice,
@@ -1765,7 +1948,6 @@ app.post('/api/gifts/send', authenticateToken, async (req, res) => {
             timestamp: new Date().toISOString()
         });
 
-        // Начисляем бонус получателю
         const receiverBonus = Math.floor(giftPrice * 0.1);
         const receiverCurrency = initUserCurrency(receiver);
         receiverCurrency.balance += receiverBonus;
@@ -1777,11 +1959,9 @@ app.post('/api/gifts/send', authenticateToken, async (req, res) => {
             timestamp: new Date().toISOString()
         });
 
-        // Сохраняем все данные
         await saveGiftsData();
         await saveCurrencyData();
 
-        // Отправляем уведомление получателю через WebSocket
         const receiverSocketId = userSockets.get(receiver);
         if (receiverSocketId) {
             io.to(receiverSocketId).emit('gift_received', {
@@ -1791,7 +1971,6 @@ app.post('/api/gifts/send', authenticateToken, async (req, res) => {
             });
         }
 
-        // Отправляем подтверждение отправителю
         const senderSocketId = userSockets.get(sender);
         if (senderSocketId) {
             io.to(senderSocketId).emit('gift_sent_success', {
@@ -1843,6 +2022,153 @@ app.post('/api/gifts/mark-read', authenticateToken, async (req, res) => {
     }
 });
 
+app.get('/api/mega/sync', authenticateToken, async (req, res) => {
+    try {
+        if (req.user.username !== 'admin') {
+            return res.status(403).json({ error: 'Требуются права администратора' });
+        }
+
+        const result = await megaStorage.syncToMega(dataDir);
+        res.json(result);
+        
+    } catch (error) {
+        console.error('❌ MEGA sync error:', error);
+        res.status(500).json({ error: 'Ошибка синхронизации с MEGA' });
+    }
+});
+
+app.get('/api/mega/backup', authenticateToken, async (req, res) => {
+    try {
+        if (req.user.username !== 'admin') {
+            return res.status(403).json({ error: 'Требуются права администратора' });
+        }
+
+        const backupName = req.query.name || null;
+        const result = await megaStorage.backupData(dataDir, backupName);
+        
+        if (result) {
+            res.json({ 
+                success: true, 
+                message: 'Backup created successfully' 
+            });
+        } else {
+            res.status(500).json({ error: 'Failed to create backup' });
+        }
+        
+    } catch (error) {
+        console.error('❌ MEGA backup error:', error);
+        res.status(500).json({ error: 'Ошибка создания бэкапа' });
+    }
+});
+
+app.get('/api/mega/restore', authenticateToken, async (req, res) => {
+    try {
+        if (req.user.username !== 'admin') {
+            return res.status(403).json({ error: 'Требуются права администратора' });
+        }
+
+        const { backupName } = req.query;
+        if (!backupName) {
+            return res.status(400).json({ error: 'Имя бэкапа обязательно' });
+        }
+
+        const result = await megaStorage.restoreFromBackup(backupName, dataDir);
+        
+        if (result) {
+            await loadUsers();
+            await loadMessages();
+            await loadGroups();
+            await loadCurrencyData();
+            await loadGiftsData();
+            
+            res.json({ 
+                success: true, 
+                message: 'Data restored successfully' 
+            });
+        } else {
+            res.status(500).json({ error: 'Failed to restore from backup' });
+        }
+        
+    } catch (error) {
+        console.error('❌ MEGA restore error:', error);
+        res.status(500).json({ error: 'Ошибка восстановления из бэкапа' });
+    }
+});
+
+app.get('/api/mega/force-sync', authenticateToken, async (req, res) => {
+    try {
+        if (req.user.username !== 'admin') {
+            return res.status(403).json({ error: 'Требуются права администратора' });
+        }
+
+        console.log('🔄 Force syncing all data to MEGA...');
+        
+        await saveUsers();
+        await saveMessages();
+        await saveGroups();
+        await saveCurrencyData();
+        await saveGiftsData();
+        
+        const result = await megaStorage.syncToMega(dataDir);
+        
+        res.json({
+            success: true,
+            message: 'Force sync completed',
+            result: result
+        });
+        
+    } catch (error) {
+        console.error('❌ Force sync error:', error);
+        res.status(500).json({ error: 'Ошибка принудительной синхронизации' });
+    }
+});
+
+app.get('/api/storage/info', authenticateToken, async (req, res) => {
+    try {
+        const megaInfo = megaStorage ? await megaStorage.getStorageInfo() : null;
+        const telegramInfo = telegramStorage ? await telegramStorage.getStorageInfo() : null;
+        
+        res.json({
+            mega: megaInfo,
+            telegram: telegramInfo,
+            local: {
+                users: users.length,
+                messages: messages.length,
+                groups: groups.length,
+                currency_users: Object.keys(currencyData).length,
+                gifts_users: Object.keys(giftsData).length
+            }
+        });
+        
+    } catch (error) {
+        console.error('❌ Storage info error:', error);
+        res.status(500).json({ error: 'Failed to get storage info' });
+    }
+});
+
+app.post('/api/admin/cleanup', authenticateToken, async (req, res) => {
+    try {
+        if (req.user.username !== 'admin') {
+            return res.status(403).json({ error: 'Требуются права администратора' });
+        }
+
+        const result = {
+            uploads: await cleanupOldUploads(),
+            mega: megaStorage ? await megaStorage.cleanupOldBackups() : null
+        };
+        
+        res.json({
+            success: true,
+            message: 'Cleanup completed',
+            result: result
+        });
+        
+    } catch (error) {
+        console.error('❌ Cleanup error:', error);
+        res.status(500).json({ error: 'Ошибка очистки' });
+    }
+});
+
 app.get('/health', (req, res) => {
     res.json({ 
         status: 'OK', 
@@ -1854,28 +2180,26 @@ app.get('/health', (req, res) => {
         notifications: systemNotifications.length,
         currencyUsers: Object.keys(currencyData).length,
         giftsUsers: Object.keys(giftsData).length,
-        yandexDisk: 'configured'
+        telegram: telegramStorage?.isInitialized ? 'connected' : 'disconnected',
+        mega: megaStorage?.isInitialized ? 'connected' : 'disconnected'
     });
 });
 
-// Обработка default-avatar.png
 app.get('/default-avatar.png', (req, res) => {
     res.sendFile(path.join(__dirname, 'static', 'default-avatar.png'));
 });
 
-// Fallback для всех остальных маршрутов
 app.use((req, res, next) => {
     console.log(`❌ 404 - Route not found: ${req.method} ${req.url}`);
     res.status(404).json({ error: 'Route not found' });
 });
 
-// Обработчик ошибок
 app.use((error, req, res, next) => {
     console.error('❌ Server error:', error);
     res.status(500).json({ error: 'Internal server error' });
 });
 
-// Socket.io логика
+// WebSocket соединения
 io.on('connection', (socket) => {
     console.log('✅ User connected:', socket.id);
 
@@ -1889,6 +2213,7 @@ io.on('connection', (socket) => {
             userSockets.delete(socket.username);
             onlineUsers.delete(socket.username);
             
+            // Завершаем активные звонки при отключении
             if (activeCalls.has(socket.username)) {
                 const callData = activeCalls.get(socket.username);
                 activeCalls.delete(socket.username);
@@ -1907,8 +2232,21 @@ io.on('connection', (socket) => {
                 }
             }
             
+            // Останавливаем трансляцию экрана при отключении
             if (screenShares.has(socket.username)) {
+                const screenShareData = screenShares.get(socket.username);
                 screenShares.delete(socket.username);
+                
+                // Уведомляем всех участников о завершении трансляции
+                screenShareData.participants?.forEach(participant => {
+                    const participantSocket = userSockets.get(participant);
+                    if (participantSocket) {
+                        io.to(participantSocket).emit('screen_share_ended', {
+                            sharer: socket.username,
+                            callId: screenShareData.callId
+                        });
+                    }
+                });
             }
             
             io.emit('user-status-changed', {
@@ -2050,24 +2388,33 @@ io.on('connection', (socket) => {
         });
     });
 
+    // Инициализация звонка
     socket.on('initiate_call', (data) => {
+        console.log(`📞 ${data.caller} звонит ${data.targetUser}`);
+        
         const targetSocketId = userSockets.get(data.targetUser);
         if (targetSocketId) {
-            activeCalls.set(data.caller, {
+            activeCalls.set(data.callId, {
                 callId: data.callId,
-                participants: [data.caller, data.targetUser],
+                caller: data.caller,
+                targetUser: data.targetUser,
                 type: data.callType,
-                startTime: new Date().toISOString()
+                status: 'ringing',
+                startTime: new Date(),
+                participants: [data.caller, data.targetUser]
             });
             
             io.to(targetSocketId).emit('incoming_call', {
                 callId: data.callId,
                 caller: data.caller,
-                callType: data.callType,
-                timestamp: new Date().toISOString()
+                callType: data.callType
             });
             
-            console.log(`📞 Call initiated: ${data.caller} -> ${data.targetUser} (${data.callType})`);
+            socket.emit('call_initiated', {
+                callId: data.callId,
+                targetUser: data.targetUser,
+                status: 'ringing'
+            });
         } else {
             socket.emit('call_rejected', {
                 callId: data.callId,
@@ -2076,48 +2423,191 @@ io.on('connection', (socket) => {
         }
     });
 
+    // Принятие звонка
     socket.on('accept_call', (data) => {
-        const callerSocketId = userSockets.get(data.caller);
-        if (callerSocketId) {
-            const callData = activeCalls.get(data.caller);
-            if (callData) {
-                callData.participants.push(data.acceptor);
-                activeCalls.set(data.caller, callData);
+        console.log(`✅ ${data.acceptor} принял звонок от ${data.caller}`);
+        
+        const callData = activeCalls.get(data.callId);
+        if (callData) {
+            callData.status = 'active';
+            callData.acceptor = data.acceptor;
+            
+            const callerSocketId = userSockets.get(data.caller);
+            if (callerSocketId) {
+                io.to(callerSocketId).emit('call_accepted', {
+                    callId: data.callId,
+                    acceptor: data.acceptor
+                });
+            }
+        }
+    });
+
+    // Отклонение звонка
+    socket.on('reject_call', (data) => {
+        console.log(`❌ ${data.caller} получил отказ: ${data.reason}`);
+        
+        const callData = activeCalls.get(data.callId);
+        if (callData) {
+            callData.status = 'rejected';
+            callData.endTime = new Date();
+            callData.endReason = data.reason;
+            
+            const callerSocketId = userSockets.get(data.caller);
+            if (callerSocketId) {
+                io.to(callerSocketId).emit('call_rejected', {
+                    callId: data.callId,
+                    reason: data.reason
+                });
             }
             
-            io.to(callerSocketId).emit('call_accepted', {
-                callId: data.callId,
-                acceptor: socket.username
-            });
-            
-            console.log(`✅ Call accepted: ${data.acceptor} accepted call from ${data.caller}`);
+            activeCalls.delete(data.callId);
         }
     });
 
-    socket.on('reject_call', (data) => {
-        const callerSocketId = userSockets.get(data.caller);
-        if (callerSocketId) {
-            activeCalls.delete(data.caller);
-            
-            io.to(callerSocketId).emit('call_rejected', {
-                callId: data.callId,
-                reason: data.reason
-            });
-            
-            console.log(`❌ Call rejected: ${socket.username} rejected call from ${data.caller}`);
-        }
-    });
-
+    // Завершение звонка
     socket.on('end_call', (data) => {
-        activeCalls.delete(socket.username);
+        console.log(`📞 Звонок ${data.callId} завершен: ${data.reason}`);
         
-        io.emit('call_ended', {
+        const callData = activeCalls.get(data.callId);
+        if (callData) {
+            callData.status = 'ended';
+            callData.endTime = new Date();
+            callData.endReason = data.reason;
+            
+            const callerSocketId = userSockets.get(callData.caller);
+            const targetSocketId = userSockets.get(callData.targetUser);
+            
+            if (callerSocketId) {
+                io.to(callerSocketId).emit('call_ended', {
+                    callId: data.callId,
+                    reason: data.reason,
+                    endedBy: socket.username
+                });
+            }
+            
+            if (targetSocketId) {
+                io.to(targetSocketId).emit('call_ended', {
+                    callId: data.callId,
+                    reason: data.reason,
+                    endedBy: socket.username
+                });
+            }
+            
+            // Удаляем запись о трансляции экрана, если она была
+            if (screenShares.has(socket.username)) {
+                const screenShareData = screenShares.get(socket.username);
+                if (screenShareData.callId === data.callId) {
+                    screenShares.delete(socket.username);
+                }
+            }
+            
+            activeCalls.delete(data.callId);
+        }
+    });
+
+    // WebRTC передача предложения (offer)
+    socket.on('webrtc_offer', (data) => {
+        console.log(`📤 WebRTC offer от ${socket.username} к ${data.targetUser}`);
+        
+        const targetSocketId = userSockets.get(data.targetUser);
+        if (targetSocketId) {
+            io.to(targetSocketId).emit('webrtc_offer', {
+                callId: data.callId,
+                caller: socket.username,
+                offer: data.offer
+            });
+        }
+    });
+
+    // WebRTC передача ответа (answer)
+    socket.on('webrtc_answer', (data) => {
+        console.log(`📤 WebRTC answer от ${socket.username} к ${data.targetUser}`);
+        
+        const targetSocketId = userSockets.get(data.targetUser);
+        if (targetSocketId) {
+            io.to(targetSocketId).emit('webrtc_answer', {
+                callId: data.callId,
+                answer: data.answer
+            });
+        }
+    });
+
+    // WebRTC передача ICE кандидата
+    socket.on('webrtc_ice_candidate', (data) => {
+        const targetSocketId = userSockets.get(data.targetUser);
+        if (targetSocketId) {
+            io.to(targetSocketId).emit('webrtc_ice_candidate', {
+                callId: data.callId,
+                candidate: data.candidate
+            });
+        }
+    });
+
+    // Начало трансляции экрана
+    socket.on('screen_share_started', (data) => {
+        console.log(`🖥️ ${socket.username} начал трансляцию экрана в звонке ${data.callId}`);
+        
+        // Сохраняем информацию о трансляции
+        screenShares.set(socket.username, {
             callId: data.callId,
-            reason: data.reason,
-            endedBy: socket.username
+            sharer: socket.username,
+            targetUser: data.targetUser,
+            startTime: new Date(),
+            participants: [socket.username, data.targetUser]
         });
         
-        console.log(`📞 Call ended: ${socket.username} ended call ${data.callId}`);
+        // Получаем информацию о звонке
+        const callData = activeCalls.get(data.callId);
+        if (!callData) {
+            console.error('❌ Call not found for screen share');
+            return;
+        }
+        
+        // Определяем получателя
+        const targetUser = callData.caller === socket.username ? callData.targetUser : callData.caller;
+        
+        // Отправляем уведомление получателю
+        const targetSocketId = userSockets.get(targetUser);
+        if (targetSocketId) {
+            io.to(targetSocketId).emit('screen_share_started', {
+                callId: data.callId,
+                sharer: socket.username,
+                targetUser: targetUser
+            });
+            console.log(`📤 Уведомление о начале трансляции отправлено ${targetUser}`);
+        } else {
+            console.error(`❌ Target user ${targetUser} not found`);
+        }
+    });
+
+    // Завершение трансляции экрана
+    socket.on('screen_share_ended', (data) => {
+        console.log(`🖥️ ${socket.username} завершил трансляцию экрана в звонке ${data.callId}`);
+        
+        // Удаляем информацию о трансляции
+        if (screenShares.has(socket.username)) {
+            const screenShareData = screenShares.get(socket.username);
+            
+            // Получаем информацию о звонке
+            const callData = activeCalls.get(data.callId);
+            if (callData) {
+                // Определяем получателя
+                const targetUser = callData.caller === socket.username ? callData.targetUser : callData.caller;
+                
+                // Отправляем уведомление получателю
+                const targetSocketId = userSockets.get(targetUser);
+                if (targetSocketId) {
+                    io.to(targetSocketId).emit('screen_share_ended', {
+                        callId: data.callId,
+                        sharer: socket.username,
+                        targetUser: targetUser
+                    });
+                    console.log(`📤 Уведомление о завершении трансляции отправлено ${targetUser}`);
+                }
+            }
+            
+            screenShares.delete(socket.username);
+        }
     });
 
     socket.on('send_gift', async (data) => {
@@ -2164,71 +2654,6 @@ io.on('connection', (socket) => {
         }
     });
 
-    socket.on('webrtc_offer', (data) => {
-        const targetSocketId = userSockets.get(data.targetUser);
-        if (targetSocketId) {
-            io.to(targetSocketId).emit('webrtc_offer', {
-                callId: data.callId,
-                offer: data.offer,
-                caller: socket.username
-            });
-        }
-    });
-
-    socket.on('webrtc_answer', (data) => {
-        const targetSocketId = userSockets.get(data.targetUser);
-        if (targetSocketId) {
-            io.to(targetSocketId).emit('webrtc_answer', {
-                callId: data.callId,
-                answer: data.answer,
-                answerer: socket.username
-            });
-        }
-    });
-
-    socket.on('webrtc_ice_candidate', (data) => {
-        const targetSocketId = userSockets.get(data.targetUser);
-        if (targetSocketId) {
-            io.to(targetSocketId).emit('webrtc_ice_candidate', {
-                callId: data.callId,
-                candidate: data.candidate,
-                sender: socket.username
-            });
-        }
-    });
-
-    socket.on('screen_share_started', (data) => {
-        const targetSocketId = userSockets.get(data.targetUser);
-        if (targetSocketId) {
-            screenShares.set(socket.username, {
-                targetUser: data.targetUser,
-                callId: data.callId,
-                startTime: new Date().toISOString()
-            });
-            
-            io.to(targetSocketId).emit('screen_share_started', {
-                callId: data.callId,
-                sharer: socket.username
-            });
-            
-            console.log(`🖥️ Screen share started: ${socket.username} -> ${data.targetUser}`);
-        }
-    });
-
-    socket.on('screen_share_ended', (data) => {
-        const targetSocketId = userSockets.get(data.targetUser);
-        if (targetSocketId) {
-            screenShares.delete(socket.username);
-            
-            io.to(targetSocketId).emit('screen_share_ended', {
-                callId: data.callId,
-                sharer: socket.username
-            });
-            
-            console.log(`🖥️ Screen share ended: ${socket.username} -> ${data.targetUser}`);
-        }
-    });
-
     socket.on('system_notification', (data) => {
         const notificationData = {
             id: 'notif_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
@@ -2267,44 +2692,241 @@ io.on('connection', (socket) => {
             cb(Array.from(onlineUsers));
         }
     });
+
+    socket.on('storage_sync_request', async (data) => {
+        try {
+            if (socket.username === 'admin') {
+                console.log('🔄 Admin requested storage sync');
+                
+                const megaResult = megaStorage ? await megaStorage.syncToMega(dataDir) : null;
+                
+                socket.emit('storage_sync_response', {
+                    success: true,
+                    mega: megaResult,
+                    message: 'Storage sync completed'
+                });
+            }
+        } catch (error) {
+            console.error('❌ Storage sync error:', error);
+            socket.emit('storage_sync_response', {
+                success: false,
+                error: error.message
+            });
+        }
+    });
 });
 
-// Запуск сервера
 async function startServer() {
     try {
         await ensureDirectories();
         await ensureStaticFiles();
         await ensureTemplates();
         
-        // Инициализируем Яндекс.Диск
-        const yandexInitialized = await initYandexStorage();
+        // Очищаем старые файлы при старте
+        console.log('🗑️ Cleaning up old uploads...');
+        await cleanupOldUploads();
         
-        if (yandexInitialized) {
-            console.log('✅ Using Yandex.Disk for storage');
+        console.log('📱 Initializing Telegram storage...');
+        telegramStorage = new TelegramStorage(
+            '8501177708:AAETyTKHluPQOCeYBdvKvJ-YVr7cDwPQC6g',
+            '5324471398'
+        );
+        
+        const telegramInitialized = await telegramStorage.initialize();
+        if (telegramInitialized) {
+            console.log('✅ Telegram storage connected successfully');
         } else {
-            console.log('⚠️ Using local storage only');
+            console.error('❌ Failed to initialize Telegram storage');
         }
         
-        // Загружаем данные
+        console.log('☁️ Initializing MEGA storage...');
+        const megaEmail = process.env.MEGA_EMAIL || 'pprr25291@gmail.com';
+        const megaPassword = process.env.MEGA_PASSWORD || '23102011Rbs';
+        
+        megaStorage = new MegaStorage(megaEmail, megaPassword);
+        const megaInitialized = await megaStorage.initialize();
+        
+        if (megaInitialized) {
+            console.log('✅ MEGA storage connected successfully');
+            
+            try {
+                await megaStorage.syncFromMega(dataDir);
+                console.log('✅ Data synced from MEGA');
+            } catch (syncError) {
+                console.warn('⚠️ MEGA sync failed:', syncError.message);
+            }
+            
+            megaSyncInterval = await megaStorage.startAutoSync(dataDir, 5);
+        } else {
+            console.error('❌ Failed to initialize MEGA storage');
+        }
+        
         await loadUsers();
         await loadMessages();
         await loadGroups();
         await loadCurrencyData();
         await loadGiftsData();
         
-        server.listen(PORT, '0.0.0.0', () => {
-            console.log(`🚀 Server running on port ${PORT}`);
-            console.log(`📊 Health check: http://localhost:${PORT}/health`);
-            console.log(`💾 Storage: ${yandexInitialized ? 'Yandex.Disk + Local' : 'Local only'}`);
-            console.log(`👥 Users: ${users.length}`);
-            console.log(`💬 Messages: ${messages.length}`);
-            console.log(`💰 Currency users: ${Object.keys(currencyData).length}`);
-            console.log(`🎁 Gifts users: ${Object.keys(giftsData).length}`);
-        });
+        // Запускаем автосохранение каждые 30 секунд
+        await startAutoSave();
+        
+        // Попытка запуска сервера с обработкой занятого порта
+        const maxAttempts = 10;
+        let attempts = 0;
+        
+        async function tryStartServer() {
+            try {
+                // Проверяем, свободен ли порт
+                const portInUse = await isPortInUse(PORT);
+                
+                if (portInUse) {
+                    console.log(`⚠️ Port ${PORT} is busy. Attempting to kill process...`);
+                    
+                    // Пробуем завершить процесс
+                    const killed = await killPort(PORT);
+                    
+                    if (!killed) {
+                        // Если не удалось завершить, пробуем другой порт
+                        PORT++;
+                        console.log(`🔄 Trying port ${PORT} instead...`);
+                    }
+                    
+                    // Ждем немного
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                }
+                
+                // Запускаем сервер
+                server.listen(PORT, '0.0.0.0', () => {
+                    console.log(`🚀 Server running on port ${PORT}`);
+                    console.log(`📊 Health check: http://localhost:${PORT}/health`);
+                    console.log(`💾 Storage: Local + Telegram + MEGA (with smart sync)`);
+                    console.log(`👥 Users: ${users.length}`);
+                    console.log(`💬 Messages: ${messages.length}`);
+                    console.log(`💰 Currency users: ${Object.keys(currencyData).length}`);
+                    console.log(`🎁 Gifts users: ${Object.keys(giftsData).length}`);
+                    console.log(`🖥️ Screen sharing: READY (WebRTC based)`);
+                    console.log(`⏰ Auto-save: ENABLED (every 30 seconds)`);
+                    
+                    scheduleDailyBackup();
+                });
+                
+            } catch (error) {
+                if (error.code === 'EADDRINUSE') {
+                    attempts++;
+                    if (attempts < maxAttempts) {
+                        console.log(`⚠️ Port ${PORT} is busy, trying ${PORT + 1}...`);
+                        PORT++;
+                        await new Promise(resolve => setTimeout(resolve, 1000));
+                        return tryStartServer();
+                    } else {
+                        console.error(`❌ Failed to start server after ${maxAttempts} attempts`);
+                        throw error;
+                    }
+                } else {
+                    throw error;
+                }
+            }
+        }
+        
+        await tryStartServer();
+        
     } catch (error) {
         console.error('❌ Failed to start server:', error);
-        process.exit(1);
+        
+        // Пробуем альтернативный порт
+        console.log('🔄 Trying alternative port 3001...');
+        PORT = 3001;
+        
+        try {
+            server.listen(PORT, '0.0.0.0', () => {
+                console.log(`✅ Server started on alternative port ${PORT}`);
+                console.log(`🌐 http://localhost:${PORT}`);
+            });
+        } catch (fallbackError) {
+            console.error('❌ Failed to start on fallback port:', fallbackError);
+            process.exit(1);
+        }
     }
 }
+
+function scheduleDailyBackup() {
+    setInterval(async () => {
+        try {
+            console.log('⏰ Starting scheduled daily backup...');
+            
+            if (megaStorage?.isInitialized) {
+                const timestamp = new Date().toISOString().slice(0, 10);
+                const backupName = `daily-backup-${timestamp}.zip`;
+                
+                const result = await megaStorage.backupData(dataDir, backupName);
+                if (result) {
+                    console.log(`✅ Daily backup created: ${backupName}`);
+                } else {
+                    console.error('❌ Failed to create daily backup');
+                }
+            }
+        } catch (error) {
+            console.error('❌ Error in daily backup:', error.message);
+        }
+    }, 24 * 60 * 60 * 1000);
+}
+
+// Обработчик ошибок сервера
+server.on('error', (error) => {
+    if (error.code === 'EADDRINUSE') {
+        console.error(`❌ Port ${PORT} is already in use. Trying ${PORT + 1}...`);
+        PORT++;
+        setTimeout(() => {
+            server.listen(PORT, '0.0.0.0');
+        }, 1000);
+    } else {
+        console.error('❌ Server error:', error);
+    }
+});
+
+process.on('SIGINT', async () => {
+    console.log('\n⚠️ Shutting down server...');
+    
+    // Останавливаем автосохранение
+    if (autoSaveInterval) {
+        clearInterval(autoSaveInterval);
+        console.log('⏹️ Stopped auto-save interval');
+    }
+    
+    if (megaSyncInterval) {
+        clearInterval(megaSyncInterval);
+        console.log('🔄 Stopping MEGA sync...');
+    }
+    
+    // Выполняем финальное сохранение
+    console.log('💾 Performing final data save...');
+    await saveAllData();
+    
+    if (megaStorage) {
+        try {
+            console.log('☁️ Syncing final data to MEGA...');
+            await megaStorage.syncToMega(dataDir);
+        } catch (error) {
+            console.error('❌ Error syncing data to MEGA:', error);
+        }
+        
+        await megaStorage.close();
+    }
+    
+    if (telegramStorage) {
+        await telegramStorage.close();
+    }
+    
+    console.log('👋 Server shutdown complete');
+    process.exit(0);
+});
+
+process.on('uncaughtException', (error) => {
+    console.error('❌ Uncaught Exception:', error);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('❌ Unhandled Rejection at:', promise, 'reason:', reason);
+});
 
 startServer();

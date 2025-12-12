@@ -1,37 +1,59 @@
 {
   "name": "my-messenger",
   "version": "1.0.0",
-  "description": "Messenger application with Yandex.Disk storage",
+  "description": "Advanced Messenger Application with MEGA and Telegram storage",
   "main": "app.js",
   "scripts": {
     "start": "node app.js",
     "dev": "nodemon app.js",
-    "setup": "node -e \"console.log('Setup complete')\""
+    "setup": "node -e \"console.log('Setup complete')\"",
+    "clean": "rm -rf node_modules package-lock.json",
+    "install-deps": "npm install",
+    "test": "echo \"No tests specified\" && exit 0",
+    "build": "echo \"Build step not required for Node.js app\"",
+    "backup": "node -e \"console.log('Run backup manually via API: /api/mega/backup')\"",
+    "sync": "node -e \"console.log('Run sync manually via API: /api/mega/force-sync')\""
   },
   "dependencies": {
-    "express": "^4.21.2",
+    "express": "^4.18.2",
     "socket.io": "^4.8.1",
     "bcryptjs": "^2.4.3",
     "jsonwebtoken": "^9.0.2",
     "cookie-parser": "^1.4.7",
     "multer": "^1.4.5-lts.1",
     "sharp": "^0.33.0",
+    "megajs": "^1.3.9",
     "axios": "^1.7.9",
+    "form-data": "^4.0.0",
     "canvas": "^3.2.0",
-    "ejs": "^3.1.9"
+    "ejs": "^3.1.9",
+    "qwen-code": "^0.0.5",
+    "mega": "^0.2.0"
   },
   "devDependencies": {
     "nodemon": "^3.0.1"
   },
   "engines": {
-    "node": ">=14.0.0"
+    "node": ">=14.0.0",
+    "npm": ">=6.0.0"
   },
   "keywords": [
     "messenger",
     "chat",
-    "yandex-disk",
-    "socket.io"
+    "socket.io",
+    "megajs",
+    "telegram",
+    "webrtc",
+    "real-time"
   ],
   "author": "Your Name",
-  "license": "MIT"
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yourusername/my-messenger.git"
+  },
+  "bugs": {
+    "url": "https://github.com/yourusername/my-messenger/issues"
+  },
+  "homepage": "https://github.com/yourusername/my-messenger#readme"
 }
