@@ -12776,3 +12776,215 @@ header {
         font-size: 16px;
     }
 }
+/* Медиа-запросы для мобильных устройств */
+@media (max-width: 768px) {
+    .chat-container {
+        height: 100vh;
+        overflow: hidden;
+        position: relative;
+    }
+    
+    .chat-content {
+        flex-direction: column;
+        height: calc(100vh - 70px);
+    }
+    
+    /* Навигация для мобильных */
+    .mobile-nav {
+        display: flex;
+        justify-content: space-around;
+        padding: 10px;
+        background: #ffffff;
+        border-top: 1px solid #e9ecef;
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        z-index: 1000;
+    }
+    
+    .mobile-nav-btn {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        background: none;
+        border: none;
+        padding: 8px;
+        font-size: 12px;
+        color: #6c757d;
+        cursor: pointer;
+    }
+    
+    .mobile-nav-btn.active {
+        color: #007bff;
+    }
+    
+    .mobile-nav-btn i {
+        font-size: 20px;
+        margin-bottom: 4px;
+    }
+    
+    /* Скрываем десктопную навигацию */
+    .header-buttons {
+        display: none;
+    }
+    
+    .private-chat-layout {
+        display: flex;
+        flex-direction: column;
+        height: 100%;
+    }
+    
+    /* На мобильных сначала показываем список чатов */
+    .private-chat-sidebar {
+        display: block;
+        width: 100%;
+        height: 100%;
+        position: absolute;
+        top: 0;
+        left: 0;
+        z-index: 100;
+        background: white;
+        transform: translateX(0);
+        transition: transform 0.3s ease;
+    }
+    
+    .private-chat-sidebar.hidden {
+        transform: translateX(-100%);
+    }
+    
+    .private-chat-main {
+        display: block;
+        width: 100%;
+        height: 100%;
+        position: absolute;
+        top: 0;
+        left: 0;
+        z-index: 101;
+        background: white;
+        transform: translateX(100%);
+        transition: transform 0.3s ease;
+    }
+    
+    .private-chat-main.active {
+        transform: translateX(0);
+    }
+    
+    .sidebar-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 15px;
+        background: #f8f9fa;
+        border-bottom: 1px solid #e9ecef;
+    }
+    
+    .back-to-chats {
+        display: block;
+        background: none;
+        border: none;
+        font-size: 20px;
+        cursor: pointer;
+        padding: 5px;
+        margin-right: 10px;
+    }
+    
+    /* Адаптивные сообщения */
+    .private-message {
+        max-width: 85%;
+    }
+    
+    .message-input-area {
+        padding: 10px;
+    }
+    
+    .message-input-container {
+        padding: 8px;
+    }
+    
+    #privateMessageInput {
+        font-size: 14px;
+        padding: 8px;
+    }
+    
+    /* Адаптивные модальные окна */
+    .modal-content {
+        width: 95% !important;
+        max-height: 90vh !important;
+        margin: 10px;
+    }
+    
+    /* Адаптивные кнопки */
+    .send-button {
+        min-width: 60px;
+        padding: 8px 12px;
+    }
+    
+    /* Адаптивные списки */
+    .conversations-list {
+        max-height: calc(100vh - 200px);
+    }
+}
+
+/* Для планшетов */
+@media (min-width: 769px) and (max-width: 1024px) {
+    .private-chat-layout {
+        display: grid;
+        grid-template-columns: 300px 1fr;
+    }
+    
+    .mobile-nav {
+        display: none;
+    }
+}
+
+/* Для десктопов */
+@media (min-width: 1025px) {
+    .private-chat-layout {
+        display: grid;
+        grid-template-columns: 350px 1fr;
+    }
+    
+    .mobile-nav {
+        display: none;
+    }
+    
+    .back-to-chats {
+        display: none;
+    }
+    
+    .private-chat-sidebar {
+        position: relative;
+        transform: translateX(0) !important;
+    }
+    
+    .private-chat-main {
+        position: relative;
+        transform: translateX(0) !important;
+    }
+}
+
+/* Общие стили для мобильной навигации */
+@media (max-width: 768px) {
+    header {
+        padding: 15px;
+        height: 60px;
+    }
+    
+    header h2 {
+        font-size: 18px;
+    }
+    
+    .header-content span {
+        font-size: 14px;
+    }
+    
+    .chat-top-bar {
+        padding: 10px 15px;
+        height: 60px;
+    }
+    
+    .chat-messages-container {
+        height: calc(100vh - 170px);
+    }
+}

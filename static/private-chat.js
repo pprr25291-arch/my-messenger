@@ -1631,6 +1631,109 @@ setupModalEventListeners() {
     });
 
     }
+    // Добавьте эти методы в класс PrivateChat
+setupMobileChatHandlers() {
+    if (!isMobileDevice()) return;
+    
+    // Переопределяем обработчик открытия чата для мобильных
+    const originalStartChat = this.startChat.bind(this);
+    this.startChat = async function(username, isGroup = false, groupId = null) {
+        await originalStartChat(username, isGroup, groupId);
+        
+        // Для мобильных переключаемся на экран чата
+        if (isMobileDevice()) {
+            const sidebar = document.querySelector('.private-chat-sidebar');
+            const mainChat = document.querySelector('.private-chat-main');
+            
+            if (sidebar) sidebar.classList.add('hidden');
+            if (mainChat) mainChat.classList.add('active');
+            
+            updateMobileNavActive('chat');
+        }
+    };
+    
+    // Добавляем кнопку "Назад" в шапку чата
+    this.addMobileBackButton();
+}
+
+addMobileBackButton() {
+    const chatTopBar = document.querySelector('.chat-top-bar');
+    if (!chatTopBar || !isMobileDevice()) return;
+    
+    // Проверяем, нет ли уже кнопки "Назад"
+    if (!chatTopBar.querySelector('.mobile-back-button')) {
+        const backButton = document.createElement('button');
+        backButton.className = 'mobile-back-button';
+        backButton.innerHTML = '←';
+        backButton.style.cssText = `
+            background: none;
+            border: none;
+            font-size: 20px;
+            margin-right: 10px;
+            cursor: pointer;
+            padding: 5px;
+        `;
+        
+        backButton.addEventListener('click', () => {
+            this.closeCurrentChat();
+            const sidebar = document.querySelector('.private-chat-sidebar');
+            const mainChat = document.querySelector('.private-chat-main');
+            
+            if (sidebar) sidebar.classList.remove('hidden');
+            if (mainChat) mainChat.classList.remove('active');
+            
+            updateMobileNavActive('chats');
+        });
+        
+        chatTopBar.insertBefore(backButton, chatTopBar.firstChild);
+    }
+}
+
+// В методе closeCurrentChat добавьте мобильную логику:
+closeCurrentChat() {
+    this.currentChat = null;
+    
+    const noChatSelected = document.getElementById('noChatSelected');
+    const activeChat = document.getElementById('activeChat');
+    const groupChatContainer = document.getElementById('groupChatContainer');
+    
+    if (isMobileDevice()) {
+        // Для мобильных возвращаемся к списку чатов
+        const sidebar = document.querySelector('.private-chat-sidebar');
+        const mainChat = document.querySelector('.private-chat-main');
+        
+        if (sidebar) sidebar.classList.remove('hidden');
+        if (mainChat) mainChat.classList.remove('active');
+        
+        if (noChatSelected) noChatSelected.style.display = 'none';
+        if (activeChat) activeChat.style.display = 'none';
+        if (groupChatContainer) groupChatContainer.style.display = 'none';
+    } else {
+        // Для десктопа стандартная логика
+        if (noChatSelected && !groupChatContainer?.style.display !== 'flex') {
+            noChatSelected.style.display = 'flex';
+        }
+        if (activeChat) activeChat.style.display = 'none';
+    }
+    
+    // Очищаем сообщения
+    const privateMessages = document.getElementById('privateMessages');
+    if (privateMessages) privateMessages.innerHTML = '<div class="no-messages">📝 Начните общение первым!</div>';
+    
+    // Очищаем поле ввода
+    const messageInput = document.getElementById('privateMessageInput');
+    if (messageInput) messageInput.value = '';
+    
+    // Очищаем превью файлов
+    const filePreview = document.getElementById('filePreview');
+    if (filePreview) {
+        filePreview.innerHTML = '';
+        filePreview.style.display = 'none';
+    }
+    
+    // Обновляем список бесед
+    this.loadConversations();
+}
 setupAdminCurrencyHandlers() {
     document.addEventListener('click', (e) => {
         if (e.target.classList.contains('btn-success') && e.target.onclick) {
@@ -4188,9 +4291,12 @@ openGiftForUser(username) {
         }
     }
 
-    getCurrentUser() {
-        return document.getElementById('username')?.textContent || 'anonymous';
-    }
+  getCurrentUser() {
+    return document.getElementById('username')?.textContent || 
+           window.USERNAME || 
+           localStorage.getItem('currentUsername') || 
+           'anonymous';
+}
 }
 document.addEventListener('DOMContentLoaded', function() {
     console.log('🚀 Starting application initialization...');

@@ -2741,7 +2741,7 @@ async function startServer() {
         
         console.log('☁️ Initializing MEGA storage...');
         const megaEmail = process.env.MEGA_EMAIL || 'pprr25291@gmail.com';
-        const megaPassword = process.env.MEGA_PASSWORD || '23102011Rbs';
+        const megaPassword = process.env.MEGA_PASSWORD || 'e:cfLnZEiE44.5E';
         
         megaStorage = new MegaStorage(megaEmail, megaPassword);
         const megaInitialized = await megaStorage.initialize();

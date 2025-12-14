@@ -32,7 +32,55 @@ class GroupChatManager {
         return true;
     });
 }
+// В классе GroupChatManager добавьте:
+setupMobileGroupHandlers() {
+    if (!isMobileDevice()) return;
+    
+    const originalOpenGroupChat = this.openGroupChat.bind(this);
+    this.openGroupChat = async function(group) {
+        await originalOpenGroupChat(group);
+        
+        // Для мобильных скрываем сайдбар и показываем чат
+        const sidebar = document.querySelector('.private-chat-sidebar');
+        const mainChat = document.querySelector('.private-chat-main');
+        
+        if (sidebar) sidebar.classList.add('hidden');
+        if (mainChat) mainChat.classList.add('active');
+        
+        updateMobileNavActive('chat');
+        
+        // Добавляем кнопку "Назад" для группового чата
+        this.addMobileGroupBackButton(group);
+    };
+}
 
+addMobileGroupBackButton(group) {
+    const chatTopBar = document.querySelector('.chat-top-bar');
+    if (!chatTopBar) return;
+    
+    // Удаляем существующие кнопки "Назад"
+    const existingBackBtn = chatTopBar.querySelector('.mobile-back-button, .back-to-groups');
+    if (existingBackBtn) existingBackBtn.remove();
+    
+    const backButton = document.createElement('button');
+    backButton.className = 'back-to-groups mobile-back-button';
+    backButton.innerHTML = '←';
+    backButton.style.cssText = `
+        background: none;
+        border: none;
+        font-size: 20px;
+        margin-right: 10px;
+        cursor: pointer;
+        padding: 5px;
+    `;
+    
+    backButton.addEventListener('click', () => {
+        this.closeGroupChat();
+        showMobileSection('groups');
+    });
+    
+    chatTopBar.insertBefore(backButton, chatTopBar.firstChild);
+}
 removeDuplicateGroups(groups) {
     const seen = new Set();
     return groups.filter(group => {
