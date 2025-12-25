@@ -3,6 +3,7 @@ class ProfileManager {
         this.currentProfile = null;
         this.userProfiles = new Map();
         this.isModalOpen = false;
+        this.isLoading = false;
         this.init();
     }
 
@@ -15,7 +16,6 @@ class ProfileManager {
 
     setupProfileViewer() {
         console.log('🔄 Setting up profile viewer...');
-        // Создаем модальное окно для профиля
         this.createProfileModal();
     }
 
@@ -25,7 +25,7 @@ class ProfileManager {
             const avatar = e.target.closest('.user-avatar, .avatar, [data-username]');
             if (avatar) {
                 const username = avatar.dataset.username || avatar.alt || avatar.textContent.trim();
-                if (username && username !== 'undefined') {
+                if (username && username !== 'undefined' && !this.isGroupName(username)) {
                     this.viewProfile(username);
                 }
             }
@@ -47,8 +47,13 @@ class ProfileManager {
     }
 
     setupEventListeners() {
-        // Дополнительные обработчики событий
         document.addEventListener('user_avatar_updated', (e) => {
+            if (this.currentProfile && this.currentProfile.username === e.detail.username) {
+                this.refreshProfile();
+            }
+        });
+        
+        document.addEventListener('user_bio_updated', (e) => {
             if (this.currentProfile && this.currentProfile.username === e.detail.username) {
                 this.refreshProfile();
             }
@@ -193,7 +198,369 @@ class ProfileManager {
         document.head.appendChild(style);
     }
 
+    // Метод для проверки, является ли имя именем группы
+    isGroupName(username) {
+        if (!username) return false;
+        
+        const groupSigns = [
+            username.includes('👥'),
+            username.includes('группа'),
+            username.includes('Group'),
+            username.includes('(группа)'),
+            username.startsWith('group_'),
+            username.startsWith('группа_'),
+            username.includes('[группа]'),
+            username.includes('[Group]'),
+            username.includes('участников'),
+            username.toLowerCase().includes('group chat'),
+            username.toLowerCase().includes('group chat')
+        ];
+        
+        return groupSigns.some(sign => sign === true);
+    }
+
     // Основной метод отображения профиля
+    async viewProfile(username) {
+        try {
+            if (this.isLoading) return;
+            
+            console.log('👤 Loading profile for:', username);
+            
+            // Проверяем, не является ли это группой
+            if (this.isGroupName(username)) {
+                console.log('❌ Cannot open profile for group:', username);
+                this.showNotification('Нельзя открыть профиль для группы', 'error');
+                
+                // Вместо профиля, можно предложить открыть групповой чат
+                if (confirm('Это групповая беседа. Хотите открыть групповой чат?')) {
+                    if (window.groupChatManager) {
+                        const groups = await window.groupChatManager.loadUserGroups();
+                        const group = groups.find(g => g.name === username || g.username === username);
+                        if (group) {
+                            window.groupChatManager.openGroupChat(group);
+                        }
+                    }
+                }
+                return;
+            }
+            
+            this.isLoading = true;
+            
+            // Показываем индикатор загрузки
+            this.showLoadingProfile();
+
+            // Открываем модальное окно
+            this.openProfileModal();
+
+            // Создаем базовый объект профиля
+            const profileData = {
+                username: username,
+                avatar: '/default-avatar.png',
+                status: 'offline',
+                stats: {
+                    messagesSent: 0,
+                    groupsCreated: 0,
+                    daysActive: 1
+                },
+                bio: '',
+                balance: 0
+            };
+
+            this.currentProfile = profileData;
+            this.displayProfile(profileData);
+            
+            // Загружаем данные асинхронно
+            await this.loadProfileData(username);
+
+        } catch (error) {
+            console.error('❌ Error loading profile:', error);
+            this.showNotification('Ошибка загрузки профиля', 'error');
+            this.closeProfile();
+        } finally {
+            this.isLoading = false;
+        }
+    }
+
+    // Открытие модального окна профиля
+    openProfileModal() {
+        const modal = document.getElementById('profileModal');
+        if (modal) {
+            modal.style.display = 'flex';
+            this.isModalOpen = true;
+            document.body.style.overflow = 'hidden';
+        }
+    }
+
+    // Закрытие модального окна профиля
+    closeProfile() {
+        const modal = document.getElementById('profileModal');
+        if (modal) {
+            modal.style.display = 'none';
+            this.isModalOpen = false;
+            document.body.style.overflow = '';
+            this.currentProfile = null;
+        }
+    }
+
+    showLoadingProfile() {
+        const profileContent = document.getElementById('profileContent');
+        if (!profileContent) return;
+
+        profileContent.innerHTML = `
+            <div style="text-align: center; padding: 60px 20px;">
+                <div style="font-size: 48px; margin-bottom: 20px;">👤</div>
+                <div style="color: #6c757d; font-size: 16px; margin-bottom: 10px;">Загрузка профиля...</div>
+                <div style="
+                    width: 40px;
+                    height: 40px;
+                    border: 3px solid #f3f3f3;
+                    border-top: 3px solid #007bff;
+                    border-radius: 50%;
+                    animation: spin 1s linear infinite;
+                    margin: 0 auto;
+                "></div>
+            </div>
+            <style>
+                @keyframes spin {
+                    0% { transform: rotate(0deg); }
+                    100% { transform: rotate(360deg); }
+                }
+            </style>
+        `;
+    }
+
+    // Безопасная загрузка данных профиля
+    async loadProfileData(username) {
+        try {
+            console.log('👤 Loading profile data for:', username);
+            
+            // Проверяем, не является ли это группой
+            if (this.isGroupName(username)) {
+                console.log('❌ Cannot load profile for group:', username);
+                return;
+            }
+            
+            // Создаем промисы для всех запросов данных
+            const requests = [
+                this.fetchUserData(username),
+                this.fetchUserBalance(username),
+                this.fetchUserStats(username),
+                this.fetchUserAvatar(username)
+            ];
+            
+            // Выполняем все запросы параллельно
+            const [userData, balance, stats, avatarUrl] = await Promise.allSettled(requests);
+            
+            // Собираем данные профиля
+            const profileData = {
+                username: username,
+                avatar: '/default-avatar.png',
+                status: 'offline',
+                stats: {
+                    messagesSent: 0,
+                    groupsCreated: 0,
+                    daysActive: 1
+                },
+                bio: '',
+                balance: 0
+            };
+            
+            // Обрабатываем данные пользователя
+            if (userData.status === 'fulfilled' && userData.value) {
+                Object.assign(profileData, userData.value);
+            }
+            
+            // Обрабатываем баланс
+            if (balance.status === 'fulfilled' && balance.value !== null) {
+                profileData.balance = balance.value;
+            }
+            
+            // Обрабатываем статистику
+            if (stats.status === 'fulfilled' && stats.value) {
+                profileData.stats = { ...profileData.stats, ...stats.value };
+            }
+            
+            // Обрабатываем аватар
+            if (avatarUrl.status === 'fulfilled' && avatarUrl.value) {
+                profileData.avatar = avatarUrl.value;
+            }
+            
+            // Обновляем онлайн статус
+            const isOnline = window.privateChatInstance?.onlineUsers?.has(username) || false;
+            profileData.status = isOnline ? 'online' : 'offline';
+            
+            // Обновляем отображение
+            this.currentProfile = profileData;
+            this.displayProfile(profileData);
+            
+            console.log('✅ Profile data loaded successfully for:', username);
+            
+        } catch (error) {
+            console.error('❌ Error loading profile data:', error);
+            
+            // Создаем профиль с дефолтными значениями
+            const isOnline = window.privateChatInstance?.onlineUsers?.has(username) || false;
+            const defaultProfile = {
+                username: username,
+                avatar: '/default-avatar.png',
+                status: isOnline ? 'online' : 'offline',
+                stats: {
+                    messagesSent: 0,
+                    groupsCreated: 0,
+                    daysActive: 1
+                },
+                bio: '',
+                balance: 0
+            };
+            
+            this.currentProfile = defaultProfile;
+            this.displayProfile(defaultProfile);
+            
+            this.showNotification('Часть данных профиля недоступна', 'warning');
+        }
+    }
+
+    // Метод для получения данных пользователя
+    async fetchUserData(username) {
+        try {
+            const endpoints = [
+                `/api/user/${encodeURIComponent(username)}/profile`,
+                `/api/users/${encodeURIComponent(username)}`,
+                `/api/profile/${encodeURIComponent(username)}`
+            ];
+            
+            for (const endpoint of endpoints) {
+                try {
+                    const response = await fetch(endpoint, {
+                        headers: {
+                            'Accept': 'application/json'
+                        }
+                    });
+                    
+                    if (response.ok) {
+                        const data = await response.json();
+                        return {
+                            bio: data.bio || '',
+                            avatar: data.avatar || '/default-avatar.png'
+                        };
+                    }
+                } catch (error) {
+                    console.log(`⚠️ Endpoint ${endpoint} failed:`, error.message);
+                    continue;
+                }
+            }
+            
+            return {
+                bio: '',
+                avatar: '/default-avatar.png'
+            };
+            
+        } catch (error) {
+            console.error('Error fetching user data:', error);
+            return {
+                bio: '',
+                avatar: '/default-avatar.png'
+            };
+        }
+    }
+
+    // Метод для получения баланса пользователя
+    async fetchUserBalance(username) {
+        try {
+            const endpoints = [
+                `/api/user/${encodeURIComponent(username)}/currency`,
+                `/api/currency/${encodeURIComponent(username)}`,
+                `/api/users/${encodeURIComponent(username)}/balance`
+            ];
+            
+            for (const endpoint of endpoints) {
+                try {
+                    const response = await fetch(endpoint, {
+                        headers: {
+                            'Accept': 'application/json'
+                        }
+                    });
+                    
+                    if (response.ok) {
+                        const data = await response.json();
+                        return data.balance || data.amount || 0;
+                    }
+                } catch (error) {
+                    console.log(`⚠️ Endpoint ${endpoint} failed:`, error.message);
+                    continue;
+                }
+            }
+            
+            return 0;
+            
+        } catch (error) {
+            console.error('Error fetching user balance:', error);
+            return 0;
+        }
+    }
+
+    // Метод для получения статистики пользователя
+    async fetchUserStats(username) {
+        try {
+            const endpoints = [
+                `/api/user/${encodeURIComponent(username)}/stats`,
+                `/api/stats/${encodeURIComponent(username)}`,
+                `/api/users/${encodeURIComponent(username)}/statistics`
+            ];
+            
+            for (const endpoint of endpoints) {
+                try {
+                    const response = await fetch(endpoint, {
+                        headers: {
+                            'Accept': 'application/json'
+                        }
+                    });
+                    
+                    if (response.ok) {
+                        const data = await response.json();
+                        return {
+                            messagesSent: data.messagesSent || data.totalMessages || 0,
+                            groupsCreated: data.groupsCreated || data.totalGroups || 0,
+                            daysActive: data.daysActive || data.activeDays || 1
+                        };
+                    }
+                } catch (error) {
+                    console.log(`⚠️ Endpoint ${endpoint} failed:`, error.message);
+                    continue;
+                }
+            }
+            
+            return {
+                messagesSent: 0,
+                groupsCreated: 0,
+                daysActive: 1
+            };
+            
+        } catch (error) {
+            console.error('Error fetching user stats:', error);
+            return {
+                messagesSent: 0,
+                groupsCreated: 0,
+                daysActive: 1
+            };
+        }
+    }
+
+    // Метод для получения аватара пользователя
+    async fetchUserAvatar(username) {
+        try {
+            if (window.privateChatInstance) {
+                return await window.privateChatInstance.loadUserAvatarSafe(username);
+            }
+            
+            return '/default-avatar.png';
+        } catch (error) {
+            console.error('Error fetching user avatar:', error);
+            return '/default-avatar.png';
+        }
+    }
+
+    // Отображение профиля
     displayProfile(profileData) {
         const profileContent = document.getElementById('profileContent');
         if (!profileContent) {
@@ -597,7 +964,7 @@ class ProfileManager {
             });
 
             editBioBtn?.addEventListener('click', () => {
-                this.editBio();
+                this.editBio(username);
             });
 
             giftShopBtns.forEach(btn => {
@@ -614,7 +981,7 @@ class ProfileManager {
             });
 
             changeAvatarBtn?.addEventListener('click', () => {
-                this.changeAvatar();
+                this.changeAvatar(username);
             });
 
         } else {
@@ -657,116 +1024,6 @@ class ProfileManager {
         });
     }
 
-    // Метод для просмотра профиля
-    async viewProfile(username) {
-        try {
-            console.log('👤 Loading profile for:', username);
-            
-            // Показываем индикатор загрузки
-            this.showLoadingProfile();
-
-            // Открываем модальное окно
-            this.openProfileModal();
-
-            // Загружаем данные профиля
-            const [profileResponse, currencyResponse] = await Promise.allSettled([
-                fetch(`/api/user/${username}/profile`),
-                fetch(`/api/user/${username}/currency`)
-            ]);
-
-            let profileData = {
-                username: username,
-                avatar: '/default-avatar.png',
-                status: 'offline',
-                stats: {
-                    messagesSent: 0,
-                    groupsCreated: 0,
-                    daysActive: 1
-                },
-                bio: '',
-                balance: 0
-            };
-
-            // Обрабатываем данные профиля
-            if (profileResponse.status === 'fulfilled' && profileResponse.value.ok) {
-                const userProfile = await profileResponse.value.json();
-                Object.assign(profileData, userProfile);
-            }
-
-            // Обрабатываем баланс
-            if (currencyResponse.status === 'fulfilled' && currencyResponse.value.ok) {
-                const currencyData = await currencyResponse.value.json();
-                profileData.balance = currencyData.balance || 0;
-            }
-
-            // Проверяем онлайн статус
-            if (window.privateChatInstance && window.privateChatInstance.onlineUsers) {
-                profileData.status = window.privateChatInstance.onlineUsers.has(username) ? 'online' : 'offline';
-            }
-
-            // Обновляем аватар
-            if (window.privateChatInstance) {
-                profileData.avatar = await window.privateChatInstance.loadUserAvatarSafe(username);
-            }
-
-            this.currentProfile = profileData;
-            this.displayProfile(profileData);
-
-        } catch (error) {
-            console.error('❌ Error loading profile:', error);
-            this.showNotification('Ошибка загрузки профиля', 'error');
-            this.closeProfile();
-        }
-    }
-
-    // Открытие модального окна профиля
-    openProfileModal() {
-        const modal = document.getElementById('profileModal');
-        if (modal) {
-            modal.style.display = 'flex';
-            this.isModalOpen = true;
-            document.body.style.overflow = 'hidden';
-        }
-    }
-
-    // Закрытие модального окна профиля
-    closeProfile() {
-        const modal = document.getElementById('profileModal');
-        if (modal) {
-            modal.style.display = 'none';
-            this.isModalOpen = false;
-            document.body.style.overflow = '';
-            this.currentProfile = null;
-        }
-    }
-
-    showLoadingProfile() {
-        const profileContent = document.getElementById('profileContent');
-        if (!profileContent) return;
-
-        profileContent.innerHTML = `
-            <div style="text-align: center; padding: 60px 20px;">
-                <div style="font-size: 48px; margin-bottom: 20px;">👤</div>
-                <div style="color: #6c757d; font-size: 16px; margin-bottom: 10px;">Загрузка профиля...</div>
-                <div style="
-                    width: 40px;
-                    height: 40px;
-                    border: 3px solid #f3f3f3;
-                    border-top: 3px solid #007bff;
-                    border-radius: 50%;
-                    animation: spin 1s linear infinite;
-                    margin: 0 auto;
-                "></div>
-            </div>
-            <style>
-                @keyframes spin {
-                    0% { transform: rotate(0deg); }
-                    100% { transform: rotate(360deg); }
-                }
-            </style>
-        `;
-    }
-
     // Открытие модального окна отправки подарка
     openSendGiftModal(receiverUsername) {
         if (!window.privateChatInstance) {
@@ -793,6 +1050,8 @@ class ProfileManager {
 
     // Расширенное модальное окно редактирования
     showAdvancedEditModal() {
+        if (!this.currentProfile) return;
+        
         const modal = document.createElement('div');
         modal.className = 'edit-profile-modal';
         modal.style.cssText = `
@@ -827,7 +1086,7 @@ class ProfileManager {
                              alt="Аватар" 
                              style="width: 80px; height: 80px; border-radius: 50%; object-fit: cover;">
                         <div>
-                            <button onclick="profileManager.uploadNewAvatar()" style="
+                            <button onclick="window.profileManager.uploadNewAvatar()" style="
                                 padding: 8px 16px;
                                 background: #007bff;
                                 color: white;
@@ -837,7 +1096,7 @@ class ProfileManager {
                                 margin-bottom: 5px;
                                 display: block;
                             ">📁 Загрузить новый</button>
-                            <button onclick="profileManager.removeAvatar()" style="
+                            <button onclick="window.profileManager.removeAvatar()" style="
                                 padding: 8px 16px;
                                 background: #dc3545;
                                 color: white;
@@ -871,7 +1130,7 @@ class ProfileManager {
                         border-radius: 5px;
                         cursor: pointer;
                     ">Отмена</button>
-                    <button onclick="profileManager.saveProfileChanges()" style="
+                    <button onclick="window.profileManager.saveProfileChanges()" style="
                         padding: 10px 20px;
                         background: #28a745;
                         color: white;
@@ -913,13 +1172,29 @@ class ProfileManager {
                     if (response.ok) {
                         const result = await response.json();
                         this.showNotification('Аватар успешно обновлен', 'success');
-                        this.refreshProfile();
+                        
+                        // Обновляем аватар в профиле
+                        if (this.currentProfile) {
+                            this.currentProfile.avatar = result.avatarUrl || '/default-avatar.png';
+                            this.refreshProfile();
+                        }
+                        
                         // Закрываем модальное окно редактирования
                         document.querySelector('.edit-profile-modal')?.remove();
+                        
+                        // Отправляем событие обновления аватара
+                        const event = new CustomEvent('user_avatar_updated', {
+                            detail: {
+                                username: this.currentProfile.username,
+                                avatarUrl: this.currentProfile.avatar
+                            }
+                        });
+                        document.dispatchEvent(event);
                     } else {
                         throw new Error('Upload failed');
                     }
                 } catch (error) {
+                    console.error('Error uploading avatar:', error);
                     this.showNotification('Ошибка загрузки аватара', 'error');
                 }
             }
@@ -931,30 +1206,56 @@ class ProfileManager {
     async removeAvatar() {
         if (confirm('Удалить текущий аватар?')) {
             try {
-                // Здесь должна быть логика удаления аватара
-                this.showNotification('Функция удаления аватара будет добавлена', 'info');
+                const response = await fetch('/api/user/avatar', {
+                    method: 'DELETE'
+                });
+
+                if (response.ok) {
+                    this.showNotification('Аватар удален', 'success');
+                    
+                    // Обновляем аватар в профиле
+                    if (this.currentProfile) {
+                        this.currentProfile.avatar = '/default-avatar.png';
+                        this.refreshProfile();
+                    }
+                    
+                    // Закрываем модальное окно редактирования
+                    document.querySelector('.edit-profile-modal')?.remove();
+                } else {
+                    throw new Error('Delete failed');
+                }
             } catch (error) {
+                console.error('Error removing avatar:', error);
                 this.showNotification('Ошибка удаления аватара', 'error');
             }
         }
     }
 
     async saveProfileChanges() {
-        const newBio = document.getElementById('editBioText').value;
-        await this.updateBio(newBio);
-        document.querySelector('.edit-profile-modal')?.remove();
-    }
-
-    // Редактирование био
-    editBio() {
-        const currentBio = this.currentProfile?.bio || '';
-        const newBio = prompt('Введите информацию о себе:', currentBio);
-        if (newBio !== null) {
-            this.updateBio(newBio);
+        try {
+            const newBio = document.getElementById('editBioText').value.trim();
+            await this.updateBio(newBio);
+            document.querySelector('.edit-profile-modal')?.remove();
+        } catch (error) {
+            console.error('Error saving profile changes:', error);
+            this.showNotification('Ошибка сохранения изменений', 'error');
         }
     }
 
-    async updateBio(newBio) {
+    // Редактирование био
+    editBio(username) {
+        if (!username) username = this.getCurrentUser();
+        
+        const currentBio = this.currentProfile?.bio || '';
+        const newBio = prompt('Введите информацию о себе:', currentBio);
+        if (newBio !== null) {
+            this.updateBio(newBio, username);
+        }
+    }
+
+    async updateBio(newBio, username = null) {
+        if (!username) username = this.getCurrentUser();
+        
         try {
             const response = await fetch('/api/user/profile/bio', {
                 method: 'POST',
@@ -962,19 +1263,32 @@ class ProfileManager {
                     'Content-Type': 'application/json',
                 },
                 body: JSON.stringify({
-                    username: this.getCurrentUser(),
+                    username: username,
                     bio: newBio
                 })
             });
 
             if (response.ok) {
+                const result = await response.json();
                 this.showNotification('Информация обновлена', 'success');
-                if (this.currentProfile) {
+                
+                // Обновляем профиль если открыт
+                if (this.currentProfile && this.currentProfile.username === username) {
                     this.currentProfile.bio = newBio;
                     this.displayProfile(this.currentProfile);
+                    
+                    // Отправляем событие обновления био
+                    const event = new CustomEvent('user_bio_updated', {
+                        detail: {
+                            username: username,
+                            bio: newBio
+                        }
+                    });
+                    document.dispatchEvent(event);
                 }
             } else {
-                throw new Error('Failed to update bio');
+                const error = await response.text();
+                throw new Error(error || 'Failed to update bio');
             }
         } catch (error) {
             console.error('Error updating bio:', error);
@@ -983,7 +1297,7 @@ class ProfileManager {
     }
 
     // Смена аватара
-    changeAvatar() {
+    changeAvatar(username) {
         this.uploadNewAvatar();
     }
 
@@ -999,7 +1313,10 @@ class ProfileManager {
 
     // Вспомогательные методы
     getCurrentUser() {
-        return document.getElementById('username')?.textContent || 'anonymous';
+        return document.getElementById('username')?.textContent || 
+               window.USERNAME || 
+               localStorage.getItem('currentUsername') || 
+               'anonymous';
     }
 
     showNotification(message, type = 'info') {
@@ -1101,8 +1418,69 @@ class ProfileManager {
     openUserProfile(username) {
         this.viewProfile(username);
     }
+
+    // Метод для получения URL аватара группы
+    getDefaultGroupAvatarUrl() {
+        const svg = `
+            <svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200">
+                <rect width="200" height="200" fill="#6c757d" rx="100" ry="100"/>
+                <text x="100" y="110" text-anchor="middle" fill="white" font-size="80" font-family="Arial, sans-serif">👥</text>
+            </svg>
+        `;
+        
+        const encodedSVG = encodeURIComponent(svg);
+        return `data:image/svg+xml;charset=utf-8,${encodedSVG}`;
+    }
+
+    // Метод для загрузки баланса пользователя
+    async loadUserBalance(username) {
+        try {
+            const balance = await this.fetchUserBalance(username);
+            const balanceElement = document.getElementById('profileBalance');
+            if (balanceElement) {
+                balanceElement.textContent = `🪙 ${balance}`;
+            }
+        } catch (error) {
+            console.error('Error loading user balance:', error);
+            const balanceElement = document.getElementById('profileBalance');
+            if (balanceElement) {
+                balanceElement.textContent = '🪙 0';
+            }
+        }
+    }
+    
+    // Метод для получения статистики пользователя
+    async loadUserStats(username) {
+        try {
+            const stats = await this.fetchUserStats(username);
+            return stats;
+        } catch (error) {
+            console.error('Error loading user stats:', error);
+            return {
+                messagesSent: 0,
+                groupsCreated: 0,
+                daysActive: 1
+            };
+        }
+    }
+    
+    // Метод для получения данных пользователя
+    async loadUserData(username) {
+        try {
+            const userData = await this.fetchUserData(username);
+            return userData;
+        } catch (error) {
+            console.error('Error loading user data:', error);
+            return {
+                bio: '',
+                avatar: '/default-avatar.png'
+            };
+        }
+    }
 }
 
 // Создаем глобальный экземпляр
-window.profileManager = new ProfileManager();
+if (!window.profileManager) {
+    window.profileManager = new ProfileManager();
+}
 window.ProfileManager = ProfileManager;

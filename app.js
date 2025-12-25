@@ -1646,11 +1646,12 @@ app.get('/api/users/:username', authenticateToken, (req, res) => {
         res.status(500).json({ error: 'Failed to get user info' });
     }
 });
-
 app.get('/api/user/:username/avatar', authenticateToken, async (req, res) => {
     try {
         const { username } = req.params;
-        const user = users.find(u => u.username === username);
+        const cleanUsername = username.trim().replace(/[^a-zA-Z0-9_]/g, '');
+        
+        const user = users.find(u => u.username === cleanUsername);
         
         if (!user) {
             return res.status(404).json({ error: 'User not found' });
@@ -1675,7 +1676,7 @@ app.get('/api/user/:username/avatar', authenticateToken, async (req, res) => {
         console.error('❌ Avatar error:', error);
         res.redirect('/default-avatar.png');
     }
-});
+}); 
 
 app.post('/api/currency/save', authenticateToken, async (req, res) => {
     try {

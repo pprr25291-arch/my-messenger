@@ -81,7 +81,7 @@ class PrivateChat {
             this.createFallbackUI();
         }
     }
-  createUI() {
+createUI() {
     const privateChatContainer = document.getElementById('privateChat');
     if (!privateChatContainer) {
         console.error('❌ Private chat container not found');
@@ -124,7 +124,24 @@ class PrivateChat {
                 
                 <div id="activeChat" class="active-chat" style="display: none;">
                     <div class="chat-top-bar">
-                        <div class="chat-user-info">
+                        ${window.IS_MOBILE ? `
+                            <button class="mobile-back-btn" style="
+                                background: none;
+                                border: none;
+                                font-size: 24px;
+                                margin-right: 15px;
+                                cursor: pointer;
+                                color: #007bff;
+                                padding: 5px;
+                                display: flex;
+                                align-items: center;
+                                justify-content: center;
+                                min-width: 40px;
+                                height: 40px;
+                            ">←</button>
+                        ` : ''}
+                        
+                        <div class="chat-user-info" style="${window.IS_MOBILE ? 'flex: 1;' : ''}">
                             <span class="user-avatar">
                                 <img src="/default-avatar.png" class="user-avatar-img" alt="" style="width: 40px; height: 40px; border-radius: 50%;">
                             </span>
@@ -133,14 +150,16 @@ class PrivateChat {
                                 <span class="user-status" id="currentUserStatus">offline</span>
                             </div>
                         </div>
-                        <div class="chat-controls">
-                            <div class="call-buttons">
-                                <button class="video-call-btn" title="Видеозвонок">📹</button>
-                                <button class="audio-call-btn" title="Аудиозвонок">📞</button>
-                            </div>
                         
-                            <button class="close-chat" title="Закрыть чат">✕</button>
-                        </div>
+                        ${!window.IS_MOBILE ? `
+                            <div class="chat-controls">
+                                <div class="call-buttons">
+                                    <button class="video-call-btn" title="Видеозвонок">📹</button>
+                                    <button class="audio-call-btn" title="Аудиозвонок">📞</button>
+                                </div>
+                                <button class="close-chat" title="Закрыть чат">✕</button>
+                            </div>
+                        ` : ''}
                     </div>
                     
                     <div class="chat-messages-container">
@@ -266,7 +285,73 @@ async sendGiftToCurrentChat(gift) {
             return true;
         });
     }
+setupMobileEventListeners() {
+    if (!isMobileDevice()) return;
+    
+    // Обработчик кнопки "Назад" в мобильном чате
+    document.addEventListener('click', (e) => {
+        if (e.target.closest('.mobile-back-btn') || 
+            e.target.closest('.mobile-back-button') || 
+            e.target.closest('.back-to-chats')) {
+            this.closeCurrentChat();
+            return;
+        }
+    });
+}
+// Новый метод для скрытия/показа мобильной навигации
+toggleMobileNavigation(show) {
+    const mobileNav = document.querySelector('.mobile-nav');
+    if (mobileNav) {
+        if (show) {
+            mobileNav.style.display = 'flex';
+        } else {
+            mobileNav.style.display = 'none';
+        }
+    }
+}
+hideMobileNavigation() {
+    const mobileNav = document.querySelector('.mobile-nav');
+    if (mobileNav) {
+        // Плавное скрытие навигации
+        mobileNav.style.transition = 'all 0.3s ease';
+        mobileNav.style.transform = 'translateY(100%)';
+        mobileNav.style.opacity = '0';
+        
+        // Через 0.3 секунды скрываем полностью
+        setTimeout(() => {
+            mobileNav.style.display = 'none';
+        }, 300);
+        
+        console.log('📱 Mobile navigation hidden');
+    }
+}
 
+showMobileNavigation() {
+    const mobileNav = document.querySelector('.mobile-nav');
+    if (mobileNav) {
+        // Сначала показываем
+        mobileNav.style.display = 'flex';
+        
+        // Затем анимируем появление
+        setTimeout(() => {
+            mobileNav.style.transition = 'all 0.3s ease';
+            mobileNav.style.transform = 'translateY(0)';
+            mobileNav.style.opacity = '1';
+        }, 10);
+        
+        console.log('📱 Mobile navigation shown');
+        
+        // Обновляем активную кнопку
+        this.updateMobileNavActive('chats');
+    }
+}
+// Метод для переключения видимости навигации
+toggleMobileNavigation(show) {
+    const mobileNav = document.querySelector('.mobile-nav');
+    if (mobileNav) {
+        mobileNav.style.display = show ? 'flex' : 'none';
+    }
+}
 setupCurrencyButtons() {
     // Обработка всех кнопок магазина подарков
     document.querySelectorAll('.gift-shop-btn').forEach(btn => {
@@ -567,7 +652,14 @@ showCurrencyPanel() {
     });
 }
 async loadUserAvatar(username) {
-    if (!username) return this.getDefaultAvatarUrl();
+    // Проверяем, не является ли это группой
+    if (this.isGroupName(username)) {
+        return this.getDefaultGroupAvatarUrl();
+    }
+    
+    if (!username || username.includes('👥') || username.includes('группа')) {
+        return this.getDefaultAvatarUrl();
+    }
     
     // Проверяем кэш
     if (this.avatarCache.has(username)) {
@@ -577,12 +669,12 @@ async loadUserAvatar(username) {
     try {
         // Пробуем несколько эндпоинтов
         const endpoints = [
-            `/api/user/${username}/avatar`,
-            `/api/users/${username}/avatar`, 
-            `/uploads/avatars/${username}.jpg`,
-            `/uploads/avatars/${username}.png`,
-            `/uploads/avatars/avatar_${username}.jpg`,
-            `/uploads/avatars/avatar_${username}.png`
+            `/api/user/${encodeURIComponent(username)}/avatar`,
+            `/api/users/${encodeURIComponent(username)}/avatar`, 
+            `/uploads/avatars/avatar_${encodeURIComponent(username)}.jpg`,
+            `/uploads/avatars/avatar_${encodeURIComponent(username)}.png`,
+            `/uploads/avatars/${encodeURIComponent(username)}.jpg`,
+            `/uploads/avatars/${encodeURIComponent(username)}.png`
         ];
 
         for (const endpoint of endpoints) {
@@ -597,6 +689,7 @@ async loadUserAvatar(username) {
                     return endpoint;
                 }
             } catch (error) {
+                console.log(`⚠️ Endpoint ${endpoint} failed for ${username}:`, error.message);
                 continue;
             }
         }
@@ -607,7 +700,7 @@ async loadUserAvatar(username) {
         return defaultAvatar;
         
     } catch (error) {
-        console.error('Error loading avatar:', error);
+        console.error('Error loading avatar for', username, ':', error);
         return this.getDefaultAvatarUrl();
     }
 }
@@ -615,7 +708,19 @@ async loadUserAvatar(username) {
 clearAvatarCache() {
     this.avatarCache.clear();
 }
-
+getDefaultGroupAvatarUrl() {
+    // Создаем SVG группового аватара без использования btoa
+    const svg = `
+        <svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200">
+            <rect width="200" height="200" fill="#6c757d" rx="100" ry="100"/>
+            <text x="100" y="110" text-anchor="middle" fill="white" font-size="80" font-family="Arial, sans-serif">👥</text>
+        </svg>
+    `;
+    
+    // Кодируем SVG для использования в data URL
+    const encodedSVG = encodeURIComponent(svg);
+    return `data:image/svg+xml;charset=utf-8,${encodedSVG}`;
+}
 async updateUserAvatar(username) {
     this.avatarCache.delete(username);
     return await this.loadUserAvatar(username);
@@ -644,7 +749,14 @@ async checkImageExists(url) {
     });
 }
 async loadUserAvatarSafe(username, maxRetries = 2) {
-    if (!username) return this.getDefaultAvatarUrl();
+    // Проверяем, не является ли это группой
+    if (this.isGroupName(username)) {
+        return this.getDefaultGroupAvatarUrl();
+    }
+    
+    if (!username || username.includes('👥') || username.includes('группа')) {
+        return this.getDefaultAvatarUrl();
+    }
 
     if (this.avatarCache.has(username)) {
         const cached = this.avatarCache.get(username);
@@ -677,18 +789,27 @@ async loadUserAvatarSafe(username, maxRetries = 2) {
     this.avatarCache.set(username, defaultAvatar);
     return defaultAvatar;
 }
-
 handleAvatarError(img) {
     console.log('❌ Avatar image failed to load, using default');
-    img.src = this.getDefaultAvatarUrl();
+    
+    // Проверяем, не является ли это группой
+    const isGroup = img.alt.includes('👥') || img.alt.includes('группа') || 
+                   img.closest('.group-item') || 
+                   this.isGroupName(img.alt);
+    
+    if (isGroup) {
+        img.src = this.getDefaultGroupAvatarUrl();
+    } else {
+        img.src = this.getDefaultAvatarUrl();
+    }
+    
     img.onerror = null; // Предотвращаем бесконечный цикл ошибок
     
     // Обновляем кэш
     if (img.alt) {
-        this.avatarCache.set(img.alt, this.getDefaultAvatarUrl());
+        this.avatarCache.set(img.alt, img.src);
     }
 }
-
     // Исправленный метод загрузки групп
     async loadUserGroups() {
         try {
@@ -1521,94 +1642,11 @@ setupModalEventListeners() {
         });
     });
 }
-    setupEventListeners() {
-        document.addEventListener('click', (e) => {
-            if (e.target.classList.contains('video-call-btn')) {
-                const targetUser = this.getCurrentChatUser();
-                if (targetUser) {
-                    window.callManager.initiateCall(targetUser, 'video');
-                }
-            } else if (e.target.classList.contains('audio-call-btn')) {
-                const targetUser = this.getCurrentChatUser();
-                if (targetUser) {
-                    window.callManager.initiateCall(targetUser, 'audio');
-                }
-            }
-        });
- document.addEventListener('click', (e) => {
-        const avatar = e.target.closest('.user-avatar-img, .conversation-avatar, .search-avatar-img');
-        if (avatar && avatar.alt) {
-            e.preventDefault();
-            e.stopPropagation();
-            this.openUserProfile(avatar.alt);
-        }
-    });
-        document.addEventListener('click', (e) => {
-            if (e.target.id === 'searchClear') {
-                const userSearch = document.getElementById('userSearch');
-                const results = document.getElementById('searchResults');
-                if (userSearch) userSearch.value = '';
-                if (results) {
-                    results.innerHTML = '';
-                    results.style.display = 'none';
-                }
-            }
-
-            if (e.target.classList.contains('send-button')) {
-                this.sendPrivateMessage();
-            }
-
-            if (e.target.classList.contains('close-chat')) {
-                this.closeCurrentChat();
-            }
-
-            if (e.target.classList.contains('attach-file')) {
-                const fileInput = document.getElementById('fileInput');
-                if (fileInput) fileInput.click();
-            }
-
-            if (e.target.classList.contains('admin-panel-btn')) {
-                this.toggleAdminPanel();
-            }
-
-            if (e.target.classList.contains('emoji-picker-btn')) {
-                this.toggleEmojiPicker();
-            }
-        
-           else if (e.target.classList.contains('gift-shop-btn')) {
-            if (window.currencyManager) {
-                window.currencyManager.openGiftShop();
-            }
-        }
-        else if (e.target.classList.contains('currency-btn')) {
-            this.showCurrencyPanel();
-        }
-    });
-
-        const userSearch = document.getElementById('userSearch');
-        if (userSearch) {
-            userSearch.addEventListener('input', this.debounce(() => {
-                this.searchUsers();
-            }, 300));
-        }
-
-        const messageInput = document.getElementById('privateMessageInput');
-        if (messageInput) {
-            messageInput.addEventListener('keypress', (e) => {
-                if (e.key === 'Enter') this.sendPrivateMessage();
-            });
-        }
-
-        this.setupFileInput();
-
-        document.addEventListener('click', (e) => {
-            const searchContainer = document.querySelector('.search-container');
-            if (searchContainer && !searchContainer.contains(e.target)) {
-                const results = document.getElementById('searchResults');
-                if (results) results.style.display = 'none';
-            }
-        });
-            document.addEventListener('click', (e) => {
+setupEventListeners() {
+    // Убираем глобальный обработчик document и добавляем конкретные
+    
+    // Обработчики для кнопок звонков
+    document.addEventListener('click', (e) => {
         if (e.target.classList.contains('video-call-btn')) {
             const targetUser = this.getCurrentChatUser();
             if (targetUser) {
@@ -1620,18 +1658,330 @@ setupModalEventListeners() {
                 window.callManager.initiateCall(targetUser, 'audio');
             }
         }
-    });
-    document.addEventListener('click', (e) => {
+        
+        // Обработчик для аватаров ТОЛЬКО пользователей (не групп)
         const avatar = e.target.closest('.user-avatar-img, .conversation-avatar, .search-avatar-img');
         if (avatar && avatar.alt) {
             e.preventDefault();
             e.stopPropagation();
-            this.openUserProfile(avatar.alt);
+            
+            // Проверяем, не является ли это группой
+            const username = avatar.alt;
+            const isGroup = this.isGroupName(username);
+            
+            if (!isGroup) {
+                this.openUserProfile(username);
+            } else {
+                console.log('⏩ Skipping profile for group:', username);
+            }
         }
     });
-
+    
+    // Обработчики для других элементов через делегирование
+    this.setupDelegatedEventListeners();
+    
+    // Отдельный обработчик для поля поиска
+    const userSearch = document.getElementById('userSearch');
+    if (userSearch) {
+        userSearch.addEventListener('input', this.debounce(() => {
+            this.searchUsers();
+        }, 300));
     }
-    // Добавьте эти методы в класс PrivateChat
+
+    // Отдельный обработчик для поля ввода сообщения
+    const messageInput = document.getElementById('privateMessageInput');
+    if (messageInput) {
+        messageInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') this.sendPrivateMessage();
+        });
+    }
+
+    this.setupFileInput();
+    
+    // Настраиваем мобильные обработчики
+    if (isMobileDevice()) {
+        this.setupMobileEventListeners();
+    }
+}
+isGroupName(username) {
+    if (!username) return false;
+    
+    const groupSigns = [
+        username.includes('👥'),
+        username.includes('группа'),
+        username.includes('Group'),
+        username.includes('(группа)'),
+        username.startsWith('group_')
+    ];
+    
+    return groupSigns.some(sign => sign === true);
+}
+    // Метод для проверки, является ли элемент частью группы
+isGroupElement(element) {
+    if (!element) return false;
+    
+    const groupSigns = [
+        element.classList.contains('group-item'),
+        element.classList.contains('group-avatar'),
+        element.closest('.group-item'),
+        element.getAttribute('data-is-group') === 'true',
+        element.innerHTML.includes('👥'),
+        element.textContent.includes('участников'),
+        element.closest('.conv-meta')
+    ];
+    
+    return groupSigns.some(sign => sign === true);
+}
+// Метод для настройки обработчиков эмодзи
+setupEmojiPickerListeners() {
+    const emojiPicker = document.getElementById('emojiPicker');
+    if (!emojiPicker) return;
+    
+    const emojiPickerBtn = document.querySelector('.emoji-picker-btn');
+    if (emojiPickerBtn) {
+        emojiPickerBtn.addEventListener('click', () => {
+            this.toggleEmojiPicker();
+        });
+    }
+    
+    // Закрытие эмодзи пикера при клике вне его
+    document.addEventListener('click', (e) => {
+        if (!emojiPicker.contains(e.target) && 
+            !e.target.classList.contains('emoji-picker-btn') && 
+            !e.target.closest('.emoji-picker-btn')) {
+            emojiPicker.style.display = 'none';
+        }
+    });
+}
+
+// Метод для открытия голосового рекордера
+openVoiceRecorder() {
+    if (!window.voiceMessageManager) {
+        console.log('🎤 Creating VoiceMessageManager instance...');
+        window.voiceMessageManager = new VoiceMessageManager();
+    }
+    
+    const voiceRecordModal = document.getElementById('voiceRecordModal');
+    if (voiceRecordModal) {
+        voiceRecordModal.style.display = 'flex';
+        window.voiceMessageManager.initRecording();
+    }
+}
+
+// Метод для получения текущего пользователя чата
+getCurrentChatUser() {
+    if (this.currentChat) {
+        return this.currentChat;
+    }
+    const currentChatUserElement = document.getElementById('currentChatUser');
+    if (currentChatUserElement) {
+        return currentChatUserElement.textContent.trim();
+    }
+    this.showNotification('Выберите чат для звонка', 'error');
+    return null;
+}
+async startChat(username, isGroup = false, groupId = null) {
+    console.log('💬 Starting chat:', { username, isGroup, groupId });
+    
+    if (isGroup) {
+        const group = {
+            id: groupId,
+            name: username
+        };
+        
+        if (window.groupChatManager) {
+            await window.groupChatManager.openGroupChat(group);
+        }
+    } else {
+        this.currentChat = username;
+        
+        const noChatSelected = document.getElementById('noChatSelected');
+        const activeChat = document.getElementById('activeChat');
+        const groupChatContainer = document.getElementById('groupChatContainer');
+        
+        // Скрываем "нет выбранного чата"
+        if (noChatSelected) noChatSelected.style.display = 'none';
+        
+        // Показываем активный чат
+        if (activeChat) {
+            activeChat.style.display = 'flex';
+        }
+        
+        // Скрываем групповой чат если он был открыт
+        if (groupChatContainer) {
+            groupChatContainer.style.display = 'none';
+        }
+        
+        // Обновляем заголовок чата
+        this.updateChatHeader(username);
+        
+        // На мобильных устройствах переключаемся на экран чата
+        if (isMobileDevice()) {
+            const sidebar = document.querySelector('.private-chat-sidebar');
+            const mainChat = document.querySelector('.private-chat-main');
+            
+            if (sidebar) {
+                sidebar.classList.add('hidden');
+                sidebar.style.display = 'none';
+            }
+            if (mainChat) {
+                mainChat.classList.add('active');
+                mainChat.style.display = 'flex';
+            }
+            
+            // Скрываем мобильную навигацию при входе в чат
+            this.hideMobileNavigation();
+            
+            // Обновляем активную кнопку навигации
+            updateMobileNavActive('chat');
+        }
+        
+        try {
+            // Загружаем историю сообщений
+            const response = await fetch(`/api/messages/private/${username}`);
+            if (response.ok) {
+                const messages = await response.json();
+                this.displayMessageHistory(messages);
+            } else {
+                throw new Error(`HTTP ${response.status}`);
+            }
+        } catch (error) {
+            console.error('❌ Error loading messages:', error);
+            const container = document.getElementById('privateMessages');
+            if (container) {
+                container.innerHTML = '<div class="no-messages">📝 Начните общение первым!</div>';
+            }
+        }
+    }
+    
+    // Обновляем список бесед
+    this.loadConversations();
+    
+    console.log('✅ Chat started successfully');
+}
+closeCurrentChat() {
+    this.currentChat = null;
+    
+    const noChatSelected = document.getElementById('noChatSelected');
+    const activeChat = document.getElementById('activeChat');
+    const groupChatContainer = document.getElementById('groupChatContainer');
+    
+    if (isMobileDevice()) {
+        // Для мобильных возвращаемся к списку чатов
+        const sidebar = document.querySelector('.private-chat-sidebar');
+        const mainChat = document.querySelector('.private-chat-main');
+        
+        if (sidebar) {
+            sidebar.classList.remove('hidden');
+            sidebar.style.display = 'block';
+        }
+        if (mainChat) {
+            mainChat.classList.remove('active');
+            mainChat.style.display = 'none';
+        }
+        
+        if (noChatSelected) noChatSelected.style.display = 'flex';
+        if (activeChat) activeChat.style.display = 'none';
+        if (groupChatContainer) groupChatContainer.style.display = 'none';
+        
+        // Показываем мобильную навигацию при закрытии чата
+        this.showMobileNavigation();
+        
+        // Обновляем активную кнопку навигации
+        updateMobileNavActive('chats');
+    } else {
+        // Для десктопа стандартная логика
+        if (noChatSelected && !groupChatContainer?.style.display !== 'flex') {
+            noChatSelected.style.display = 'flex';
+        }
+        if (activeChat) activeChat.style.display = 'none';
+    }
+    
+    // Очищаем сообщения
+    const privateMessages = document.getElementById('privateMessages');
+    if (privateMessages) privateMessages.innerHTML = '<div class="no-messages">📝 Начните общение первым!</div>';
+    
+    // Очищаем поле ввода
+    const messageInput = document.getElementById('privateMessageInput');
+    if (messageInput) messageInput.value = '';
+    
+    // Очищаем превью файлов
+    const filePreview = document.getElementById('filePreview');
+    if (filePreview) {
+        filePreview.innerHTML = '';
+        filePreview.style.display = 'none';
+    }
+    
+    // Обновляем список бесед
+    this.loadConversations();
+}
+setupDelegatedEventListeners() {
+    // Делегирование событий для списка бесед
+    const conversationsList = document.getElementById('conversationsList');
+    if (conversationsList) {
+        conversationsList.addEventListener('click', (e) => {
+            const conversationItem = e.target.closest('.conversation-item');
+            if (conversationItem) {
+                const username = conversationItem.querySelector('.username-text')?.textContent || 
+                                conversationItem.querySelector('.conv-name')?.textContent;
+                
+                // Проверяем, не является ли это группой
+                const isGroup = conversationItem.classList.contains('group-item') ||
+                               conversationItem.querySelector('.group-avatar') ||
+                               conversationItem.querySelector('.group-name-text');
+                
+                if (username && !isGroup) {
+                    this.startChat(username.trim());
+                }
+            }
+        });
+    }
+    
+    // Делегирование для кнопки закрытия чата
+    document.addEventListener('click', (e) => {
+        if (e.target.closest('.close-chat')) {
+            this.closeCurrentChat();
+        }
+        
+        // Кнопка отправки сообщения
+        if (e.target.closest('.send-button')) {
+            this.sendPrivateMessage();
+        }
+        
+        // Кнопка прикрепления файла
+        if (e.target.closest('.attach-file')) {
+            const fileInput = document.getElementById('fileInput');
+            if (fileInput) {
+                fileInput.click();
+            }
+        }
+        
+        // Кнопка админ панели
+        if (e.target.closest('.admin-panel-btn')) {
+            this.toggleAdminPanel();
+        }
+        
+        // Кнопка голосового сообщения
+        if (e.target.closest('.voice-message-btn')) {
+            this.openVoiceRecorder();
+        }
+    });
+    
+    // Обработчик для очистки поиска
+    const searchClear = document.getElementById('searchClear');
+    if (searchClear) {
+        searchClear.addEventListener('click', () => {
+            const userSearch = document.getElementById('userSearch');
+            const searchResults = document.getElementById('searchResults');
+            
+            if (userSearch) userSearch.value = '';
+            if (searchResults) {
+                searchResults.style.display = 'none';
+                searchResults.innerHTML = '';
+            }
+        });
+    }
+}
 setupMobileChatHandlers() {
     if (!isMobileDevice()) return;
     
@@ -1668,10 +2018,15 @@ addMobileBackButton() {
         backButton.style.cssText = `
             background: none;
             border: none;
-            font-size: 20px;
+            font-size: 24px;
             margin-right: 10px;
             cursor: pointer;
             padding: 5px;
+            min-width: 40px;
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         `;
         
         backButton.addEventListener('click', () => {
@@ -1679,7 +2034,7 @@ addMobileBackButton() {
             const sidebar = document.querySelector('.private-chat-sidebar');
             const mainChat = document.querySelector('.private-chat-main');
             
-            if (sidebar) sidebar.classList.remove('hidden');
+            if (sidebar) sidebar.classList.add('active');
             if (mainChat) mainChat.classList.remove('active');
             
             updateMobileNavActive('chats');
@@ -1689,51 +2044,6 @@ addMobileBackButton() {
     }
 }
 
-// В методе closeCurrentChat добавьте мобильную логику:
-closeCurrentChat() {
-    this.currentChat = null;
-    
-    const noChatSelected = document.getElementById('noChatSelected');
-    const activeChat = document.getElementById('activeChat');
-    const groupChatContainer = document.getElementById('groupChatContainer');
-    
-    if (isMobileDevice()) {
-        // Для мобильных возвращаемся к списку чатов
-        const sidebar = document.querySelector('.private-chat-sidebar');
-        const mainChat = document.querySelector('.private-chat-main');
-        
-        if (sidebar) sidebar.classList.remove('hidden');
-        if (mainChat) mainChat.classList.remove('active');
-        
-        if (noChatSelected) noChatSelected.style.display = 'none';
-        if (activeChat) activeChat.style.display = 'none';
-        if (groupChatContainer) groupChatContainer.style.display = 'none';
-    } else {
-        // Для десктопа стандартная логика
-        if (noChatSelected && !groupChatContainer?.style.display !== 'flex') {
-            noChatSelected.style.display = 'flex';
-        }
-        if (activeChat) activeChat.style.display = 'none';
-    }
-    
-    // Очищаем сообщения
-    const privateMessages = document.getElementById('privateMessages');
-    if (privateMessages) privateMessages.innerHTML = '<div class="no-messages">📝 Начните общение первым!</div>';
-    
-    // Очищаем поле ввода
-    const messageInput = document.getElementById('privateMessageInput');
-    if (messageInput) messageInput.value = '';
-    
-    // Очищаем превью файлов
-    const filePreview = document.getElementById('filePreview');
-    if (filePreview) {
-        filePreview.innerHTML = '';
-        filePreview.style.display = 'none';
-    }
-    
-    // Обновляем список бесед
-    this.loadConversations();
-}
 setupAdminCurrencyHandlers() {
     document.addEventListener('click', (e) => {
         if (e.target.classList.contains('btn-success') && e.target.onclick) {
@@ -2514,6 +2824,11 @@ displaySearchResults(users) {
     users.forEach(user => {
         if (!user || !user.username) return;
         
+        // Пропускаем группы в результатах поиска
+        if (user.isGroup || user.username.includes('группа') || user.groupName) {
+            return;
+        }
+        
         const isOnline = user.isOnline === true;
         const statusClass = isOnline ? 'online' : 'offline';
         const statusText = isOnline ? 'online' : 'offline';
@@ -2525,7 +2840,10 @@ displaySearchResults(users) {
         
         userElement.innerHTML = `
             <div class="search-user-info">
-                <img src="${avatarUrl}" class="search-avatar-img" alt="${user.username}" onerror="this.src='/default-avatar.png'">
+                <img src="${avatarUrl}" class="search-avatar-img" alt="${user.username}" 
+                     onerror="this.src='/default-avatar.png'"
+                     data-username="${user.username}"
+                     data-is-group="false">
                 <div class="search-user-details">
                     <span class="search-username">${user.username}</span>
                     <span class="search-user-status ${statusClass}">${statusText}</span>
@@ -2537,6 +2855,15 @@ displaySearchResults(users) {
         const chatButton = userElement.querySelector('.start-chat-btn');
         
         userElement.addEventListener('click', (e) => {
+            // Если кликнули на аватар - открываем профиль
+            const avatar = e.target.closest('.search-avatar-img');
+            if (avatar) {
+                e.preventDefault();
+                e.stopPropagation();
+                this.openUserProfile(user.username);
+                return;
+            }
+            
             if (!e.target.classList.contains('start-chat-btn')) {
                 this.startChat(user.username);
                 resultsContainer.style.display = 'none';
@@ -2554,109 +2881,304 @@ displaySearchResults(users) {
     
     resultsContainer.style.display = 'block';
 }
-    async startChat(username, isGroup = false, groupId = null) {
-        console.log('💬 Starting chat:', { username, isGroup, groupId });
+isGroupChat(username) {
+    // Проверяем различные признаки группы
+    if (!username) return false;
+    
+    const signs = [
+        username.startsWith('group_'),
+        username.includes('группа'),
+        username.includes('Group'),
+        username.includes('(группа)'),
+        this.conversations.some(conv => conv.isGroup && conv.name === username),
+        this.conversations.some(conv => conv.isGroup && conv.username === username),
+        window.groupChatManager?.groups?.has(username)
+    ];
+    
+    return signs.some(sign => sign === true);
+}
+async showMobileChatScreen(username, isGroup = false, groupId = null) {
+    if (isGroup) {
+        const group = {
+            id: groupId,
+            name: username
+        };
         
-        if (isGroup) {
-            const group = {
-                id: groupId,
-                name: username
-            };
-            
-            if (window.groupChatManager) {
-                await window.groupChatManager.openGroupChat(group);
-            } else {
-                console.error('❌ GroupChatManager not available');
-                this.showNotification('Ошибка открытия группового чата', 'error');
-            }
-        } else {
-            console.log('👤 Opening private chat with:', username);
-            
-            if (window.groupChatManager?.currentGroup) {
-                window.groupChatManager.closeGroupChat();
-            }
-            
-            this.currentChat = username;
-            
-            const searchResults = document.getElementById('searchResults');
-            const userSearch = document.getElementById('userSearch');
-            const noChatSelected = document.getElementById('noChatSelected');
-            const activeChat = document.getElementById('activeChat');
-            const groupChatContainer = document.getElementById('groupChatContainer');
-            
-            if (noChatSelected) noChatSelected.style.display = 'none';
-            if (activeChat) activeChat.style.display = 'flex';
-            if (groupChatContainer) groupChatContainer.style.display = 'none';
-            if (searchResults) {
-                searchResults.innerHTML = '';
-                searchResults.style.display = 'none';
-            }
-            if (userSearch) userSearch.value = '';
-            
-            const currentChatUser = document.getElementById('currentChatUser');
-            const currentUserStatus = document.getElementById('currentUserStatus');
-            
-            if (currentChatUser) currentChatUser.textContent = username;
-            if (currentUserStatus) {
-                const isOnline = this.onlineUsers.has(username);
-                currentUserStatus.textContent = isOnline ? 'online' : 'offline';
-                currentUserStatus.className = `user-status ${isOnline ? 'online' : 'offline'}`;
-            }
-            
-            console.log('🖼️ Loading avatar for user:', username);
-            this.loadUserAvatar(username).then(avatarUrl => {
-                console.log('✅ Avatar URL loaded:', avatarUrl);
-                const userAvatar = document.querySelector('.chat-user-info .user-avatar');
-                if (userAvatar) {
-                    userAvatar.innerHTML = '';
-                    const img = document.createElement('img');
-                    img.src = avatarUrl;
-                    img.className = 'user-avatar-img';
-                    img.alt = username;
-                    img.onerror = () => this.handleAvatarError(img);
-                    userAvatar.appendChild(img);
-                    console.log('✅ Avatar set in chat header');
-                } else {
-                    console.error('❌ User avatar element not found in chat header');
-                }
-            }).catch((error) => {
-                console.error('❌ Error loading avatar:', error);
-                const userAvatar = document.querySelector('.chat-user-info .user-avatar');
-                if (userAvatar) {
-                    userAvatar.innerHTML = `<img src="/default-avatar.png" class="user-avatar-img" alt="${username}">`;
-                    console.log('✅ Default avatar set due to error');
-                }
-            });
-            
-            try {
-                console.log('📨 Loading messages for user:', username);
-                const response = await fetch(`/api/messages/private/${username}`);
-                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        if (window.groupChatManager) {
+            await window.groupChatManager.openGroupChat(group);
+        }
+    } else {
+        this.currentChat = username;
+        
+        // Показываем основной чат, скрываем сайдбар
+        const sidebar = document.querySelector('.private-chat-sidebar');
+        const mainChat = document.querySelector('.private-chat-main');
+        const noChatSelected = document.getElementById('noChatSelected');
+        const activeChat = document.getElementById('activeChat');
+        
+        if (sidebar) {
+            sidebar.classList.add('hidden');
+            sidebar.style.display = 'none';
+        }
+        if (mainChat) {
+            mainChat.classList.add('active');
+            mainChat.style.display = 'flex';
+        }
+        if (noChatSelected) noChatSelected.style.display = 'none';
+        if (activeChat) activeChat.style.display = 'flex';
+        
+        // Обновляем информацию в чате
+        this.updateChatHeader(username);
+        
+        // СКРЫВАЕМ мобильную навигацию при входе в чат
+        this.hideMobileNavigation();
+        
+        try {
+            const response = await fetch(`/api/messages/private/${username}`);
+            if (response.ok) {
                 const messages = await response.json();
-                console.log('✅ Messages loaded:', messages.length);
                 this.displayMessageHistory(messages);
-            } catch (error) {
-                console.error('❌ Error loading messages:', error);
-                this.showNotification('Ошибка загрузки сообщений', 'error');
-                
-                const container = document.getElementById('privateMessages');
-                if (container) {
-                    container.innerHTML = '<div class="no-messages">📝 Начните общение первым!</div>';
-                }
             }
+        } catch (error) {
+            console.error('❌ Error loading messages:', error);
+            const container = document.getElementById('privateMessages');
+            if (container) {
+                container.innerHTML = '<div class="no-messages">📝 Начните общение первым!</div>';
+            }
+        }
+    }
+    
+    // Обновляем мобильную навигацию
+    updateMobileNavActive('chat');
+}
+
+async showChatScreen(username, isGroup = false, groupId = null) {
+    console.log('📱 Showing chat screen for:', { username, isGroup, groupId });
+    
+    if (isGroup) {
+        const group = {
+            id: groupId,
+            name: username
+        };
+        
+        if (window.groupChatManager) {
+            await window.groupChatManager.openGroupChat(group);
             
-            setTimeout(() => {
-                const messageInput = document.getElementById('privateMessageInput');
-                if (messageInput) {
-                    messageInput.focus();
-                }
-            }, 100);
+            // Скрываем мобильную навигацию для группового чата
+            if (isMobileDevice()) {
+                this.hideMobileNavigation();
+            }
+        }
+    } else {
+        this.currentChat = username;
+        
+        // Показываем основной чат, скрываем сайдбар
+        const sidebar = document.querySelector('.private-chat-sidebar');
+        const mainChat = document.querySelector('.private-chat-main');
+        const noChatSelected = document.getElementById('noChatSelected');
+        const activeChat = document.getElementById('activeChat');
+        
+        if (sidebar) {
+            sidebar.classList.add('hidden');
+            sidebar.style.display = 'none';
+        }
+        if (mainChat) {
+            mainChat.classList.add('active');
+            mainChat.style.display = 'flex';
+        }
+        if (noChatSelected) noChatSelected.style.display = 'none';
+        if (activeChat) activeChat.style.display = 'flex';
+        
+        // Обновляем информацию в чате
+        this.updateChatHeader(username);
+        
+        // СКРЫВАЕМ мобильную навигацию при входе в чат
+        if (isMobileDevice()) {
+            this.hideMobileNavigation();
         }
         
-        this.loadConversations();
-        
-        console.log('✅ Chat started successfully');
+        try {
+            const response = await fetch(`/api/messages/private/${username}`);
+            if (response.ok) {
+                const messages = await response.json();
+                this.displayMessageHistory(messages);
+            }
+        } catch (error) {
+            console.error('❌ Error loading messages:', error);
+            const container = document.getElementById('privateMessages');
+            if (container) {
+                container.innerHTML = '<div class="no-messages">📝 Начните общение первым!</div>';
+            }
+        }
     }
+    
+    // Обновляем мобильную навигацию
+    if (isMobileDevice()) {
+        updateMobileNavActive('chat');
+    }
+    
+    console.log('✅ Chat screen shown successfully');
+}
+
+// Метод для десктопа
+async showDesktopChat(username, isGroup = false, groupId = null) {
+    if (isGroup) {
+        const group = {
+            id: groupId,
+            name: username
+        };
+        
+        if (window.groupChatManager) {
+            await window.groupChatManager.openGroupChat(group);
+        }
+    } else {
+        this.currentChat = username;
+        
+        const noChatSelected = document.getElementById('noChatSelected');
+        const activeChat = document.getElementById('activeChat');
+        const groupChatContainer = document.getElementById('groupChatContainer');
+        
+        if (noChatSelected) noChatSelected.style.display = 'none';
+        if (activeChat) activeChat.style.display = 'flex';
+        if (groupChatContainer) groupChatContainer.style.display = 'none';
+        
+        this.updateChatHeader(username);
+        
+        try {
+            const response = await fetch(`/api/messages/private/${username}`);
+            if (response.ok) {
+                const messages = await response.json();
+                this.displayMessageHistory(messages);
+            }
+        } catch (error) {
+            console.error('❌ Error loading messages:', error);
+            const container = document.getElementById('privateMessages');
+            if (container) {
+                container.innerHTML = '<div class="no-messages">📝 Начните общение первым!</div>';
+            }
+        }
+    }
+}
+
+// Новый метод для мобильного экрана чата
+async showChatScreen(username, isGroup = false, groupId = null) {
+    if (isGroup) {
+        const group = {
+            id: groupId,
+            name: username
+        };
+        
+        if (window.groupChatManager) {
+            await window.groupChatManager.openGroupChat(group);
+        }
+    } else {
+        this.currentChat = username;
+        
+        // Показываем основной чат, скрываем сайдбар
+        const sidebar = document.querySelector('.private-chat-sidebar');
+        const mainChat = document.querySelector('.private-chat-main');
+        const noChatSelected = document.getElementById('noChatSelected');
+        const activeChat = document.getElementById('activeChat');
+        
+        if (sidebar) sidebar.classList.remove('active');
+        if (mainChat) mainChat.classList.add('active');
+        if (noChatSelected) noChatSelected.style.display = 'none';
+        if (activeChat) activeChat.style.display = 'flex';
+        
+        // Обновляем информацию в чате
+        this.updateChatHeader(username);
+        
+        try {
+            const response = await fetch(`/api/messages/private/${username}`);
+            if (response.ok) {
+                const messages = await response.json();
+                this.displayMessageHistory(messages);
+            }
+        } catch (error) {
+            console.error('❌ Error loading messages:', error);
+            const container = document.getElementById('privateMessages');
+            if (container) {
+                container.innerHTML = '<div class="no-messages">📝 Начните общение первым!</div>';
+            }
+        }
+    }
+    
+    // Обновляем мобильную навигацию
+    updateMobileNavActive('chat');
+}
+
+// Метод для десктопа
+async showDesktopChat(username, isGroup = false, groupId = null) {
+    if (isGroup) {
+        const group = {
+            id: groupId,
+            name: username
+        };
+        
+        if (window.groupChatManager) {
+            await window.groupChatManager.openGroupChat(group);
+        }
+    } else {
+        this.currentChat = username;
+        
+        const noChatSelected = document.getElementById('noChatSelected');
+        const activeChat = document.getElementById('activeChat');
+        const groupChatContainer = document.getElementById('groupChatContainer');
+        
+        if (noChatSelected) noChatSelected.style.display = 'none';
+        if (activeChat) activeChat.style.display = 'flex';
+        if (groupChatContainer) groupChatContainer.style.display = 'none';
+        
+        this.updateChatHeader(username);
+        
+        try {
+            const response = await fetch(`/api/messages/private/${username}`);
+            if (response.ok) {
+                const messages = await response.json();
+                this.displayMessageHistory(messages);
+            }
+        } catch (error) {
+            console.error('❌ Error loading messages:', error);
+            const container = document.getElementById('privateMessages');
+            if (container) {
+                container.innerHTML = '<div class="no-messages">📝 Начните общение первым!</div>';
+            }
+        }
+    }
+}
+
+// Новый метод для обновления заголовка чата
+updateChatHeader(username) {
+    const currentChatUser = document.getElementById('currentChatUser');
+    const currentUserStatus = document.getElementById('currentUserStatus');
+    
+    if (currentChatUser) currentChatUser.textContent = username;
+    if (currentUserStatus) {
+        const isOnline = this.onlineUsers.has(username);
+        currentUserStatus.textContent = isOnline ? 'online' : 'offline';
+        currentUserStatus.className = `user-status ${isOnline ? 'online' : 'offline'}`;
+    }
+    
+    // Загружаем аватар
+    this.loadUserAvatar(username).then(avatarUrl => {
+        const userAvatar = document.querySelector('.chat-user-info .user-avatar');
+        if (userAvatar) {
+            userAvatar.innerHTML = '';
+            const img = document.createElement('img');
+            img.src = avatarUrl;
+            img.className = 'user-avatar-img';
+            img.alt = username;
+            img.onerror = () => this.handleAvatarError(img);
+            userAvatar.appendChild(img);
+        }
+    }).catch((error) => {
+        console.error('❌ Error loading avatar:', error);
+        const userAvatar = document.querySelector('.chat-user-info .user-avatar');
+        if (userAvatar) {
+            userAvatar.innerHTML = `<img src="/default-avatar.png" class="user-avatar-img" alt="${username}">`;
+        }
+    });
+}
 
     async loadConversations() {
         try {
@@ -2729,7 +3251,7 @@ async displayConversations() {
             this.displayConversationsWithDefaultAvatars();
         }
     }
-   renderConversationsList(conversations, container) {
+renderConversationsList(conversations, container) {
     if (!container) return;
     
     container.innerHTML = '';
@@ -2762,18 +3284,20 @@ async displayConversations() {
             if (preview.length > 30) preview = preview.substring(0, 30) + '...';
         }
 
-        const isOnline = !isGroup && this.onlineUsers.has(conversation.username);
-        const onlineIndicator = isOnline ? '<span class="online-dot"></span>' : '';
-        
         if (!isGroup) {
-            // Для приватных чатов
+            // Для приватных чатов - с аватаром
+            const isOnline = this.onlineUsers.has(conversation.username);
+            const onlineIndicator = isOnline ? '<span class="online-dot" title="В сети"></span>' : '';
             const avatarUrl = conversation.avatarUrl || this.getDefaultAvatarUrl();
+            
             convElement.innerHTML = `
                 <div class="conv-info">
                     <div class="conv-header">
                         <span class="conv-name">
                             <img src="${avatarUrl}" class="conversation-avatar" alt="${conversation.username}" 
-                                 onerror="this.src='${this.getDefaultAvatarUrl()}'">
+                                 onerror="this.src='${this.getDefaultAvatarUrl()}'"
+                                 data-username="${conversation.username}"
+                                 data-is-group="false">
                             ${conversation.username} ${onlineIndicator}
                         </span>
                         ${lastMsg ? `<span class="conv-time">${lastMsg.timestamp}</span>` : ''}
@@ -2781,15 +3305,30 @@ async displayConversations() {
                     <div class="conv-preview">${preview}</div>
                 </div>
             `;
+
+            convElement.addEventListener('click', (e) => {
+                // Если кликнули на аватар - открываем профиль
+                const avatar = e.target.closest('.conversation-avatar');
+                if (avatar) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    this.openUserProfile(conversation.username);
+                    return;
+                }
+                
+                // Если кликнули на карточку - открываем чат
+                this.startChat(conversation.username);
+            });
+            
         } else {
-            // Для групповых чатов
+            // Для групповых чатов - БЕЗ аватара, БЕЗ профиля
             const memberInfo = `<div class="conv-members">${conversation.memberCount || conversation.members?.length || 0} участников</div>`;
             
             convElement.innerHTML = `
                 <div class="conv-info">
                     <div class="conv-header">
                         <span class="conv-name">
-                            <div class="group-avatar">👥</div>
+                            <div class="group-avatar" data-is-group="true">👥</div>
                             ${conversation.name}
                         </span>
                         ${lastMsg ? `<span class="conv-time">${lastMsg.timestamp}</span>` : ''}
@@ -2798,15 +3337,12 @@ async displayConversations() {
                     ${memberInfo}
                 </div>
             `;
-        }
 
-        convElement.addEventListener('click', () => {
-            if (isGroup) {
+            convElement.addEventListener('click', (e) => {
+                // Для групп просто открываем чат, не предлагаем профиль
                 this.startChat(conversation.name, true, conversation.id);
-            } else {
-                this.startChat(conversation.username);
-            }
-        });
+            });
+        }
         
         container.appendChild(convElement);
     });
@@ -2825,7 +3361,7 @@ displayConversationsWithDefaultAvatars() {
         return;
     }
 
-    console.log(`🔄 Displaying ${this.conversations.length} conversations with default avatars`);
+    console.log(`🔄 Displaying ${this.conversations.length} conversations`);
 
     this.conversations.forEach(conversation => {
         if (!conversation) return;
@@ -2873,22 +3409,22 @@ displayConversationsWithDefaultAvatars() {
             timestamp = lastMsg.timestamp || this.formatMessageTime(lastMsg.date);
         }
 
-        // Статус онлайн для приватных чатов
-        const isOnline = !isGroup && this.onlineUsers.has(conversation.username);
-        const onlineIndicator = isOnline ? '<span class="online-dot" title="В сети"></span>' : '';
-        
         if (!isGroup) {
-            // Приватный чат
-            const avatarUrl = this.getDefaultAvatarUrl();
+            // ПРИВАТНЫЙ ЧАТ - с аватаром пользователя
             const displayName = conversation.username || 'Неизвестный';
+            const isOnline = this.onlineUsers.has(conversation.username);
+            const onlineIndicator = isOnline ? '<span class="online-dot" title="В сети"></span>' : '';
             
             convElement.innerHTML = `
                 <div class="conv-info">
                     <div class="conv-header">
                         <div class="conv-name-wrapper">
                             <span class="conv-name">
-                                <img src="${avatarUrl}" class="conversation-avatar" alt="${displayName}" 
-                                     onerror="this.src='${this.getDefaultAvatarUrl()}'">
+                                <img src="${this.getDefaultAvatarUrl()}" class="conversation-avatar" alt="${displayName}" 
+                                     onerror="this.src='${this.getDefaultAvatarUrl()}'"
+                                     data-username="${displayName}"
+                                     data-is-group="false"
+                                     title="Открыть профиль">
                                 <span class="username-text">${displayName}</span>
                                 ${onlineIndicator}
                             </span>
@@ -2899,18 +3435,39 @@ displayConversationsWithDefaultAvatars() {
                     ${isOnline ? '<div class="conv-status online">🟢 онлайн</div>' : '<div class="conv-status offline">⚫ не в сети</div>'}
                 </div>
             `;
+            
+            // Загружаем аватар асинхронно
+            this.loadUserAvatarSafe(displayName).then(avatarUrl => {
+                const avatarImg = convElement.querySelector('.conversation-avatar');
+                if (avatarImg) {
+                    avatarImg.src = avatarUrl;
+                }
+            }).catch(() => {
+                // В случае ошибки оставляем дефолтный аватар
+            });
+            
         } else {
-            // Групповой чат
+            // ГРУППОВОЙ ЧАТ - с иконкой группы
             const memberCount = conversation.memberCount || conversation.members?.length || 0;
             const displayName = conversation.name || conversation.username || 'Без названия';
-            const createdBy = conversation.createdBy ? `Создал: ${conversation.createdBy}` : '';
             
             convElement.innerHTML = `
                 <div class="conv-info">
                     <div class="conv-header">
                         <div class="conv-name-wrapper">
                             <span class="conv-name">
-                                <div class="group-avatar">👥</div>
+                                <div class="group-avatar" style="
+                                    width: 40px;
+                                    height: 40px;
+                                    border-radius: 50%;
+                                    background: linear-gradient(45deg, #667eea, #764ba2);
+                                    display: flex;
+                                    align-items: center;
+                                    justify-content: center;
+                                    color: white;
+                                    font-size: 20px;
+                                    margin-right: 10px;
+                                ">👥</div>
                                 <span class="group-name-text">${displayName}</span>
                             </span>
                             ${timestamp ? `<span class="conv-time">${timestamp}</span>` : ''}
@@ -2919,7 +3476,6 @@ displayConversationsWithDefaultAvatars() {
                     <div class="conv-preview">${preview}</div>
                     <div class="conv-meta">
                         <span class="conv-members">👤 ${memberCount} участников</span>
-                        ${createdBy ? `<span class="conv-creator">${createdBy}</span>` : ''}
                     </div>
                 </div>
             `;
@@ -2930,15 +3486,28 @@ displayConversationsWithDefaultAvatars() {
             e.preventDefault();
             e.stopPropagation();
             
-            console.log(`💬 Opening chat:`, {
-                isGroup: isGroup,
-                name: conversation.name || conversation.username,
-                id: conversation.id
-            });
-            
+            // Для групповых чатов просто открываем чат
             if (isGroup) {
+                console.log(`💬 Opening group chat:`, {
+                    isGroup: true,
+                    name: conversation.name || conversation.username,
+                    id: conversation.id
+                });
+                
                 this.startChat(conversation.name || conversation.username, true, conversation.id);
             } else {
+                // Для приватных чатов проверяем, куда кликнули
+                const avatar = e.target.closest('.conversation-avatar');
+                if (avatar) {
+                    // Если кликнули на аватар - открываем профиль
+                    const username = avatar.getAttribute('data-username');
+                    if (username) {
+                        this.openUserProfile(username);
+                        return;
+                    }
+                }
+                
+                // Если кликнули на карточку - открываем чат
                 this.startChat(conversation.username);
             }
         });
@@ -2959,9 +3528,8 @@ displayConversationsWithDefaultAvatars() {
         container.appendChild(convElement);
     });
 
-    console.log('✅ Conversations displayed with default avatars');
+    console.log('✅ Conversations displayed successfully');
 }
-
 // Вспомогательный метод для форматирования времени (если его нет)
 formatMessageTime(timestamp) {
     if (!timestamp) return 'только что';
@@ -3236,77 +3804,63 @@ formatMessageTime(timestamp) {
         return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     }
 
-    async sendPrivateMessage() {
-        const input = document.getElementById('privateMessageInput');
-        const currentUsername = document.getElementById('username')?.textContent;
-        
-        if (!input || !currentUsername || !this.currentChat) return;
-        
-        const message = input.value.trim();
-        const files = this.fileInput?.files;
-        
-        if (!message && (!files || files.length === 0)) return;
-        
-        try {
-            if (files && files.length > 0) {
-                for (let i = 0; i < files.length; i++) {
-                    await this.handleFileUpload(files[i]);
-                }
-                const filePreview = document.getElementById('filePreview');
-                if (filePreview) {
-                    filePreview.innerHTML = '';
-                    filePreview.style.display = 'none';
-                }
-                this.fileInput.value = '';
-            }
-            
-            if (message) {
-                if (window.socket) {
-                    window.socket.emit('private message', {
-                        sender: currentUsername,
-                        receiver: this.currentChat,
-                        message: message,
-                        messageType: 'text'
-                    });
-                }
-                input.value = '';
-            }
-            
-            input.focus();
-            
-        } catch (error) {
-            this.showNotification('Ошибка отправки сообщения', 'error');
-        }
+
+async handleFileUpload(file) {
+    if (!this.currentChat) {
+        this.showNotification('Выберите собеседника для отправки файла', 'error');
+        return;
     }
 
-    async handleFileUpload(file) {
-        if (!this.currentChat) {
-            this.showNotification('Выберите собеседника для отправки файла', 'error');
-            return;
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+        // Упрощаем загрузку файла - убираем ненужный обертку
+        const response = await fetch('/api/upload', {
+            method: 'POST',
+            body: formData
+        });
+
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.error || `HTTP ${response.status}`);
         }
 
-        const formData = new FormData();
-        formData.append('file', file);
-
-        try {
-            const response = await fetch('/api/upload', {
-                method: 'POST',
-                body: formData
-            });
-
-            if (!response.ok) throw new Error(`HTTP ${response.status}`);
-            const result = await response.json();
-            
-            if (result.success) {
-                this.sendFileMessage(result.file);
-            } else {
-                throw new Error(result.error || 'Upload failed');
-            }
-        } catch (error) {
-            this.showNotification('Ошибка загрузки файла: ' + error.message, 'error');
+        const result = await response.json();
+        
+        if (result.success) {
+            this.sendFileMessage(result.file);
+        } else {
+            throw new Error(result.error || 'Upload failed');
         }
+    } catch (error) {
+        console.error('❌ Error uploading file:', error);
+        this.showNotification(`Ошибка загрузки файла: ${error.message}`, 'error');
     }
-
+}
+setupSafeImageLoading() {
+    // Глобальный обработчик ошибок загрузки изображений
+    document.addEventListener('error', (e) => {
+        if (e.target.tagName === 'IMG') {
+            const img = e.target;
+            
+            // Если это аватар, используем дефолтный
+            if (img.classList.contains('user-avatar-img') || 
+                img.classList.contains('conversation-avatar') ||
+                img.classList.contains('search-avatar-img')) {
+                
+                console.log('🖼️ Avatar image failed to load, using default');
+                img.src = this.getDefaultAvatarUrl();
+                img.onerror = null; // Предотвращаем бесконечный цикл
+                
+                // Обновляем кэш если есть username
+                if (img.alt) {
+                    this.avatarCache.set(img.alt, this.getDefaultAvatarUrl());
+                }
+            }
+        }
+    }, true);
+}
     sendFileMessage(fileData) {
         const currentUsername = document.getElementById('username')?.textContent;
         
@@ -3434,33 +3988,214 @@ formatMessageTime(timestamp) {
         }
     }
 
-    closeCurrentChat() {
-        this.currentChat = null;
-        
-        const noChatSelected = document.getElementById('noChatSelected');
-        const activeChat = document.getElementById('activeChat');
-        const groupChatContainer = document.getElementById('groupChatContainer');
-        
-        if (noChatSelected && !groupChatContainer?.style.display !== 'flex') {
-            noChatSelected.style.display = 'flex';
-        }
-        if (activeChat) activeChat.style.display = 'none';
-        
-        const privateMessages = document.getElementById('privateMessages');
-        if (privateMessages) privateMessages.innerHTML = '<div class="no-messages">📝 Начните общение первым!</div>';
-        
-        const messageInput = document.getElementById('privateMessageInput');
-        if (messageInput) messageInput.value = '';
-        
-        const filePreview = document.getElementById('filePreview');
-        if (filePreview) {
-            filePreview.innerHTML = '';
-            filePreview.style.display = 'none';
-        }
-        
-        this.loadConversations();
-    }
 
+// Метод для обновления активной кнопки в навигации
+updateMobileNavActive(activeBtn) {
+    const navBtns = document.querySelectorAll('.mobile-nav-btn');
+    navBtns.forEach(btn => {
+        btn.classList.remove('active');
+        const btnText = btn.querySelector('span').textContent.toLowerCase();
+        const btnId = btn.id || '';
+        
+        if (btnText === activeBtn || 
+            btnId.includes(activeBtn) ||
+            (activeBtn === 'chat' && (btnText === 'чаты' || btnId.includes('chats'))) ||
+            (activeBtn === 'chats' && (btnText === 'чаты' || btnId.includes('chats')))) {
+            btn.classList.add('active');
+        }
+    });
+}
+
+// Метод для создания мобильной навигации, если она не существует
+createMobileNavigation() {
+    if (document.querySelector('.mobile-nav')) return;
+    
+    const mobileNav = document.createElement('div');
+    mobileNav.className = 'mobile-nav';
+    
+    // Добавляем стили для анимации
+    if (!document.getElementById('mobile-nav-styles')) {
+        const style = document.createElement('style');
+        style.id = 'mobile-nav-styles';
+        style.textContent = `
+            @keyframes slideInUp {
+                from {
+                    transform: translateY(100%);
+                    opacity: 0;
+                }
+                to {
+                    transform: translateY(0);
+                    opacity: 1;
+                }
+            }
+            
+            @keyframes slideOutDown {
+                from {
+                    transform: translateY(0);
+                    opacity: 1;
+                }
+                to {
+                    transform: translateY(100%);
+                    opacity: 0;
+                }
+            }
+            
+            .mobile-nav {
+                position: fixed;
+                bottom: 0;
+                left: 0;
+                width: 100%;
+                background: white;
+                border-top: 1px solid #e9ecef;
+                padding: 10px;
+                z-index: 1002;
+                display: flex;
+                justify-content: space-around;
+                box-shadow: 0 -2px 10px rgba(0,0,0,0.1);
+                transform: translateY(0);
+                opacity: 1;
+                transition: transform 0.3s ease, opacity 0.3s ease;
+            }
+            
+            .mobile-nav.hidden {
+                transform: translateY(100%);
+                opacity: 0;
+            }
+            
+            .mobile-nav-btn {
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                background: none;
+                border: none;
+                padding: 8px;
+                cursor: pointer;
+                color: #6c757d;
+                font-size: 12px;
+                transition: all 0.3s ease;
+                min-width: 60px;
+            }
+            
+            .mobile-nav-btn.active {
+                color: #007bff;
+            }
+            
+            .mobile-nav-btn i {
+                font-size: 20px;
+                margin-bottom: 4px;
+            }
+        `;
+        document.head.appendChild(style);
+    }
+    
+    // Создаем кнопки навигации
+    mobileNav.innerHTML = `
+        <button class="mobile-nav-btn active" id="mobileChatsBtn">
+            <i>💬</i>
+            <span>Чаты</span>
+        </button>
+        <button class="mobile-nav-btn" id="mobileSearchBtn">
+            <i>🔍</i>
+            <span>Поиск</span>
+        </button>
+        <button class="mobile-nav-btn" id="mobileProfileBtn">
+            <i>👤</i>
+            <span>Профиль</span>
+        </button>
+        ${this.isAdmin ? `
+        <button class="mobile-nav-btn" id="mobileAdminBtn">
+            <i>⚙️</i>
+            <span>Админ</span>
+        </button>
+        ` : ''}
+    `;
+    
+    document.body.appendChild(mobileNav);
+    
+    // Настраиваем обработчики событий
+    this.setupMobileNavButtons();
+    
+    console.log('📱 Mobile navigation created');
+}
+setupMobileNavButtons() {
+    // Кнопка "Чаты"
+    const chatsBtn = document.getElementById('mobileChatsBtn');
+    if (chatsBtn) {
+        chatsBtn.addEventListener('click', () => {
+            this.closeCurrentChat();
+            this.showChatList();
+        });
+    }
+    
+    // Кнопка "Поиск"
+    const searchBtn = document.getElementById('mobileSearchBtn');
+    if (searchBtn) {
+        searchBtn.addEventListener('click', () => {
+            const sidebar = document.querySelector('.private-chat-sidebar');
+            if (sidebar) {
+                sidebar.classList.remove('hidden');
+                const mainChat = document.querySelector('.private-chat-main');
+                if (mainChat) mainChat.classList.remove('active');
+                
+                // Показываем навигацию при переходе в поиск
+                this.showMobileNavigation();
+                
+                // Фокус на поле поиска
+                setTimeout(() => {
+                    const searchInput = document.getElementById('userSearch');
+                    if (searchInput) {
+                        searchInput.focus();
+                    }
+                }, 300);
+            }
+            
+            this.updateMobileNavActive('search');
+        });
+    }
+    
+    // Кнопка "Профиль"
+    const profileBtn = document.getElementById('mobileProfileBtn');
+    if (profileBtn) {
+        profileBtn.addEventListener('click', () => {
+            const settingsModal = document.getElementById('settingsModal');
+            if (settingsModal) {
+                settingsModal.style.display = 'flex';
+                // Скрываем навигацию при открытии настроек
+                this.hideMobileNavigation();
+            }
+            this.updateMobileNavActive('profile');
+        });
+    }
+    
+    // Кнопка "Админ" (только для админа)
+    if (this.isAdmin) {
+        const adminBtn = document.getElementById('mobileAdminBtn');
+        if (adminBtn) {
+            adminBtn.addEventListener('click', () => {
+                this.toggleAdminPanel();
+                this.hideMobileNavigation(); // Скрываем навигацию
+                this.updateMobileNavActive('admin');
+            });
+        }
+    }
+}
+showChatList() {
+    const sidebar = document.querySelector('.private-chat-sidebar');
+    const mainChat = document.querySelector('.private-chat-main');
+    
+    if (sidebar) {
+        sidebar.classList.remove('hidden');
+    }
+    if (mainChat) {
+        mainChat.classList.remove('active');
+    }
+    
+    // Показываем навигацию при возврате в список чатов
+    this.showMobileNavigation();
+    
+    // Обновляем активную кнопку
+    this.updateMobileNavActive('chats');
+}
     updateOnlineStatuses() {
         console.log('🔄 Updating online statuses...');
         
@@ -3505,6 +4240,7 @@ formatMessageTime(timestamp) {
             }
         });
     }
+
 
     showNotification(message, type = 'info') {
         const notification = document.createElement('div');
@@ -3610,6 +4346,7 @@ async loadOnlineUsers() {
         this.showFallbackOnlineUsers();
     }
 }   
+
 showFallbackOnlineUsers() {
     const onlineUsersList = document.getElementById('onlineUsersList');
     if (onlineUsersList) {
@@ -3779,217 +4516,29 @@ displayOnlineUsers(users) {
         }
     }
 openUserProfile(username) {
-    if (!username || username === this.currentUser) return;
-    
-    console.log('👤 Opening profile for:', username);
-    
-    // Закрываем существующее модальное окно если есть
-    const existingModal = document.getElementById('userProfileModal');
-    if (existingModal) {
-        existingModal.remove();
+    // Проверяем, не является ли это группой
+    if (this.isGroupName(username)) {
+        console.log('⏩ Skipping profile for group:', username);
+        return;
     }
     
-    // Создаем модальное окно профиля
-    const modal = document.createElement('div');
-    modal.id = 'userProfileModal';
-    modal.className = 'modal-overlay';
-    modal.style.cssText = `
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        background: rgba(0,0,0,0.5);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        z-index: 10000;
-    `;
-
-    modal.innerHTML = `
-        <div class="modal-content" style="
-            background: white;
-            padding: 25px;
-            border-radius: 15px;
-            width: 400px;
-            max-width: 90%;
-            max-height: 80vh;
-            overflow-y: auto;
-        ">
-            <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding-bottom: 15px; border-bottom: 1px solid #e9ecef;">
-                <h3 style="margin: 0;">👤 Профиль пользователя</h3>
-                <button class="close-modal" style="background: none; border: none; font-size: 20px; cursor: pointer; color: #666;">✕</button>
-            </div>
-            
-            <div class="profile-content">
-                <div class="profile-header" style="text-align: center; margin-bottom: 20px;">
-                    <div class="profile-avatar" style="width: 100px; height: 100px; border-radius: 50%; overflow: hidden; margin: 0 auto 15px; border: 3px solid #007bff;">
-                        <img id="profileAvatarImg" src="${this.getDefaultAvatarUrl()}" alt="${username}" style="width: 100%; height: 100%; object-fit: cover;">
-                    </div>
-                    <h4 id="profileUsername" style="margin: 0 0 5px 0; color: #333;">${username}</h4>
-                    <div class="user-status" id="profileUserStatus" style="color: #6c757d;">Загрузка...</div>
-                </div>
-                
-                <div class="profile-actions" style="display: flex; gap: 10px; margin-bottom: 20px;">
-                    <button class="btn-primary" onclick="window.privateChatInstance.startChat('${username}')" style="flex: 1; padding: 10px; background: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer;">
-                        💬 Написать сообщение
-                    </button>
-                    <button class="btn-secondary" onclick="window.privateChatInstance.openGiftForUser('${username}')" style="flex: 1; padding: 10px; background: #28a745; color: white; border: none; border-radius: 5px; cursor: pointer;">
-                        🎁 Отправить подарок
-                    </button>
-                </div>
-                
-                <div class="profile-info">
-                    <div class="info-section" style="margin-bottom: 15px;">
-                        <h5 style="margin-bottom: 10px; color: #495057;">📊 Статистика</h5>
-                        <div class="stats-grid" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px;">
-                            <div class="stat-item" style="text-align: center; padding: 10px; background: #f8f9fa; border-radius: 8px;">
-                                <div style="font-size: 12px; color: #6c757d;">В сети</div>
-                                <div id="profileOnlineStatus" style="font-weight: bold; color: #28a745;">Проверка...</div>
-                            </div>
-                            <div class="stat-item" style="text-align: center; padding: 10px; background: #f8f9fa; border-radius: 8px;">
-                                <div style="font-size: 12px; color: #6c757d;">Баланс</div>
-                                <div id="profileBalance" style="font-weight: bold;">🪙 ...</div>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <!-- Добавляем секцию био -->
-                    <div class="bio-section" style="margin-bottom: 15px; display: none;" id="profileBioSection">
-                        <h5 style="margin-bottom: 10px; color: #495057;">📝 О себе</h5>
-                        <div id="profileBio" style="color: #333; line-height: 1.4; font-size: 14px; padding: 10px; background: #f8f9fa; border-radius: 5px;"></div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    `;
-
-    document.body.appendChild(modal);
-
-    // Загружаем данные профиля
-    this.loadProfileData(username);
-
-    // Обработчики закрытия
-    const closeBtn = modal.querySelector('.close-modal');
-    closeBtn.addEventListener('click', () => {
-        modal.remove();
-    });
-
-    modal.addEventListener('click', (e) => {
-        if (e.target === modal) {
-            modal.remove();
-        }
-    });
+    // Проверяем, не пытаемся ли открыть профиль текущего пользователя
+    const currentUser = this.getCurrentUser();
+    if (username === currentUser) {
+        this.showNotification('Это ваш профиль', 'info');
+        return;
+    }
     
-    // Предотвращаем всплытие события
-    modal.querySelector('.modal-content').addEventListener('click', (e) => {
-        e.stopPropagation();
-    });
-}
-async loadProfileData(username) {
-    try {
-        console.log('👤 Loading profile data for:', username);
-        
-        // Сначала устанавливаем базовую информацию
-        const profileUsername = document.getElementById('profileUsername');
-        const profileUserStatus = document.getElementById('profileUserStatus');
-        const profileAvatarImg = document.getElementById('profileAvatarImg');
-        
-        if (profileUsername) profileUsername.textContent = username;
-        if (profileUserStatus) profileUserStatus.textContent = 'Загрузка...';
-        if (profileAvatarImg) profileAvatarImg.src = this.getDefaultAvatarUrl();
-
-        // Обновляем статус онлайн сразу
-        const onlineStatus = document.getElementById('profileOnlineStatus');
-        const userStatus = document.getElementById('profileUserStatus');
-        if (onlineStatus && userStatus) {
-            const isOnline = this.onlineUsers.has(username);
-            onlineStatus.textContent = isOnline ? '🟢 Online' : '🔴 Offline';
-            onlineStatus.style.color = isOnline ? '#28a745' : '#dc3545';
-            userStatus.textContent = isOnline ? 'В сети' : 'Не в сети';
-        }
-
-        // Параллельно загружаем данные пользователя и баланс
-        const [userDataResponse, balanceResponse] = await Promise.allSettled([
-            fetch(`/api/user/${username}`),
-            fetch(`/api/user/${username}/currency`)
-        ]);
-
-        // Обрабатываем данные пользователя
-        if (userDataResponse.status === 'fulfilled' && userDataResponse.value.ok) {
-            const userData = await userDataResponse.value.json();
-            
-            // Обновляем аватар если есть
-            const avatarImg = document.getElementById('profileAvatarImg');
-            if (avatarImg && userData.avatar) {
-                // Проверяем, что аватар действительно существует
-                const avatarExists = await this.checkImageExists(userData.avatar);
-                if (avatarExists) {
-                    avatarImg.src = userData.avatar;
-                } else {
-                    console.log('⚠️ Avatar not found, using default');
-                    avatarImg.src = this.getDefaultAvatarUrl();
-                }
-            }
-            
-            // Обновляем другую информацию пользователя если есть
-            if (userData.bio) {
-                const bioElement = document.getElementById('profileBio');
-                if (bioElement) {
-                    bioElement.textContent = userData.bio;
-                }
-            }
-        } else {
-            console.log('⚠️ User data not available, using default avatar');
-            const avatarImg = document.getElementById('profileAvatarImg');
-            if (avatarImg) {
-                avatarImg.src = this.getDefaultAvatarUrl();
-            }
-        }
-
-        // Обрабатываем баланс
-        if (balanceResponse.status === 'fulfilled' && balanceResponse.value.ok) {
-            const currencyData = await balanceResponse.value.json();
-            const balanceElement = document.getElementById('profileBalance');
-            if (balanceElement) {
-                balanceElement.textContent = `🪙 ${currencyData.balance || 0}`;
-            }
-        } else {
-            console.log('⚠️ Balance not available for user:', username);
-            const balanceElement = document.getElementById('profileBalance');
-            if (balanceElement) {
-                balanceElement.textContent = '🪙 0';
-            }
-        }
-
-        console.log('✅ Profile data loaded successfully for:', username);
-        
-    } catch (error) {
-        console.error('❌ Error loading profile data:', error);
-        
-        // Устанавливаем дефолтные значения при ошибке
-        const avatarImg = document.getElementById('profileAvatarImg');
-        if (avatarImg) {
-            avatarImg.src = this.getDefaultAvatarUrl();
-        }
-        
-        const balanceElement = document.getElementById('profileBalance');
-        if (balanceElement) {
-            balanceElement.textContent = '🪙 0';
-        }
-        
-        const onlineStatus = document.getElementById('profileOnlineStatus');
-        const userStatus = document.getElementById('profileUserStatus');
-        if (onlineStatus && userStatus) {
-            onlineStatus.textContent = '🔴 Offline';
-            onlineStatus.style.color = '#dc3545';
-            userStatus.textContent = 'Не в сети';
-        }
-        
-        this.showNotification('Ошибка загрузки профиля', 'error');
+    console.log('👤 Opening profile for user:', username);
+    
+    // Используем ProfileManager для открытия профиля
+    if (window.profileManager) {
+        window.profileManager.openUserProfile(username);
+    } else {
+        console.error('ProfileManager not available');
+        this.showNotification('Профиль временно недоступен', 'error');
     }
 }
-
 
 // Метод для загрузки баланса пользователя
 async loadUserBalance(username) {
@@ -4298,6 +4847,7 @@ openGiftForUser(username) {
            'anonymous';
 }
 }
+
 document.addEventListener('DOMContentLoaded', function() {
     console.log('🚀 Starting application initialization...');
     
@@ -4318,7 +4868,23 @@ document.addEventListener('DOMContentLoaded', function() {
         console.log('🎁 Creating GiftManager instance...');
         window.giftManager = new GiftManager();
     }
-    
+function updateMobileNavActive(activeBtn) {
+    const navBtns = document.querySelectorAll('.mobile-nav-btn');
+    navBtns.forEach(btn => {
+        btn.classList.remove('active');
+        const btnText = btn.querySelector('span').textContent.toLowerCase();
+        const btnId = btn.id || '';
+        
+        // Обновляем логику определения активной кнопки
+        if (btnText === activeBtn || 
+            btnId.includes(activeBtn) ||
+            (activeBtn === 'chat' && (btnText === 'чаты' || btnId.includes('chats'))) ||
+            (activeBtn === 'chats' && (btnText === 'чаты' || btnId.includes('chats'))) ||
+            (activeBtn === 'groups' && btnText === 'группы')) {
+            btn.classList.add('active');
+        }
+    });
+}
     // Затем приватный чат
     setTimeout(() => {
         if (!window.privateChatInstance) {
@@ -4351,7 +4917,17 @@ document.addEventListener('DOMContentLoaded', function() {
             window.settingsManager = new SettingsManager();
         }
     }, 400);
-    
+    function updateMobileNavActive(activeBtn) {
+    const navBtns = document.querySelectorAll('.mobile-nav-btn');
+    navBtns.forEach(btn => {
+        btn.classList.remove('active');
+        const btnText = btn.querySelector('span').textContent.toLowerCase();
+        if (btnText === activeBtn || 
+            (btn.id && btn.id.includes(activeBtn))) {
+            btn.classList.add('active');
+        }
+    });
+}
     // Инициализируем менеджер звонковвлавда
     setTimeout(() => {
         if (!window.callManager) {

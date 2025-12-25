@@ -12988,3 +12988,167 @@ header {
         height: calc(100vh - 170px);
     }
 }
+/* Мобильная навигация */
+.mobile-nav {
+    display: none;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    background: white;
+    border-top: 1px solid #e9ecef;
+    padding: 10px;
+    z-index: 1002;
+    justify-content: space-around;
+    box-shadow: 0 -2px 10px rgba(0,0,0,0.1);
+}
+
+.mobile-nav-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    background: none;
+    border: none;
+    padding: 8px;
+    cursor: pointer;
+    color: #6c757d;
+    font-size: 12px;
+    transition: all 0.3s ease;
+    border-radius: 8px;
+    min-width: 60px;
+}
+
+.mobile-nav-btn.active {
+    color: #007bff;
+    background: rgba(0, 123, 255, 0.1);
+}
+
+.mobile-nav-btn i {
+    font-size: 20px;
+    margin-bottom: 4px;
+}
+
+.mobile-nav-btn:hover:not(.active) {
+    background: rgba(108, 117, 125, 0.1);
+}
+
+/* Адаптация для маленьких экранов */
+@media (max-width: 375px) {
+    .mobile-nav-btn {
+        padding: 6px;
+        min-width: 50px;
+        font-size: 11px;
+    }
+    
+    .mobile-nav-btn i {
+        font-size: 18px;
+    }
+}
+
+/* Анимация появления/исчезновения */
+.mobile-nav.show {
+    animation: slideUp 0.3s ease;
+}
+
+.mobile-nav.hide {
+    animation: slideDown 0.3s ease;
+}
+
+@keyframes slideUp {
+    from {
+        transform: translateY(100%);
+    }
+    to {
+        transform: translateY(0);
+    }
+}
+
+@keyframes slideDown {
+    from {
+        transform: translateY(0);
+    }
+    to {
+        transform: translateY(100%);
+    }
+}
+@media (max-width: 768px) {
+    .private-chat-sidebar {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: white;
+        z-index: 1000;
+        transform: translateX(0);
+        transition: transform 0.3s ease;
+    }
+    
+    .private-chat-sidebar.hidden {
+        transform: translateX(-100%);
+    }
+    
+    .private-chat-main {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: white;
+        z-index: 1001;
+        transform: translateX(100%);
+        transition: transform 0.3s ease;
+    }
+    
+    .private-chat-main.active {
+        transform: translateX(0);
+    }
+    
+    .no-chat-selected {
+        display: none !important;
+    }
+}
+/* Стили для групповых аватаров */
+.group-avatar {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: linear-gradient(45deg, #667eea, #764ba2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-size: 20px;
+    margin-right: 10px;
+    flex-shrink: 0;
+    cursor: pointer;
+}
+
+/* Стили для элементов группы */
+.group-item {
+    background: linear-gradient(45deg, rgba(102, 126, 234, 0.1), rgba(118, 75, 162, 0.1));
+    border-left: 3px solid #764ba2;
+}
+
+.group-item:hover {
+    background: linear-gradient(45deg, rgba(102, 126, 234, 0.2), rgba(118, 75, 162, 0.2));
+}
+
+.group-item.active {
+    background: linear-gradient(45deg, rgba(102, 126, 234, 0.3), rgba(118, 75, 162, 0.3));
+}
+
+/* Информация о группе */
+.conv-members {
+    font-size: 12px;
+    color: #6c757d;
+    margin-top: 5px;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.conv-members:before {
+    content: "👤";
+    font-size: 10px;
+}

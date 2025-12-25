@@ -1681,77 +1681,331 @@ closeAllModals() {
         }
     }
 
-    async openGroupChat(group) {
-        this.currentGroup = group;
-        
-        this.displayedMessageIds.clear();
-        this.pendingMessages.clear();
-        
-        this.removeGroupChatEventListeners();
-        
-        if (window.privateChatInstance?.currentChat) {
-            window.privateChatInstance.closeCurrentChat();
+  async openGroupChat(group) {
+    console.log('📱 Opening group chat:', group);
+    
+    this.currentGroup = group;
+    
+    this.displayedMessageIds.clear();
+    this.pendingMessages.clear();
+    
+    this.removeGroupChatEventListeners();
+    
+    // Закрываем приватный чат если открыт
+    if (window.privateChatInstance?.currentChat) {
+        window.privateChatInstance.closeCurrentChat();
+    }
+    
+    // На мобильных устройствах переключаемся на экран чата
+    if (isMobileDevice()) {
+        // Скрываем сайдбар
+        const sidebar = document.querySelector('.private-chat-sidebar');
+        if (sidebar) {
+            sidebar.classList.add('hidden');
+            sidebar.style.display = 'none';
         }
         
+        // Скрываем "нет выбранного чата"
+        const noChatSelected = document.getElementById('noChatSelected');
+        if (noChatSelected) noChatSelected.style.display = 'none';
+        
+        // Скрываем приватный чат если был открыт
+        const activeChat = document.getElementById('activeChat');
+        if (activeChat) activeChat.style.display = 'none';
+        
+        // Показываем основной контейнер чата
+        const mainChat = document.querySelector('.private-chat-main');
+        if (mainChat) {
+            mainChat.classList.add('active');
+            mainChat.style.display = 'flex';
+        }
+        
+        // Скрываем мобильную навигацию
+        if (window.privateChatInstance) {
+            window.privateChatInstance.hideMobileNavigation();
+        }
+        
+        // Обновляем активную кнопку навигации
+        updateMobileNavActive('chat');
+    } else {
+        // Для десктопа стандартная логика
         const noChatSelected = document.getElementById('noChatSelected');
         const activeChat = document.getElementById('activeChat');
         
         if (noChatSelected) noChatSelected.style.display = 'none';
         if (activeChat) activeChat.style.display = 'none';
-        
-        let groupChatContainer = document.getElementById('groupChatContainer');
-        if (!groupChatContainer) {
-            groupChatContainer = document.createElement('div');
-            groupChatContainer.id = 'groupChatContainer';
-            groupChatContainer.className = 'active-chat';
-            document.querySelector('.private-chat-main').appendChild(groupChatContainer);
-        }
-        
-        const groupInfo = await this.getGroupInfo(group.id);
-        const memberCount = groupInfo?.members?.length || group.members?.length || 0;
-        
-        groupChatContainer.style.display = 'flex';
-        groupChatContainer.innerHTML = `
-            <div class="chat-top-bar">
-                <div class="chat-user-info">
-                    <span class="user-avatar">👥</span>
-                    <div class="user-details">
-                        <h4>${group.name}</h4>
-                        <span class="user-status group">Групповой чат • ${memberCount} участников</span>
-                    </div>
-                </div>
-                <div class="chat-controls">
-                    <button class="close-chat" title="Закрыть чат">✕</button>
-                </div>
-            </div>
-            
-            <div class="chat-messages-container">
-                <div id="groupMessages" class="private-messages">
-                    <div class="no-messages">📝 Загрузка сообщений...</div>
-                </div>
-            </div>
-            
-            <div class="message-input-area">
-                <div class="message-input-container">
-                    <input type="text" id="groupMessageInput" placeholder="Напишите сообщение в группу..." autocomplete="off">
-                    <button type="button" class="emoji-picker-btn" title="Выбрать смайлик">😊</button>
-                    <button type="button" class="group-voice-message-btn" title="Записать голосовое сообщение">🎤</button>
-                    <button type="button" class="attach-file" title="Прикрепить файл">📎</button>
-                    <button type="button" class="send-button">Отправить</button>
-                    <input type="file" id="groupFileInput" style="display: none;" 
-                           accept="image/*,.pdf,.doc,.docx,.txt,.zip,.mp3,.wav,.mp4,.mov"
-                           multiple>
-                </div>
-                <div id="groupEmojiPicker" class="emoji-picker"></div>
-                <div id="groupFilePreview" class="file-preview-container"></div>
-            </div>
-        `;
-        
-        this.setupGroupChatEventListeners(groupChatContainer);
-        this.setupGroupEmojiPicker();
-        this.setupGroupEventDelegation();
-        await this.loadGroupMessages(group.id);
     }
+    
+    // Создаем или обновляем контейнер группового чата
+    let groupChatContainer = document.getElementById('groupChatContainer');
+    if (!groupChatContainer) {
+        groupChatContainer = document.createElement('div');
+        groupChatContainer.id = 'groupChatContainer';
+        groupChatContainer.className = 'active-chat';
+        groupChatContainer.style.cssText = `
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+            width: 100%;
+        `;
+        document.querySelector('.private-chat-main').appendChild(groupChatContainer);
+    }
+    
+    // Загружаем информацию о группе
+    const groupInfo = await this.getGroupInfo(group.id);
+    const memberCount = groupInfo?.members?.length || group.members?.length || 0;
+    
+    // Создаем HTML для группового чата с правильной структурой
+    groupChatContainer.innerHTML = `
+        <div class="chat-top-bar" style="
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: ${isMobileDevice() ? '15px 10px' : '15px 20px'};
+            background: white;
+            border-bottom: 1px solid #e9ecef;
+            flex-shrink: 0;
+        ">
+            <div class="chat-user-info" style="display: flex; align-items: center; gap: 10px;">
+                ${isMobileDevice() ? `
+                    <button class="back-to-groups mobile-back-button" style="
+                        background: none;
+                        border: none;
+                        font-size: 24px;
+                        margin-right: 5px;
+                        cursor: pointer;
+                        color: #007bff;
+                        padding: 5px;
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                        min-width: 40px;
+                        height: 40px;
+                    ">←</button>
+                ` : ''}
+                
+                <span class="user-avatar" style="
+                    width: 40px;
+                    height: 40px;
+                    border-radius: 50%;
+                    background: linear-gradient(45deg, #667eea, #764ba2);
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    color: white;
+                    font-size: 20px;
+                ">👥</span>
+                <div class="user-details">
+                    <h4 style="margin: 0; font-size: ${isMobileDevice() ? '16px' : '18px'}; font-weight: 600; color: #2c3e50;">
+                        ${group.name}
+                    </h4>
+                    <span class="user-status group" style="font-size: 12px; color: #6c757d;">
+                        Групповой чат • ${memberCount} участников
+                    </span>
+                </div>
+            </div>
+            <div class="chat-controls">
+                <button class="close-chat" title="Закрыть чат" style="
+                    background: none;
+                    border: none;
+                    font-size: 24px;
+                    cursor: pointer;
+                    color: #6c757d;
+                    padding: 5px;
+                    width: 40px;
+                    height: 40px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    border-radius: 50%;
+                    transition: all 0.3s ease;
+                ">✕</button>
+            </div>
+        </div>
+        
+        <div class="chat-messages-container" style="
+            flex: 1;
+            overflow-y: auto;
+            padding: 15px;
+            background: #f8f9fa;
+        ">
+            <div id="groupMessages" class="private-messages" style="
+                min-height: 100%;
+                display: flex;
+                flex-direction: column;
+            ">
+                <div class="no-messages" style="
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    height: 100%;
+                    color: #6c757d;
+                    font-style: italic;
+                    text-align: center;
+                    padding: 40px 20px;
+                ">📝 Загрузка сообщений...</div>
+            </div>
+        </div>
+        
+        <div class="message-input-area" style="
+            flex-shrink: 0;
+            background: white;
+            border-top: 1px solid #e9ecef;
+            padding: ${isMobileDevice() ? '10px' : '15px'};
+            width: 100%;
+            box-sizing: border-box;
+        ">
+            <div class="message-input-container" style="
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                width: 100%;
+                box-sizing: border-box;
+            ">
+                <input type="text" 
+                       id="groupMessageInput" 
+                       placeholder="Напишите сообщение в группу..." 
+                       autocomplete="off"
+                       style="
+                           flex: 1;
+                           padding: ${isMobileDevice() ? '12px 15px' : '15px 20px'};
+                           border: 2px solid #e9ecef;
+                           border-radius: 25px;
+                           font-size: ${isMobileDevice() ? '14px' : '16px'};
+                           outline: none;
+                           transition: all 0.3s ease;
+                           width: 100%;
+                           box-sizing: border-box;
+                       "
+                       onfocus="this.style.borderColor='#007bff'"
+                       onblur="this.style.borderColor='#e9ecef'">
+                <button type="button" 
+                        class="emoji-picker-btn" 
+                        title="Выбрать смайлик"
+                        style="
+                            background: none;
+                            border: none;
+                            font-size: ${isMobileDevice() ? '20px' : '24px'};
+                            cursor: pointer;
+                            padding: ${isMobileDevice() ? '8px' : '10px'};
+                            border-radius: 50%;
+                            width: ${isMobileDevice() ? '40px' : '48px'};
+                            height: ${isMobileDevice() ? '40px' : '48px'};
+                            display: flex;
+                            align-items: center;
+                            justify-content: center;
+                            transition: all 0.3s ease;
+                        "
+                        onmouseover="this.style.backgroundColor='#f8f9fa'"
+                        onmouseout="this.style.backgroundColor='transparent'">😊</button>
+                <button type="button" 
+                        class="group-voice-message-btn" 
+                        title="Записать голосовое сообщение"
+                        style="
+                            background: none;
+                            border: none;
+                            font-size: ${isMobileDevice() ? '20px' : '24px'};
+                            cursor: pointer;
+                            padding: ${isMobileDevice() ? '8px' : '10px'};
+                            border-radius: 50%;
+                            width: ${isMobileDevice() ? '40px' : '48px'};
+                            height: ${isMobileDevice() ? '40px' : '48px'};
+                            display: flex;
+                            align-items: center;
+                            justify-content: center;
+                            transition: all 0.3s ease;
+                        "
+                        onmouseover="this.style.backgroundColor='#f8f9fa'"
+                        onmouseout="this.style.backgroundColor='transparent'">🎤</button>
+                <button type="button" 
+                        class="attach-file" 
+                        title="Прикрепить файл"
+                        style="
+                            background: none;
+                            border: none;
+                            font-size: ${isMobileDevice() ? '20px' : '24px'};
+                            cursor: pointer;
+                            padding: ${isMobileDevice() ? '8px' : '10px'};
+                            border-radius: 50%;
+                            width: ${isMobileDevice() ? '40px' : '48px'};
+                            height: ${isMobileDevice() ? '40px' : '48px'};
+                            display: flex;
+                            align-items: center;
+                            justify-content: center;
+                            transition: all 0.3s ease;
+                        "
+                        onmouseover="this.style.backgroundColor='#f8f9fa'"
+                        onmouseout="this.style.backgroundColor='transparent'">📎</button>
+                <button type="button" 
+                        class="send-button"
+                        style="
+                            background: linear-gradient(45deg, #667eea, #764ba2);
+                            color: white;
+                            border: none;
+                            padding: ${isMobileDevice() ? '12px 20px' : '15px 25px'};
+                            border-radius: 25px;
+                            font-size: ${isMobileDevice() ? '14px' : '16px'};
+                            font-weight: 600;
+                            cursor: pointer;
+                            transition: all 0.3s ease;
+                            white-space: nowrap;
+                        "
+                        onmouseover="this.style.opacity='0.9'"
+                        onmouseout="this.style.opacity='1'">Отправить</button>
+                <input type="file" 
+                       id="groupFileInput" 
+                       style="display: none;" 
+                       accept="image/*,.pdf,.doc,.docx,.txt,.zip,.mp3,.wav,.mp4,.mov"
+                       multiple>
+            </div>
+            
+            <div id="groupEmojiPicker" class="emoji-picker" style="
+                display: none;
+                position: absolute;
+                bottom: ${isMobileDevice() ? '60px' : '70px'};
+                right: ${isMobileDevice() ? '10px' : '20px'};
+                background: white;
+                border: 1px solid #ddd;
+                border-radius: 10px;
+                padding: 10px;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+                z-index: 1000;
+                max-width: ${isMobileDevice() ? '280px' : '300px'};
+                max-height: 200px;
+                overflow-y: auto;
+            "></div>
+            
+            <div id="groupFilePreview" class="file-preview-container" style="
+                display: none;
+                margin-top: 10px;
+                padding: 10px;
+                background: #f8f9fa;
+                border-radius: 10px;
+                border: 1px dashed #dee2e6;
+            "></div>
+        </div>
+    `;
+    
+    groupChatContainer.style.display = 'flex';
+    
+    // Настраиваем обработчики событий
+    this.setupGroupChatEventListeners(groupChatContainer);
+    this.setupGroupEmojiPicker();
+    this.setupGroupEventDelegation();
+    
+    // Загружаем сообщения
+    await this.loadGroupMessages(group.id);
+    
+    // Фокусируемся на поле ввода
+    setTimeout(() => {
+        const messageInput = document.getElementById('groupMessageInput');
+        if (messageInput) {
+            messageInput.focus();
+        }
+    }, 300);
+    
+    console.log('✅ Group chat opened successfully');
+}
 
     setupGroupChatEventListeners(container) {
         this.removeGroupChatEventListeners();
@@ -1927,22 +2181,57 @@ closeAllModals() {
         return null;
     }
 
-    closeGroupChat() {
-        this.stopAllGroupVoicePlayback();
-        this.removeGroupChatEventListeners();
-        
-        this.currentGroup = null;
-        const groupChatContainer = document.getElementById('groupChatContainer');
-        if (groupChatContainer) {
-            groupChatContainer.style.display = 'none';
+   closeGroupChat() {
+    console.log('📱 Closing group chat...');
+    
+    this.stopAllGroupVoicePlayback();
+    this.removeGroupChatEventListeners();
+    
+    this.currentGroup = null;
+    const groupChatContainer = document.getElementById('groupChatContainer');
+    if (groupChatContainer) {
+        groupChatContainer.style.display = 'none';
+    }
+    
+    // Для мобильных устройств возвращаемся к списку чатов
+    if (isMobileDevice()) {
+        // Показываем сайдбар
+        const sidebar = document.querySelector('.private-chat-sidebar');
+        if (sidebar) {
+            sidebar.classList.remove('hidden');
+            sidebar.style.display = 'block';
         }
         
+        // Скрываем основной чат
+        const mainChat = document.querySelector('.private-chat-main');
+        if (mainChat) {
+            mainChat.classList.remove('active');
+            mainChat.style.display = 'none';
+        }
+        
+        // Показываем "нет выбранного чата"
+        const noChatSelected = document.getElementById('noChatSelected');
+        if (noChatSelected) {
+            noChatSelected.style.display = 'flex';
+        }
+        
+        // Показываем мобильную навигацию
+        if (window.privateChatInstance) {
+            window.privateChatInstance.showMobileNavigation();
+        }
+        
+        // Обновляем активную кнопку навигации
+        updateMobileNavActive('chats');
+    } else {
+        // Для десктопа стандартная логика
         const noChatSelected = document.getElementById('noChatSelected');
         if (noChatSelected && !window.privateChatInstance?.currentChat) {
             noChatSelected.style.display = 'flex';
         }
     }
-
+    
+    console.log('✅ Group chat closed');
+}
     handleGroupCreated(data) {
         console.log('🔄 Handling group creation:', data);
         
