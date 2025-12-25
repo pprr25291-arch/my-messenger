@@ -941,9 +941,7 @@ class ProfileManager {
                     </button>
                 ` : ''}
                 ${!isOwnProfile && gift.wearable ? `
-                    <div style="font-size: 9px; color: #6c757d; margin-top: 5px;">
-                        🎽 Можно надеть
-                    </div>
+                    
                 ` : ''}
             </div>
         `;
