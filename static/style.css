@@ -13152,3 +13152,78 @@ header {
     content: "👤";
     font-size: 10px;
 }
+/* В стилях */
+.no-chat-selected {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 40px 20px;
+    color: #6c757d;
+}
+
+.no-chat-selected .chat-icon {
+    font-size: 64px;
+    margin-bottom: 20px;
+    opacity: 0.5;
+}
+
+.no-chat-selected h3 {
+    font-size: 24px;
+    margin-bottom: 10px;
+    color: #343a40;
+}
+
+.no-chat-selected p {
+    font-size: 16px;
+    line-height: 1.5;
+    max-width: 400px;
+}
+/* В глобальные стили добавьте: */
+.no-chat-selected {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 40px 20px;
+    color: #6c757d;
+    height: 100%;
+}
+
+.no-chat-selected.hidden {
+    display: none !important;
+}
+
+.active-chat {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+}
+
+.active-chat.hidden {
+    display: none !important;
+}
+
+/* Для мобильных устройств */
+@media (max-width: 768px) {
+    .no-chat-selected {
+        padding: 30px 15px;
+    }
+    
+    .no-chat-selected .chat-icon {
+        font-size: 48px;
+        margin-bottom: 15px;
+    }
+    
+    .no-chat-selected h3 {
+        font-size: 20px;
+        margin-bottom: 8px;
+    }
+    
+    .no-chat-selected p {
+        font-size: 14px;
+        max-width: 300px;
+    }
+}

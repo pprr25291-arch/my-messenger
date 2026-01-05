@@ -81,6 +81,8 @@ class PrivateChat {
             this.createFallbackUI();
         }
     }
+// В методе createUI() класса PrivateChat замените блок message-input-area:
+
 createUI() {
     const privateChatContainer = document.getElementById('privateChat');
     if (!privateChatContainer) {
@@ -88,6 +90,9 @@ createUI() {
         return;
     }
 
+    // Определяем, мобильное ли устройство
+    const isMobile = window.IS_MOBILE || isMobileDevice();
+    
     privateChatContainer.innerHTML = `
         <div class="private-chat-layout">
             <div class="private-chat-sidebar">
@@ -116,15 +121,12 @@ createUI() {
             
             <div class="private-chat-main">
                 <div id="chatHeader" class="chat-header">
-                    <div class="header-content">
-                        <h3>💬 Приватные сообщения</h3>
-                        <p>Выберите диалог или найдите пользователя</p>
-                    </div>
+
                 </div>
                 
                 <div id="activeChat" class="active-chat" style="display: none;">
                     <div class="chat-top-bar">
-                        ${window.IS_MOBILE ? `
+                        ${isMobile ? `
                             <button class="mobile-back-btn" style="
                                 background: none;
                                 border: none;
@@ -141,7 +143,7 @@ createUI() {
                             ">←</button>
                         ` : ''}
                         
-                        <div class="chat-user-info" style="${window.IS_MOBILE ? 'flex: 1;' : ''}">
+                        <div class="chat-user-info" style="${isMobile ? 'flex: 1;' : ''}">
                             <span class="user-avatar">
                                 <img src="/default-avatar.png" class="user-avatar-img" alt="" style="width: 40px; height: 40px; border-radius: 50%;">
                             </span>
@@ -151,15 +153,60 @@ createUI() {
                             </div>
                         </div>
                         
-                        ${!window.IS_MOBILE ? `
-                            <div class="chat-controls">
-                                <div class="call-buttons">
-                                    <button class="video-call-btn" title="Видеозвонок">📹</button>
-                                    <button class="audio-call-btn" title="Аудиозвонок">📞</button>
-                                </div>
-                                <button class="close-chat" title="Закрыть чат">✕</button>
-                            </div>
-                        ` : ''}
+                        <div class="chat-call-buttons" style="
+                            display: flex;
+                            align-items: center;
+                            gap: ${isMobile ? '8px' : '10px'};
+                            margin-left: ${isMobile ? 'auto' : '15px'};
+                        ">
+                            <button class="video-call-btn" title="Видеозвонок" style="
+                                background: #28a745;
+                                color: white;
+                                border: none;
+                                border-radius: ${isMobile ? '50%' : '8px'};
+                                width: ${isMobile ? '44px' : '40px'};
+                                height: ${isMobile ? '44px' : '40px'};
+                                display: flex;
+                                align-items: center;
+                                justify-content: center;
+                                cursor: pointer;
+                                font-size: ${isMobile ? '20px' : '18px'};
+                                transition: all 0.3s ease;
+                                flex-shrink: 0;
+                            ">📹</button>
+                            <button class="audio-call-btn" title="Аудиозвонок" style="
+                                background: #007bff;
+                                color: white;
+                                border: none;
+                                border-radius: ${isMobile ? '50%' : '8px'};
+                                width: ${isMobile ? '44px' : '40px'};
+                                height: ${isMobile ? '44px' : '40px'};
+                                display: flex;
+                                align-items: center;
+                                justify-content: center;
+                                cursor: pointer;
+                                font-size: ${isMobile ? '20px' : '18px'};
+                                transition: all 0.3s ease;
+                                flex-shrink: 0;
+                            ">📞</button>
+                            ${!isMobile ? `
+                                <button class="close-chat" title="Закрыть чат" style="
+                                    background: #dc3545;
+                                    color: white;
+                                    border: none;
+                                    border-radius: 8px;
+                                    width: 40px;
+                                    height: 40px;
+                                    display: flex;
+                                    align-items: center;
+                                    justify-content: center;
+                                    cursor: pointer;
+                                    font-size: 18px;
+                                    transition: all 0.3s ease;
+                                    margin-left: 5px;
+                                ">✕</button>
+                            ` : ''}
+                        </div>
                     </div>
                     
                     <div class="chat-messages-container">
@@ -168,19 +215,143 @@ createUI() {
                         </div>
                     </div>
                     
-                    <div class="message-input-area">
-                        <div class="message-input-container">
-                            <input type="text" id="privateMessageInput" placeholder="Напишите сообщение..." autocomplete="off">
-                            <button type="button" class="emoji-picker-btn" title="Выбрать смайлик">😊</button>
-                            <button type="button" class="voice-message-btn" title="Записать голосовое сообщение">🎤</button>
-                            <button type="button" class="attach-file" title="Прикрепить файл">📎</button>
-                            <button type="button" class="send-button">Отправить</button>
-                            <input type="file" id="fileInput" style="display: none;" 
+                    <!-- ОБНОВЛЕННЫЙ БЛОК ВВОДА СООБЩЕНИЙ (такой же как в группах) -->
+                    <div class="message-input-area" style="
+                        flex-shrink: 0;
+                        background: white;
+                        border-top: 1px solid #e9ecef;
+                        padding: ${isMobile ? '10px' : '15px'};
+                        width: 100%;
+                        box-sizing: border-box;
+                    ">
+                        <div class="message-input-container" style="
+                            display: flex;
+                            align-items: center;
+                            gap: 8px;
+                            width: 100%;
+                            box-sizing: border-box;
+                        ">
+                            <input type="text" 
+                                   id="privateMessageInput" 
+                                   placeholder="Напишите сообщение..." 
+                                   autocomplete="off"
+                                   style="
+                                       flex: 1;
+                                       padding: ${isMobile ? '12px 15px' : '15px 20px'};
+                                       border: 2px solid #e9ecef;
+                                       border-radius: 25px;
+                                       font-size: ${isMobile ? '14px' : '16px'};
+                                       outline: none;
+                                       transition: all 0.3s ease;
+                                       width: 100%;
+                                       box-sizing: border-box;
+                                   "
+                                   onfocus="this.style.borderColor='#007bff'"
+                                   onblur="this.style.borderColor='#e9ecef'">
+                            <button type="button" 
+                                    class="emoji-picker-btn" 
+                                    title="Выбрать смайлик"
+                                    style="
+                                        background: none;
+                                        border: none;
+                                        font-size: ${isMobile ? '20px' : '24px'};
+                                        cursor: pointer;
+                                        padding: ${isMobile ? '8px' : '10px'};
+                                        border-radius: 50%;
+                                        width: ${isMobile ? '40px' : '48px'};
+                                        height: ${isMobile ? '40px' : '48px'};
+                                        display: flex;
+                                        align-items: center;
+                                        justify-content: center;
+                                        transition: all 0.3s ease;
+                                    "
+                                    onmouseover="this.style.backgroundColor='#f8f9fa'"
+                                    onmouseout="this.style.backgroundColor='transparent'">😊</button>
+                            <button type="button" 
+                                    class="voice-message-btn" 
+                                    title="Записать голосовое сообщение"
+                                    style="
+                                        background: none;
+                                        border: none;
+                                        font-size: ${isMobile ? '20px' : '24px'};
+                                        cursor: pointer;
+                                        padding: ${isMobile ? '8px' : '10px'};
+                                        border-radius: 50%;
+                                        width: ${isMobile ? '40px' : '48px'};
+                                        height: ${isMobile ? '40px' : '48px'};
+                                        display: flex;
+                                        align-items: center;
+                                        justify-content: center;
+                                        transition: all 0.3s ease;
+                                    "
+                                    onmouseover="this.style.backgroundColor='#f8f9fa'"
+                                    onmouseout="this.style.backgroundColor='transparent'">🎤</button>
+                            <button type="button" 
+                                    class="attach-file" 
+                                    title="Прикрепить файл"
+                                    style="
+                                        background: none;
+                                        border: none;
+                                        font-size: ${isMobile ? '20px' : '24px'};
+                                        cursor: pointer;
+                                        padding: ${isMobile ? '8px' : '10px'};
+                                        border-radius: 50%;
+                                        width: ${isMobile ? '40px' : '48px'};
+                                        height: ${isMobile ? '40px' : '48px'};
+                                        display: flex;
+                                        align-items: center;
+                                        justify-content: center;
+                                        transition: all 0.3s ease;
+                                    "
+                                    onmouseover="this.style.backgroundColor='#f8f9fa'"
+                                    onmouseout="this.style.backgroundColor='transparent'">📎</button>
+                            <button type="button" 
+                                    class="send-button"
+                                    style="
+                                        background: linear-gradient(45deg, #667eea, #764ba2);
+                                        color: white;
+                                        border: none;
+                                        padding: ${isMobile ? '12px 20px' : '15px 25px'};
+                                        border-radius: 25px;
+                                        font-size: ${isMobile ? '14px' : '16px'};
+                                        font-weight: 600;
+                                        cursor: pointer;
+                                        transition: all 0.3s ease;
+                                        white-space: nowrap;
+                                    "
+                                    onmouseover="this.style.opacity='0.9'"
+                                    onmouseout="this.style.opacity='1'">Отправить</button>
+                            <input type="file" 
+                                   id="fileInput" 
+                                   style="display: none;" 
                                    accept="image/*,.pdf,.doc,.docx,.txt,.zip,.mp3,.wav,.mp4,.mov"
                                    multiple>
                         </div>
-                        <div id="emojiPicker" class="emoji-picker"></div>
-                        <div id="filePreview" class="file-preview-container"></div>
+                        
+                        <div id="emojiPicker" class="emoji-picker" style="
+                            display: none;
+                            position: absolute;
+                            bottom: ${isMobile ? '60px' : '70px'};
+                            right: ${isMobile ? '10px' : '20px'};
+                            background: white;
+                            border: 1px solid #ddd;
+                            border-radius: 10px;
+                            padding: 10px;
+                            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+                            z-index: 1000;
+                            max-width: ${isMobile ? '280px' : '300px'};
+                            max-height: 200px;
+                            overflow-y: auto;
+                        "></div>
+                        
+                        <div id="filePreview" class="file-preview-container" style="
+                            display: none;
+                            margin-top: 10px;
+                            padding: 10px;
+                            background: #f8f9fa;
+                            border-radius: 10px;
+                            border: 1px dashed #dee2e6;
+                        "></div>
                     </div>
                 </div>
                 
@@ -196,18 +367,119 @@ createUI() {
     this.createModals();
     this.setupEmojiPicker();
 }
-    // Новые методы для устранения дублирования
-    removeDuplicateMessages(messages) {
-        const seen = new Set();
-        return messages.filter(message => {
-            const identifier = message.id || `${message.sender}_${message.messageType}_${message.timestamp}_${message.fileData?.path}`;
-            if (seen.has(identifier)) {
-                console.log('🔄 Removing duplicate message:', identifier);
-                return false;
+addMobileCallButtons() {
+    const messageInputArea = document.querySelector('.message-input-area');
+    if (!messageInputArea) return;
+    
+    const callButtonsContainer = document.createElement('div');
+    callButtonsContainer.className = 'mobile-call-buttons';
+    callButtonsContainer.style.cssText = `
+        display: flex;
+        gap: 10px;
+        padding: 10px;
+        background: white;
+        border-top: 1px solid #e9ecef;
+        justify-content: center;
+    `;
+    
+    callButtonsContainer.innerHTML = `
+        <button class="mobile-video-call-btn" style="
+            background: #28a745;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            padding: 12px 20px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 500;
+            flex: 1;
+            justify-content: center;
+            transition: all 0.3s ease;
+        ">
+            <span style="font-size: 20px;">📹</span>
+            <span>Видеозвонок</span>
+        </button>
+        <button class="mobile-audio-call-btn" style="
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            padding: 12px 20px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 500;
+            flex: 1;
+            justify-content: center;
+            transition: all 0.3s ease;
+        ">
+            <span style="font-size: 20px;">📞</span>
+            <span>Аудиозвонок</span>
+        </button>
+    `;
+    messageInputArea.parentNode.insertBefore(callButtonsContainer, messageInputArea);
+    this.setupMobileCallButtons();
+}
+
+setupMobileCallButtons() {
+    const mobileVideoBtn = document.querySelector('.mobile-video-call-btn');
+    const mobileAudioBtn = document.querySelector('.mobile-audio-call-btn');
+    
+    if (mobileVideoBtn) {
+        mobileVideoBtn.addEventListener('click', () => {
+            const targetUser = this.getCurrentChatUser();
+            if (targetUser) {
+                window.callManager.initiateCall(targetUser, 'video');
             }
-            seen.add(identifier);
-            return true;
         });
+    }
+    
+    if (mobileAudioBtn) {
+        mobileAudioBtn.addEventListener('click', () => {
+            const targetUser = this.getCurrentChatUser();
+            if (targetUser) {
+                window.callManager.initiateCall(targetUser, 'audio');
+            }
+        });
+    }
+}
+   removeDuplicateMessages(messages) {
+        if (!messages || !Array.isArray(messages)) {
+            return [];
+        }
+        
+        const seen = new Set();
+        const uniqueMessages = [];
+        
+        for (const message of messages) {
+            let identifier;
+            
+            if (message.id) {
+                identifier = message.id;
+            } else if (message.messageType === 'text') {
+                identifier = `${message.sender}_${message.receiver}_${message.message}_${message.timestamp}`;
+            } else if (message.messageType === 'voice' && message.fileData?.path) {
+                identifier = `${message.sender}_${message.receiver}_voice_${message.fileData.path}`;
+            } else if (message.messageType === 'file' && message.fileData?.path) {
+                identifier = `${message.sender}_${message.receiver}_file_${message.fileData.path}`;
+            } else {
+                identifier = `${message.sender}_${message.receiver}_${message.messageType}_${message.timestamp}`;
+            }
+            
+            if (!seen.has(identifier)) {
+                seen.add(identifier);
+                uniqueMessages.push(message);
+            } else {
+                console.log('🔄 Removing duplicate message:', identifier);
+            }
+        }
+        
+        return uniqueMessages;
     }
 async sendGift(gift, targetUser = null) {
     const receiver = targetUser || this.currentChat;
@@ -218,17 +490,13 @@ async sendGift(gift, targetUser = null) {
 
     try {
         const currentUser = this.getCurrentUser();
-        
-        // Проверяем баланс
+     
         if (window.currencyManager.balance < gift.price) {
             this.showNotification(`Недостаточно монет. Нужно: ${gift.price} 🪙`, 'error');
             return;
         }
 
-        // Покупаем подарок
         await window.giftManager.buyGift(gift);
-        
-        // Создаем сообщение о подарке
         const messageData = {
             sender: currentUser,
             receiver: receiver,
@@ -246,11 +514,9 @@ async sendGift(gift, targetUser = null) {
             id: 'gift_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9)
         };
 
-        // Отправляем через сокет
         if (window.socket) {
             window.socket.emit('private message', messageData);
             
-            // Также отправляем специальное событие для подарка
             window.socket.emit('send_gift', {
                 sender: currentUser,
                 receiver: receiver,
@@ -259,10 +525,8 @@ async sendGift(gift, targetUser = null) {
             });
         }
 
-        // Показываем уведомление
         this.showNotification(`Вы подарили ${gift.name} пользователю ${receiver}`, 'success');
         
-        // Обновляем баланс
         this.updateCurrencyDisplays();
         
     } catch (error) {
@@ -922,52 +1186,69 @@ handleAvatarError(img) {
         }
     }
 
-    // Исправленный метод отображения истории сообщений
     displayMessageHistory(messages) {
         const container = document.getElementById('privateMessages');
-        if (!container) return;
+        if (!container) {
+            console.error('❌ Message container not found');
+            return;
+        }
         
         container.innerHTML = '';
         this.displayedMessageIds.clear();
         
-        if (messages.length === 0) {
+        if (!messages || messages.length === 0) {
             container.innerHTML = '<div class="no-messages">📝 Начните общение первым!</div>';
             return;
         }
         
         const uniqueMessages = this.removeDuplicateMessages(messages);
-        uniqueMessages.sort((a, b) => new Date(a.date) - new Date(b.date));
+        uniqueMessages.sort((a, b) => new Date(a.date || a.timestamp) - new Date(b.date || b.timestamp));
         
         uniqueMessages.forEach(message => {
             if (!message.id) {
-                message.id = 'msg_' + new Date(message.date).getTime() + '_' + Math.random().toString(36).substr(2, 5);
+                message.id = 'msg_' + new Date(message.date || message.timestamp).getTime() + '_' + Math.random().toString(36).substr(2, 5);
             }
             this.displayMessage(message, false);
         });
-        this.scrollToBottom();
-    }
-
-    // Исправленный метод обработки входящих сообщений
-    handleIncomingMessage(data) {
-        const messageId = data.id || `${data.sender}_${data.messageType}_${data.timestamp}_${data.fileData?.path}`;
         
+        this.scrollToBottom();
+        console.log(`✅ Loaded ${uniqueMessages.length} unique messages`);
+    }
+    handleIncomingMessage(data) {
+        if (!data || !data.id) {
+            console.error('❌ Invalid message data:', data);
+            return;
+        }
+        
+        const messageId = data.id;
+        
+        // Проверяем, не отображали ли мы уже это сообщение
         if (this.displayedMessageIds.has(messageId)) {
-            console.log('⚠️ Private message already displayed, skipping:', messageId);
+            console.log('🔄 Message already displayed, skipping:', messageId);
             return;
         }
         
         this.displayedMessageIds.add(messageId);
         
-        if (this.currentChat && 
-            ((data.sender === this.currentChat && data.receiver === document.getElementById('username')?.textContent) ||
-             (data.receiver === this.currentChat && data.sender === document.getElementById('username')?.textContent))) {
-            
+        const currentUser = this.getCurrentUser();
+        
+        // Проверяем, относится ли сообщение к текущему чату
+        const isRelevant = (data.sender === this.currentChat && data.receiver === currentUser) ||
+                          (data.receiver === this.currentChat && data.sender === currentUser);
+        
+        if (this.currentChat && isRelevant) {
             console.log('📨 Displaying incoming message:', data.messageType, data);
             this.displayMessage(data, true);
+            
+            // Если сообщение отправлено нами, не обновляем список бесед
+            if (data.sender !== currentUser) {
+                this.loadConversations();
+            }
+        } else {
+            // Если сообщение не для текущего чата, только обновляем список бесед
+            this.loadConversations();
         }
-        this.loadConversations();
     }
-
     createFallbackUI() {
         const privateChatContainer = document.getElementById('privateChat');
         if (!privateChatContainer) return;
@@ -1078,27 +1359,31 @@ addCurrencyAdminTab() {
             }
         });
     }
-
-    insertEmoji(emoji) {
+  insertEmoji(emoji) {
         const messageInput = document.getElementById('privateMessageInput');
         const groupMessageInput = document.getElementById('groupMessageInput');
         
+        // Определяем активное поле ввода
+        let activeInput = null;
         if (messageInput && messageInput.offsetParent !== null) {
-            const start = messageInput.selectionStart;
-            const end = messageInput.selectionEnd;
-            const text = messageInput.value;
-            messageInput.value = text.substring(0, start) + emoji + text.substring(end);
-            messageInput.focus();
-            messageInput.selectionStart = messageInput.selectionEnd = start + emoji.length;
+            activeInput = messageInput;
         } else if (groupMessageInput && groupMessageInput.offsetParent !== null) {
-            const start = groupMessageInput.selectionStart;
-            const end = groupMessageInput.selectionEnd;
-            const text = groupMessageInput.value;
-            groupMessageInput.value = text.substring(0, start) + emoji + text.substring(end);
-            groupMessageInput.focus();
-            groupMessageInput.selectionStart = groupMessageInput.selectionEnd = start + emoji.length;
+            activeInput = groupMessageInput;
         }
         
+        if (activeInput) {
+            const start = activeInput.selectionStart;
+            const end = activeInput.selectionEnd;
+            const text = activeInput.value;
+            activeInput.value = text.substring(0, start) + emoji + text.substring(end);
+            activeInput.focus();
+            activeInput.selectionStart = activeInput.selectionEnd = start + emoji.length;
+            
+            // Триггерим событие input для отслеживания набора текста
+            activeInput.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+        
+        // Скрываем эмодзи-пикер
         const emojiPicker = document.getElementById('emojiPicker');
         if (emojiPicker) {
             emojiPicker.style.display = 'none';
@@ -1675,6 +1960,20 @@ setupEventListeners() {
                 console.log('⏩ Skipping profile for group:', username);
             }
         }
+        
+        // Обработчик для кнопки отправки сообщения на мобильных
+        if (e.target.closest('.send-button')) {
+            e.preventDefault();
+            e.stopPropagation();
+            this.sendPrivateMessage();
+        }
+        
+        // Обработчик для кнопки эмодзи на мобильных
+        if (e.target.closest('.emoji-picker-btn')) {
+            e.preventDefault();
+            e.stopPropagation();
+            this.toggleEmojiPicker();
+        }
     });
     
     // Обработчики для других элементов через делегирование
@@ -1688,11 +1987,31 @@ setupEventListeners() {
         }, 300));
     }
 
-    // Отдельный обработчик для поля ввода сообщения
+    // Отдельный обработчик для поля ввода сообщения (исправленный для мобильных)
     const messageInput = document.getElementById('privateMessageInput');
     if (messageInput) {
-        messageInput.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') this.sendPrivateMessage();
+        // Используем keydown вместо keypress для лучшей поддержки мобильных
+        messageInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                // На мобильных устройствах Enter может открывать клавиатуру, 
+                // поэтому делаем небольшую задержку
+                if (!isMobileDevice()) {
+                    this.sendPrivateMessage();
+                } else {
+                    // На мобильных делаем отправку по отдельной кнопке
+                    e.preventDefault();
+                }
+            }
+        });
+        
+        // Также добавляем blur для мобильных
+        messageInput.addEventListener('blur', () => {
+            if (isMobileDevice()) {
+                // Прячем клавиатуру мягко
+                setTimeout(() => {
+                    document.activeElement.blur();
+                }, 100);
+            }
         });
     }
 
@@ -1701,8 +2020,58 @@ setupEventListeners() {
     // Настраиваем мобильные обработчики
     if (isMobileDevice()) {
         this.setupMobileEventListeners();
+        this.setupMobileMessageHandlers();
     }
 }
+setupMobileMessageHandlers() {
+    const messageInput = document.getElementById('privateMessageInput');
+    const sendButton = document.querySelector('.send-button');
+    const emojiButton = document.querySelector('.emoji-picker-btn');
+    
+    if (!messageInput || !sendButton) return;
+    
+    // Обработчик кнопки отправки с обработкой мобильных событий
+    sendButton.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        this.sendPrivateMessage();
+        
+        // На мобильных устройствах скрываем клавиатуру после отправки
+        if (isMobileDevice() && messageInput) {
+            messageInput.blur();
+        }
+    });
+    
+    // Обработчик кнопки эмодзи для мобильных
+    if (emojiButton) {
+        emojiButton.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            this.toggleEmojiPicker();
+        });
+    }
+    
+    // Обработчик ввода текста для мобильных
+    messageInput.addEventListener('input', () => {
+        // Обновляем состояние кнопки отправки
+        if (sendButton) {
+            if (messageInput.value.trim().length > 0) {
+                sendButton.disabled = false;
+                sendButton.style.opacity = '1';
+                sendButton.style.cursor = 'pointer';
+            } else {
+                sendButton.disabled = true;
+                sendButton.style.opacity = '0.5';
+                sendButton.style.cursor = 'not-allowed';
+            }
+        }
+    });
+    
+    // Начальное состояние кнопки
+    sendButton.disabled = true;
+    sendButton.style.opacity = '0.5';
+    sendButton.style.cursor = 'not-allowed';
+}   
 isGroupName(username) {
     if (!username) return false;
     
@@ -1753,8 +2122,83 @@ setupEmojiPickerListeners() {
         }
     });
 }
-
-// Метод для открытия голосового рекордера
+ sendPrivateMessage() {
+        const messageInput = document.getElementById('privateMessageInput');
+        const message = messageInput?.value.trim();
+        
+        if (!message || message === '') {
+            if (!isMobileDevice()) {
+            }
+            return;
+        }
+        
+        // Очищаем поле ввода сразу
+        messageInput.value = '';
+        
+        const currentUsername = this.getCurrentUser();
+        
+        // Проверяем, не отправляем ли мы сообщение самому себе
+        if (currentUsername === this.currentChat) {
+            this.showNotification('Нельзя отправить сообщение самому себе', 'error');
+            return;
+        }
+        
+        // Создаем уникальный ID для сообщения
+        const messageId = 'msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+        
+        // Создаем объект сообщения
+        const messageData = {
+            sender: currentUsername,
+            receiver: this.currentChat,
+            message: message,
+            messageType: 'text',
+            timestamp: new Date().toLocaleTimeString(),
+            date: new Date().toISOString(),
+            id: messageId
+        };
+        
+        // Проверяем, не отправляли ли мы уже это сообщение
+        if (this.displayedMessageIds.has(messageId)) {
+            console.log('⚠️ Message already sent, skipping:', messageId);
+            return;
+        }
+        
+        this.displayedMessageIds.add(messageId);
+        
+        // Отправляем через сокет
+        if (window.socket) {
+            console.log('📤 Sending private message:', messageData);
+            window.socket.emit('private message', messageData);
+        }
+        
+        // Локально отображаем сообщение сразу
+        this.displayMessage(messageData, true);
+        
+        // Скрываем эмодзи-пикер если открыт
+        const emojiPicker = document.getElementById('emojiPicker');
+        if (emojiPicker) {
+            emojiPicker.style.display = 'none';
+        }
+        
+        // На мобильных устройствах обновляем состояние кнопки
+        if (isMobileDevice()) {
+            const sendButton = document.querySelector('.send-button');
+            if (sendButton) {
+                sendButton.disabled = true;
+                sendButton.style.opacity = '0.5';
+                sendButton.style.cursor = 'not-allowed';
+            }
+            
+            // Скрываем клавиатуру
+            setTimeout(() => {
+                if (messageInput) {
+                    messageInput.blur();
+                }
+            }, 100);
+        }
+        
+        console.log('✅ Message sent successfully');
+    }
 openVoiceRecorder() {
     if (!window.voiceMessageManager) {
         console.log('🎤 Creating VoiceMessageManager instance...');
@@ -2175,31 +2619,44 @@ async removeCurrencyFromUser(username, amount, reason = '') {
         return null;
     }
 
-    toggleEmojiPicker() {
-        const emojiPicker = document.getElementById('emojiPicker');
-        if (!emojiPicker) return;
-        
-        if (emojiPicker.style.display === 'block') {
-            emojiPicker.style.display = 'none';
-        } else {
-            emojiPicker.style.display = 'block';
-            const messageInput = document.getElementById('privateMessageInput');
-            if (messageInput) {
-                const rect = messageInput.getBoundingClientRect();
+  toggleEmojiPicker() {
+    const emojiPicker = document.getElementById('emojiPicker');
+    if (!emojiPicker) return;
+    
+    if (emojiPicker.style.display === 'block') {
+        emojiPicker.style.display = 'none';
+    } else {
+        emojiPicker.style.display = 'block';
+        const messageInput = document.getElementById('privateMessageInput');
+        if (messageInput) {
+            const rect = messageInput.getBoundingClientRect();
+            
+            // Для мобильных устройств позиционируем эмодзи-пикер по-другому
+            if (isMobileDevice()) {
+                emojiPicker.style.position = 'fixed';
+                emojiPicker.style.bottom = '60px'; // Над клавиатурой/навигацией
+                emojiPicker.style.left = '0';
+                emojiPicker.style.right = '0';
+                emojiPicker.style.width = '100%';
+                emojiPicker.style.maxHeight = '200px';
+                emojiPicker.style.zIndex = '1002';
+            } else {
                 emojiPicker.style.position = 'absolute';
                 emojiPicker.style.bottom = '100%';
                 emojiPicker.style.left = '0';
                 emojiPicker.style.width = '300px';
                 emojiPicker.style.maxHeight = '200px';
-                emojiPicker.style.overflowY = 'auto';
-                emojiPicker.style.background = 'white';
-                emojiPicker.style.border = '1px solid #ddd';
-                emojiPicker.style.borderRadius = '8px';
-                emojiPicker.style.boxShadow = '0 4px 12px rgba(0,0,0,0.1)';
                 emojiPicker.style.zIndex = '1000';
             }
+            
+            emojiPicker.style.overflowY = 'auto';
+            emojiPicker.style.background = 'white';
+            emojiPicker.style.border = '1px solid #ddd';
+            emojiPicker.style.borderRadius = '8px';
+            emojiPicker.style.boxShadow = '0 4px 12px rgba(0,0,0,0.1)';
         }
     }
+}
 
     setupFileInput() {
         this.fileInput = document.getElementById('fileInput');
@@ -2533,26 +2990,33 @@ handleGiftReceived(data) {
             existingIndicator.remove();
         }
     }
-
-    setupTypingHandlers() {
+ setupTypingHandlers() {
         const messageInput = document.getElementById('privateMessageInput');
         const groupMessageInput = document.getElementById('groupMessageInput');
         
         let typingTimeout;
         let isTyping = false;
+        let lastMessageSent = null;
 
         const sendTypingEvent = (isTyping, chatType, target) => {
-            if (!window.socket) return;
+            if (!window.socket || !target) return;
+
+            // Не отправляем событие набора, если мы только что отправили сообщение
+            if (isTyping && lastMessageSent && Date.now() - lastMessageSent < 1000) {
+                return;
+            }
 
             window.socket.emit('typing_event', {
                 isTyping: isTyping,
                 chatType: chatType,
                 target: target,
-                sender: document.getElementById('username')?.textContent
+                sender: this.getCurrentUser()
             });
         };
 
         const handleInput = (chatType, target) => {
+            if (!target) return;
+
             if (!isTyping) {
                 isTyping = true;
                 sendTypingEvent(true, chatType, target);
@@ -2594,8 +3058,26 @@ handleGiftReceived(data) {
                 }
             });
         }
-    }
 
+        // Отслеживаем отправку сообщений
+        const originalSendMessage = this.sendPrivateMessage.bind(this);
+        this.sendPrivateMessage = function() {
+            lastMessageSent = Date.now();
+            isTyping = false;
+            
+            // Отправляем событие остановки набора
+            if (this.currentChat && window.socket) {
+                window.socket.emit('typing_event', {
+                    isTyping: false,
+                    chatType: 'private',
+                    target: this.currentChat,
+                    sender: this.getCurrentUser()
+                });
+            }
+            
+            return originalSendMessage();
+        };
+    }
     addTypingIndicatorStyles() {
         if (!document.getElementById('typing-indicator-styles')) {
             const styles = document.createElement('style');
@@ -2669,100 +3151,238 @@ handleGiftReceived(data) {
         }
     }
 
-    addCustomStyles() {
-        if (!document.getElementById('private-chat-styles')) {
-            const styles = document.createElement('style');
-            styles.id = 'private-chat-styles';
-            styles.textContent = `
-                .voice-message-player {
-                    display: flex;
-                    align-items: center;
-                    gap: 10px;
-                    padding: 10px;
-                    background: #f8f9fa;
-                    border-radius: 10px;
-                    margin: 5px 0;
+ addCustomStyles() {
+    if (!document.getElementById('private-chat-styles')) {
+        const styles = document.createElement('style');
+        styles.id = 'private-chat-styles';
+        styles.textContent = `
+            /* Стили для шапки чата */
+            .chat-top-bar {
+                display: flex;
+                align-items: center;
+                padding: 15px;
+                background: white;
+                border-bottom: 1px solid #e9ecef;
+                position: relative;
+            }
+            
+            .chat-user-info {
+                display: flex;
+                align-items: center;
+                gap: 12px;
+                flex: 1;
+            }
+            
+            .user-avatar {
+                position: relative;
+            }
+            
+            .user-avatar-img {
+                width: 50px;
+                height: 50px;
+                border-radius: 50%;
+                object-fit: cover;
+                border: 2px solid #007bff;
+            }
+            
+            .user-details {
+                flex: 1;
+                min-width: 0;
+            }
+            
+            .user-details h4 {
+                margin: 0;
+                font-size: 16px;
+                font-weight: 600;
+                color: #333;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+            }
+            
+            .user-status {
+                font-size: 12px;
+                color: #6c757d;
+                display: flex;
+                align-items: center;
+                gap: 4px;
+            }
+            
+            .user-status.online {
+                color: #28a745;
+            }
+            
+            .user-status.offline {
+                color: #dc3545;
+            }
+            
+            /* Стили для кнопок звонков */
+            .chat-call-buttons {
+                display: flex;
+                align-items: center;
+                gap: 10px;
+            }
+            
+            .video-call-btn:hover {
+                background: #218838 !important;
+                transform: scale(1.1);
+            }
+            
+            .audio-call-btn:hover {
+                background: #0056b3 !important;
+                transform: scale(1.1);
+            }
+            
+            .close-chat:hover {
+                background: #c82333 !important;
+                transform: scale(1.1);
+            }
+            
+            /* Адаптивность для мобильных */
+            @media (max-width: 768px) {
+                .chat-top-bar {
+                    padding: 12px;
                 }
                 
-                .play-voice-btn {
-                    background: #007bff;
-                    color: white;
-                    border: none;
-                    border-radius: 50%;
-                    width: 40px;
-                    height: 40px;
-                    cursor: pointer;
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    font-size: 16px;
-                    transition: all 0.3s ease;
+                .user-avatar-img {
+                    width: 44px;
+                    height: 44px;
                 }
                 
-                .play-voice-btn:hover {
-                    background: #0056b3;
-                    transform: scale(1.1);
+                .user-details h4 {
+                    font-size: 15px;
                 }
                 
-                .play-voice-btn.playing {
-                    background: #dc3545;
+                .user-status {
+                    font-size: 11px;
                 }
                 
-                .voice-waveform {
-                    flex: 1;
-                    height: 20px;
-                    background: #e9ecef;
-                    border-radius: 10px;
-                    overflow: hidden;
-                    position: relative;
+                .chat-call-buttons {
+                    gap: 8px;
                 }
                 
-                .voice-progress {
-                    height: 100%;
-                    background: linear-gradient(90deg, #007bff, #0056b3);
-                    width: 0%;
-                    transition: width 0.1s ease;
-                    border-radius: 10px;
+                .video-call-btn, .audio-call-btn {
+                    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
                 }
                 
-                .voice-duration {
-                    font-size: 12px;
-                    color: #6c757d;
-                    font-weight: bold;
-                    min-width: 40px;
-                    text-align: center;
+                .video-call-btn:active {
+                    background: #1e7e34 !important;
+                    transform: scale(0.95);
                 }
                 
-                .download-voice-btn {
-                    background: #28a745;
-                    color: white;
-                    border: none;
-                    border-radius: 5px;
-                    padding: 5px 10px;
-                    cursor: pointer;
-                    font-size: 14px;
+                .audio-call-btn:active {
+                    background: #004085 !important;
+                    transform: scale(0.95);
                 }
-                
-                .download-voice-btn:hover {
-                    background: #218838;
-                }
-                
-                .voice-message-info {
-                    display: flex;
-                    align-items: center;
-                    gap: 5px;
-                    margin-top: 5px;
-                    font-size: 12px;
-                    color: #6c757d;
-                }
-                
-                .voice-icon {
-                    font-size: 14px;
-                }
-            `;
-            document.head.appendChild(styles);
-        }
+            }
+            
+            /* Анимации */
+            @keyframes pulse {
+                0% { transform: scale(1); }
+                50% { transform: scale(1.05); }
+                100% { transform: scale(1); }
+            }
+            
+            .video-call-btn.calling {
+                animation: pulse 1.5s infinite;
+                background: #ffc107 !important;
+            }
+            
+            .audio-call-btn.calling {
+                animation: pulse 1.5s infinite;
+                background: #ffc107 !important;
+            }
+            
+            /* Общие стили для плеера голосовых сообщений */
+            .voice-message-player {
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                padding: 10px;
+                background: #f8f9fa;
+                border-radius: 10px;
+                margin: 5px 0;
+            }
+            
+            .play-voice-btn {
+                background: #007bff;
+                color: white;
+                border: none;
+                border-radius: 50%;
+                width: 40px;
+                height: 40px;
+                cursor: pointer;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 16px;
+                transition: all 0.3s ease;
+            }
+            
+            .play-voice-btn:hover {
+                background: #0056b3;
+                transform: scale(1.1);
+            }
+            
+            .play-voice-btn.playing {
+                background: #dc3545;
+            }
+            
+            .voice-waveform {
+                flex: 1;
+                height: 20px;
+                background: #e9ecef;
+                border-radius: 10px;
+                overflow: hidden;
+                position: relative;
+            }
+            
+            .voice-progress {
+                height: 100%;
+                background: linear-gradient(90deg, #007bff, #0056b3);
+                width: 0%;
+                transition: width 0.1s ease;
+                border-radius: 10px;
+            }
+            
+            .voice-duration {
+                font-size: 12px;
+                color: #6c757d;
+                font-weight: bold;
+                min-width: 40px;
+                text-align: center;
+            }
+            
+            .download-voice-btn {
+                background: #28a745;
+                color: white;
+                border: none;
+                border-radius: 5px;
+                padding: 5px 10px;
+                cursor: pointer;
+                font-size: 14px;
+            }
+            
+            .download-voice-btn:hover {
+                background: #218838;
+            }
+            
+            .voice-message-info {
+                display: flex;
+                align-items: center;
+                gap: 5px;
+                margin-top: 5px;
+                font-size: 12px;
+                color: #6c757d;
+            }
+            
+            .voice-icon {
+                font-size: 14px;
+            }
+        `;
+        document.head.appendChild(styles);
     }
+}
 
     debounce(func, wait) {
         let timeout;
@@ -3560,23 +4180,39 @@ formatMessageTime(timestamp) {
         return 'только что';
     }
 }
-    displayMessage(message, shouldScroll = true) {
+   displayMessage(message, shouldScroll = true) {
         const container = document.getElementById('privateMessages');
-        if (!container) return;
+        if (!container) {
+            console.error('❌ Message container not found');
+            return;
+        }
         
+        // Проверяем уникальность сообщения еще раз
+        const messageId = message.id || `${message.sender}_${message.messageType}_${message.timestamp}`;
+        const existingMessage = container.querySelector(`[data-message-id="${messageId}"]`);
+        
+        if (existingMessage) {
+            console.log('⚠️ Message already exists in DOM, skipping:', messageId);
+            return;
+        }
+        
+        // Убираем сообщение "нет сообщений"
         const noMessagesElement = container.querySelector('.no-messages');
         if (noMessagesElement) noMessagesElement.remove();
         
-        const currentUsername = document.getElementById('username')?.textContent;
+        const currentUsername = this.getCurrentUser();
         const isOwn = message.sender === currentUsername;
         
         if (message.messageType === 'voice') {
             this.displayVoiceMessage(message, isOwn);
         } else if (message.messageType === 'file') {
             this.displayFileMessage(message, isOwn);
+        } else if (message.messageType === 'gift') {
+            this.displayGiftMessage(message, isOwn);
         } else {
             const messageElement = document.createElement('div');
             messageElement.className = `private-message ${isOwn ? 'own' : 'other'}`;
+            messageElement.setAttribute('data-message-id', messageId);
             
             messageElement.innerHTML = `
                 <div class="message-content">
@@ -3591,7 +4227,11 @@ formatMessageTime(timestamp) {
             container.appendChild(messageElement);
         }
         
-        if (shouldScroll) this.scrollToBottom();
+        if (shouldScroll) {
+            this.scrollToBottom();
+        }
+        
+        console.log('✅ Message displayed:', messageId);
     }
 
     displayVoiceMessage(message, isOwn = false) {
@@ -3806,10 +4446,7 @@ formatMessageTime(timestamp) {
 
 
 async handleFileUpload(file) {
-    if (!this.currentChat) {
-        this.showNotification('Выберите собеседника для отправки файла', 'error');
-        return;
-    }
+
 
     const formData = new FormData();
     formData.append('file', file);

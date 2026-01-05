@@ -906,12 +906,6 @@
                 mobileNav.className = 'mobile-nav';
                 
                 mobileNav.innerHTML = `
-                    <button class="mobile-nav-btn active" id="mobileChatsBtn">
-                        <i>💬</i>
-                        <span>Чаты</span>                 
-                    <button class="mobile-nav-btn" id="mobileSearchBtn">
-                        <i>🔍</i>
-                        <span>Поиск</span>
                     </button>
                     <button class="mobile-nav-btn" id="mobileProfileBtn">
                         <i>👤</i>
@@ -1705,19 +1699,7 @@
 
     <!-- Мобильная навигация -->
     <div class="mobile-nav">
-        <button class="mobile-nav-btn active" id="mobileChatsBtn">
-            <i>💬</i>
-            <span>Чаты</span>
-        </button>
        
-        <button class="mobile-nav-btn" id="mobileSearchBtn">
-            <i>🔍</i>
-            <span>Поиск</span>
-        </button>
-        <button class="mobile-nav-btn" id="mobileProfileBtn">
-            <i>👤</i>
-            <span>Профиль</span>
-        </button>
         <% if (username === 'admin') { %>
         <button class="mobile-nav-btn" id="mobileAdminBtn">
             <i>⚙️</i>

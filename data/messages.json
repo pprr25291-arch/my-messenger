@@ -346,5 +346,369 @@
     "date": "2025-12-25T05:17:10.733Z",
     "messageType": "text",
     "fileData": null
+  },
+  {
+    "id": "msg_1767061604706_tj09qeb8k",
+    "sender": "admin",
+    "groupId": "group_1765253799836_jnffblw7f",
+    "message": "admin",
+    "timestamp": "07:26:44",
+    "type": "group",
+    "date": "2025-12-30T02:26:44.720Z",
+    "messageType": "text",
+    "fileData": null
+  },
+  {
+    "sender": "admin",
+    "receiver": "aaaaa",
+    "message": "уу",
+    "timestamp": "07:26:50",
+    "type": "private",
+    "date": "2025-12-30T02:26:50.955Z",
+    "messageType": "text",
+    "fileData": null
+  },
+  {
+    "sender": "admin",
+    "receiver": "aaaaa",
+    "message": "😠уауауа",
+    "timestamp": "07:26:57",
+    "type": "private",
+    "date": "2025-12-30T02:26:57.644Z",
+    "messageType": "text",
+    "fileData": null
+  },
+  {
+    "sender": "admin",
+    "receiver": "aaaaa",
+    "message": "фф",
+    "timestamp": "07:40:54",
+    "type": "private",
+    "date": "2025-12-30T02:40:54.139Z",
+    "messageType": "text",
+    "fileData": null
+  },
+  {
+    "sender": "admin",
+    "receiver": "aaaaa",
+    "message": "😏",
+    "timestamp": "07:40:56",
+    "type": "private",
+    "date": "2025-12-30T02:40:56.531Z",
+    "messageType": "text",
+    "fileData": null
+  },
+  {
+    "sender": "admin",
+    "receiver": "aaaaa",
+    "message": "ыыыыыыыыыыы",
+    "timestamp": "07:40:59",
+    "type": "private",
+    "date": "2025-12-30T02:40:59.227Z",
+    "messageType": "text",
+    "fileData": null
+  },
+  {
+    "id": "msg_1767062463459_e0kdtiykm",
+    "sender": "admin",
+    "groupId": "group_1765253799836_jnffblw7f",
+    "message": "😍",
+    "timestamp": "07:41:03",
+    "type": "group",
+    "date": "2025-12-30T02:41:03.459Z",
+    "messageType": "text",
+    "fileData": null
+  },
+  {
+    "id": "msg_1767062476729_lu045l99x",
+    "sender": "admin",
+    "groupId": "group_1765253799836_jnffblw7f",
+    "message": "admin",
+    "timestamp": "07:41:16",
+    "type": "group",
+    "date": "2025-12-30T02:41:16.729Z",
+    "messageType": "text",
+    "fileData": null
+  },
+  {
+    "id": "msg_1767062482963_xqqitzwdz",
+    "sender": "admin",
+    "groupId": "group_1765253799836_jnffblw7f",
+    "message": "🙃",
+    "timestamp": "07:41:22",
+    "type": "group",
+    "date": "2025-12-30T02:41:22.963Z",
+    "messageType": "text",
+    "fileData": null
+  },
+  {
+    "id": "msg_1767062630521_n4rm8qbyt",
+    "sender": "admin",
+    "groupId": "group_1765253799836_jnffblw7f",
+    "message": "admin",
+    "timestamp": "07:43:50",
+    "type": "group",
+    "date": "2025-12-30T02:43:50.521Z",
+    "messageType": "text",
+    "fileData": null
+  },
+  {
+    "id": "msg_1767063057840_ahk73bxbq",
+    "sender": "admin",
+    "groupId": "group_1765253799836_jnffblw7f",
+    "message": "admin",
+    "timestamp": "07:50:57",
+    "type": "group",
+    "date": "2025-12-30T02:50:57.840Z",
+    "messageType": "text",
+    "fileData": null
+  },
+  {
+    "id": "msg_1767063076904_guyb4bkyg",
+    "sender": "admin",
+    "groupId": "group_1765253799836_jnffblw7f",
+    "message": "ф",
+    "timestamp": "07:51:16",
+    "type": "group",
+    "date": "2025-12-30T02:51:16.904Z",
+    "messageType": "text",
+    "fileData": null
+  },
+  {
+    "id": "msg_1767063556587_ys0agc20p",
+    "sender": "admin",
+    "groupId": "group_1765253799836_jnffblw7f",
+    "message": "admin",
+    "timestamp": "07:59:16",
+    "type": "group",
+    "date": "2025-12-30T02:59:16.587Z",
+    "messageType": "text",
+    "fileData": null
+  },
+  {
+    "id": "msg_1767063568842_e6apalnmw",
+    "sender": "admin",
+    "groupId": "group_1765253799836_jnffblw7f",
+    "message": "admin",
+    "timestamp": "07:59:28",
+    "type": "group",
+    "date": "2025-12-30T02:59:28.842Z",
+    "messageType": "text",
+    "fileData": null
+  },
+  {
+    "id": "msg_1767063604420_rwh3jbj8j",
+    "sender": "admin",
+    "groupId": "group_1765253799836_jnffblw7f",
+    "message": "ц",
+    "timestamp": "08:00:04",
+    "type": "group",
+    "date": "2025-12-30T03:00:04.420Z",
+    "messageType": "text",
+    "fileData": null
+  },
+  {
+    "id": "msg_1767063644255_i08gdc0lm",
+    "sender": "admin",
+    "groupId": "group_1765253799836_jnffblw7f",
+    "message": "ц",
+    "timestamp": "08:00:44",
+    "type": "group",
+    "date": "2025-12-30T03:00:44.256Z",
+    "messageType": "text",
+    "fileData": null
+  },
+  {
+    "id": "msg_1767063684907_ryscr0tc2",
+    "sender": "admin",
+    "groupId": "group_1765253799836_jnffblw7f",
+    "message": "admin",
+    "timestamp": "08:01:24",
+    "type": "group",
+    "date": "2025-12-30T03:01:24.907Z",
+    "messageType": "text",
+    "fileData": null
+  },
+  {
+    "id": "msg_1767063694170_ui7llyjug",
+    "sender": "admin",
+    "groupId": "group_1765253799836_jnffblw7f",
+    "message": "admin",
+    "timestamp": "08:01:34",
+    "type": "group",
+    "date": "2025-12-30T03:01:34.170Z",
+    "messageType": "text",
+    "fileData": null
+  },
+  {
+    "sender": "admin",
+    "receiver": "aaaaa",
+    "message": "ф",
+    "timestamp": "08:01:38",
+    "type": "private",
+    "date": "2025-12-30T03:01:38.468Z",
+    "messageType": "text",
+    "fileData": null
+  },
+  {
+    "sender": "admin",
+    "receiver": "aaaaa",
+    "message": "ф",
+    "timestamp": "08:16:36",
+    "type": "private",
+    "date": "2025-12-30T03:16:36.322Z",
+    "messageType": "text",
+    "fileData": null
+  },
+  {
+    "sender": "admin",
+    "receiver": "aaaaa",
+    "message": "ы",
+    "timestamp": "08:16:38",
+    "type": "private",
+    "date": "2025-12-30T03:16:38.506Z",
+    "messageType": "text",
+    "fileData": null
+  },
+  {
+    "sender": "aaaaa",
+    "receiver": "admin",
+    "message": "w",
+    "timestamp": "14:58:26",
+    "type": "private",
+    "date": "2025-12-31T09:58:26.714Z",
+    "messageType": "text",
+    "fileData": null
+  },
+  {
+    "sender": "aaaaa",
+    "receiver": "admin",
+    "message": "w",
+    "timestamp": "14:58:28",
+    "type": "private",
+    "date": "2025-12-31T09:58:28.090Z",
+    "messageType": "text",
+    "fileData": null
+  },
+  {
+    "sender": "aaaaa",
+    "receiver": "admin",
+    "message": "w",
+    "timestamp": "14:58:33",
+    "type": "private",
+    "date": "2025-12-31T09:58:33.554Z",
+    "messageType": "text",
+    "fileData": null
+  },
+  {
+    "sender": "aaaaa",
+    "receiver": "admin",
+    "message": "ww",
+    "timestamp": "14:58:38",
+    "type": "private",
+    "date": "2025-12-31T09:58:38.314Z",
+    "messageType": "text",
+    "fileData": null
+  },
+  {
+    "sender": "aaaaa",
+    "receiver": "admin",
+    "message": "1",
+    "timestamp": "14:58:45",
+    "type": "private",
+    "date": "2025-12-31T09:58:45.825Z",
+    "messageType": "text",
+    "fileData": null
+  },
+  {
+    "sender": "aaaaa",
+    "receiver": "admin",
+    "message": "фвфыв",
+    "timestamp": "16:00:07",
+    "type": "private",
+    "date": "2026-01-02T11:00:07.755Z",
+    "messageType": "text",
+    "fileData": null
+  },
+  {
+    "sender": "aaaaa",
+    "receiver": "admin",
+    "message": "ыыы",
+    "timestamp": "16:00:11",
+    "type": "private",
+    "date": "2026-01-02T11:00:11.458Z",
+    "messageType": "text",
+    "fileData": null
+  },
+  {
+    "sender": "aaaaa",
+    "receiver": "admin",
+    "message": "ффф",
+    "timestamp": "16:00:19",
+    "type": "private",
+    "date": "2026-01-02T11:00:19.245Z",
+    "messageType": "text",
+    "fileData": null
+  },
+  {
+    "sender": "aaaaa",
+    "receiver": "admin",
+    "message": "😢",
+    "timestamp": "16:00:21",
+    "type": "private",
+    "date": "2026-01-02T11:00:21.728Z",
+    "messageType": "text",
+    "fileData": null
+  },
+  {
+    "sender": "aaaaa",
+    "receiver": "admin",
+    "message": "ффв",
+    "timestamp": "16:01:14",
+    "type": "private",
+    "date": "2026-01-02T11:01:14.292Z",
+    "messageType": "text",
+    "fileData": null
+  },
+  {
+    "sender": "aaaaa",
+    "receiver": "admin",
+    "message": "ыы",
+    "timestamp": "16:01:16",
+    "type": "private",
+    "date": "2026-01-02T11:01:16.644Z",
+    "messageType": "text",
+    "fileData": null
+  },
+  {
+    "sender": "aaaaa",
+    "receiver": "admin",
+    "message": "ыыыыыы",
+    "timestamp": "16:01:18",
+    "type": "private",
+    "date": "2026-01-02T11:01:18.940Z",
+    "messageType": "text",
+    "fileData": null
+  },
+  {
+    "sender": "aaaaa",
+    "receiver": "admin",
+    "message": "ы",
+    "timestamp": "16:01:20",
+    "type": "private",
+    "date": "2026-01-02T11:01:20.132Z",
+    "messageType": "text",
+    "fileData": null
+  },
+  {
+    "id": "msg_1767351683613_0u03sbjee",
+    "sender": "aaaaa",
+    "groupId": "group_1765253799836_jnffblw7f",
+    "message": "в",
+    "timestamp": "16:01:23",
+    "type": "group",
+    "date": "2026-01-02T11:01:23.613Z",
+    "messageType": "text",
+    "fileData": null
   }
 ]
