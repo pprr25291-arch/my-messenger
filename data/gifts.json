@@ -1,1 +1,10 @@
-{}
+{
+  "admin": {
+    "received": [],
+    "sent": []
+  },
+  "aaaaaa": {
+    "received": [],
+    "sent": []
+  }
+}

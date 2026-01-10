@@ -1,1 +1,14 @@
-{}
+{
+  "admin": {
+    "balance": 100,
+    "dailyStreak": 0,
+    "lastDailyReward": null,
+    "transactionHistory": []
+  },
+  "aaaaaa": {
+    "balance": 100,
+    "dailyStreak": 0,
+    "lastDailyReward": null,
+    "transactionHistory": []
+  }
+}

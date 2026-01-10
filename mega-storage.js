@@ -66,29 +66,29 @@ class MegaStorage {
             return false;
         }
     }
-
-    // Загрузка хешей существующих файлов
-    async loadFileHashes() {
-        if (!this.isInitialized) return;
+async loadFileHashes() {
+    if (!this.isInitialized) return;
+    
+    try {
+        // Получаем дочерние элементы из корня
+        const files = this.mega.children;
         
-        try {
-            const files = await this.listFiles();
-            for (const file of files) {
-                if (file.type === 'file' && file.name.endsWith('.json')) {
-                    const fileHash = await this.calculateRemoteFileHash(file.node);
-                    this.fileHashes.set(file.name, {
-                        hash: fileHash,
-                        remoteFile: file.node,
-                        size: file.size,
-                        modified: file.modified
-                    });
-                }
+        for (const file of files) {
+            if (!file.directory && file.name.endsWith('.json')) {
+                const fileHash = await this.calculateRemoteFileHash(file);
+                this.fileHashes.set(file.name, {
+                    hash: fileHash,
+                    remoteFile: file,
+                    size: file.size,
+                    modified: new Date(file.timestamp)
+                });
             }
-            console.log(`📊 Loaded ${this.fileHashes.size} file hashes from MEGA`);
-        } catch (error) {
-            console.error('❌ Error loading file hashes:', error.message);
         }
+        console.log(`📊 Loaded ${this.fileHashes.size} file hashes from MEGA`);
+    } catch (error) {
+        console.error('❌ Error loading file hashes:', error.message);
     }
+}
 
     // Вычисление хеша локального файла
     async calculateFileHash(filePath) {
@@ -121,98 +121,99 @@ class MegaStorage {
         return crypto.createHash('md5').update(content).digest('hex');
     }
 
-    // Безопасная загрузка файла с блокировкой
-    async uploadFile(localPath, remoteFilename = null) {
-        if (!this.isInitialized) {
-            console.warn('⚠️ MEGA not initialized, skipping upload');
-            return false;
-        }
-
-        const filename = remoteFilename || path.basename(localPath);
-        
-        // Проверяем блокировку
-        if (this.fileLock.has(filename)) {
-            console.log(`⏳ File ${filename} is locked, skipping upload`);
-            return false;
-        }
-
-        try {
-            // Устанавливаем блокировку
-            this.fileLock.set(filename, true);
-            
-            const localHash = await this.calculateFileHash(localPath);
-            
-            if (!localHash) {
-                console.warn(`⚠️ Cannot calculate hash for ${localPath}, skipping`);
-                return false;
-            }
-            
-            // Проверяем, есть ли уже такой файл на MEGA
-            const existingFileInfo = this.fileHashes.get(filename);
-            
-            if (existingFileInfo) {
-                // Если хеш совпадает, файл не изменился
-                if (existingFileInfo.hash === localHash) {
-                    console.log(`⏭️ File ${filename} unchanged, skipping upload`);
-                    return {
-                        uploaded: false,
-                        message: 'File unchanged',
-                        filename: filename
-                    };
-                }
-                
-                // Файл изменился - обновляем
-                console.log(`🔄 File ${filename} changed, updating...`);
-                
-                // Сначала удаляем старый файл
-                await this.deleteFile(filename);
-                
-                // Удаляем из кэша
-                this.fileHashes.delete(filename);
-            }
-            
-            console.log(`📤 Uploading ${filename} to MEGA...`);
-            
-            // Читаем файл
-            const fileBuffer = await fs.readFile(localPath);
-            
-            // Загружаем на MEGA
-            const uploadResult = await new Promise((resolve, reject) => {
-                this.mega.upload(filename, fileBuffer, (error, file) => {
-                    if (error) {
-                        reject(error);
-                    } else {
-                        resolve(file);
-                    }
-                });
-            });
-            
-            // Обновляем хеш в кэше
-            this.fileHashes.set(filename, {
-                hash: localHash,
-                remoteFile: uploadResult,
-                size: fileBuffer.length,
-                modified: new Date()
-            });
-            
-            console.log(`✅ ${existingFileInfo ? 'Updated' : 'Uploaded'} to MEGA: ${filename}`);
-            
-            return {
-                uploaded: true,
-                updated: !!existingFileInfo,
-                filename: filename,
-                file: uploadResult,
-                size: fileBuffer.length
-            };
-            
-        } catch (error) {
-            console.error(`❌ Error uploading ${localPath} to MEGA:`, error.message);
-            return false;
-        } finally {
-            // Снимаем блокировку
-            this.fileLock.delete(filename);
-        }
+async uploadFile(localPath, remoteFilename = null) {
+    if (!this.isInitialized) {
+        console.warn('⚠️ MEGA not initialized, skipping upload');
+        return false;
     }
+
+    const filename = remoteFilename || path.basename(localPath);
+    
+    // Проверяем блокировку
+    if (this.fileLock.has(filename)) {
+        console.log(`⏳ File ${filename} is locked, skipping upload`);
+        return false;
+    }
+
+    try {
+        // Устанавливаем блокировку
+        this.fileLock.set(filename, true);
+        
+        const localHash = await this.calculateFileHash(localPath);
+        
+        if (!localHash) {
+            console.warn(`⚠️ Cannot calculate hash for ${localPath}, skipping`);
+            return false;
+        }
+        
+        // Проверяем, есть ли уже такой файл на MEGA
+        const existingFileInfo = this.fileHashes.get(filename);
+        
+        if (existingFileInfo) {
+            // Если хеш совпадает, файл не изменился
+            if (existingFileInfo.hash === localHash) {
+                console.log(`⏭️ File ${filename} unchanged, skipping upload`);
+                return {
+                    uploaded: false,
+                    message: 'File unchanged',
+                    filename: filename
+                };
+            }
+            
+            // Файл изменился - обновляем
+            console.log(`🔄 File ${filename} changed, updating...`);
+            
+            // Сначала удаляем старый файл
+            await this.deleteFile(filename);
+            
+            // Удаляем из кэша
+            this.fileHashes.delete(filename);
+        }
+        
+        console.log(`📤 Uploading ${filename} to MEGA...`);
+        
+        // Читаем файл
+        const fileBuffer = await fs.readFile(localPath);
+        
+        // Загружаем на MEGA (используем async/await с промисом)
+        const uploadResult = await new Promise((resolve, reject) => {
+            // Используем метод upload из Storage
+            this.storage.upload(filename, fileBuffer, (error, file) => {
+                if (error) {
+                    reject(error);
+                } else {
+                    resolve(file);
+                }
+            });
+        });
+        
+        // Обновляем хеш в кэше
+        this.fileHashes.set(filename, {
+            hash: localHash,
+            remoteFile: uploadResult,
+            size: fileBuffer.length,
+            modified: new Date()
+        });
+        
+        console.log(`✅ ${existingFileInfo ? 'Updated' : 'Uploaded'} to MEGA: ${filename}`);
+        
+        return {
+            uploaded: true,
+            updated: !!existingFileInfo,
+            filename: filename,
+            file: uploadResult,
+            size: fileBuffer.length
+        };
+        
+    } catch (error) {
+        console.error(`❌ Error uploading ${localPath} to MEGA:`, error.message);
+        return false;
+    } finally {
+        // Снимаем блокировку
+        this.fileLock.delete(filename);
+    }
+}
+
 
     // Загрузка файла с MEGA
     async downloadFile(remoteFilename, localPath) {
@@ -278,84 +279,79 @@ class MegaStorage {
             this.fileLock.delete(remoteFilename);
         }
     }
+async findFile(filename) {
+    if (!this.isInitialized) return null;
+    
+    try {
+        // Ищем файл среди дочерних элементов
+        const children = this.mega.children || [];
+        const file = children.find(child => 
+            !child.directory && child.name === filename
+        );
+        
+        return file || null;
+    } catch (error) {
+        console.error(`❌ Error finding ${filename}:`, error.message);
+        return null;
+    }
+}
+async listFiles() {
+    if (!this.isInitialized) return [];
+    
+    try {
+        // Получаем дочерние элементы из корня
+        const children = this.mega.children || [];
+        
+        return children.map(child => ({
+            name: child.name,
+            size: child.size,
+            type: child.directory ? 'directory' : 'file',
+            modified: new Date(child.timestamp),
+            node: child
+        }));
+    } catch (error) {
+        console.error('❌ Error listing files:', error.message);
+        return [];
+    }
+}
+  async deleteFile(filename) {
+    if (!this.isInitialized) return false;
+    
+    // Проверяем блокировку
+    if (this.fileLock.has(filename)) {
+        console.log(`⏳ File ${filename} is locked, skipping delete`);
+        return false;
+    }
 
-    // Поиск файла на MEGA
-    async findFile(filename) {
-        if (!this.isInitialized) return null;
+    try {
+        // Устанавливаем блокировку
+        this.fileLock.set(filename, true);
+        
+        const file = await this.findFile(filename);
+        if (!file) return false;
         
         return new Promise((resolve) => {
-            this.mega.find(filename, (error, file) => {
+            file.delete((error) => {
                 if (error) {
-                    console.error(`❌ Error finding ${filename}:`, error.message);
-                    resolve(null);
+                    console.error(`❌ Error deleting ${filename}:`, error.message);
+                    resolve(false);
                 } else {
-                    resolve(file);
+                    // Удаляем из кэша хешей
+                    this.fileHashes.delete(filename);
+                    console.log(`🗑️ Deleted from MEGA: ${filename}`);
+                    resolve(true);
                 }
             });
         });
-    }
-
-    // Получение списка файлов на MEGA
-    async listFiles() {
-        if (!this.isInitialized) return [];
         
-        return new Promise((resolve, reject) => {
-            this.mega.getChildren((error, children) => {
-                if (error) {
-                    reject(error);
-                } else {
-                    resolve(children.map(child => ({
-                        name: child.name,
-                        size: child.size,
-                        type: child.directory ? 'directory' : 'file',
-                        modified: child.timestamp,
-                        node: child
-                    })));
-                }
-            });
-        });
+    } catch (error) {
+        console.error(`❌ Error in deleteFile for ${filename}:`, error.message);
+        return false;
+    } finally {
+        // Снимаем блокировку
+        this.fileLock.delete(filename);
     }
-
-    // Удаление файла с MEGA
-    async deleteFile(filename) {
-        if (!this.isInitialized) return false;
-        
-        // Проверяем блокировку
-        if (this.fileLock.has(filename)) {
-            console.log(`⏳ File ${filename} is locked, skipping delete`);
-            return false;
-        }
-
-        try {
-            // Устанавливаем блокировку
-            this.fileLock.set(filename, true);
-            
-            const file = await this.findFile(filename);
-            if (!file) return false;
-            
-            return new Promise((resolve) => {
-                file.delete(false, (error) => {
-                    if (error) {
-                        console.error(`❌ Error deleting ${filename}:`, error.message);
-                        resolve(false);
-                    } else {
-                        // Удаляем из кэша хешей
-                        this.fileHashes.delete(filename);
-                        console.log(`🗑️ Deleted from MEGA: ${filename}`);
-                        resolve(true);
-                    }
-                });
-            });
-            
-        } catch (error) {
-            console.error(`❌ Error in deleteFile for ${filename}:`, error.message);
-            return false;
-        } finally {
-            // Снимаем блокировку
-            this.fileLock.delete(filename);
-        }
-    }
-
+}
     // Синхронизация всех данных на MEGA с умным обновлением
     async syncToMega(dataDir) {
         if (!this.isInitialized) {

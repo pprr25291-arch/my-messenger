@@ -156,11 +156,13 @@ function isPortInUse(port) {
             .listen(port);
     });
 }
-
-// Функция для очистки старых файлов в uploads
 async function cleanupOldUploads() {
     try {
-        if (!fs.existsSync(uploadsDir)) {
+        // Используем fs.promises.access вместо fs.existsSync
+        try {
+            await fs.access(uploadsDir);
+        } catch (error) {
+            // Директория не существует
             return { deleted: 0, skipped: 0 };
         }
         
@@ -204,7 +206,6 @@ async function cleanupOldUploads() {
         return { deleted: 0, skipped: 0, error: error.message };
     }
 }
-
 // Функция для очистки дубликатов сообщений
 function removeDuplicateMessages(messagesArray) {
     const uniqueMessages = [];
@@ -1372,7 +1373,6 @@ app.get('/api/groups/user', authenticateToken, async (req, res) => {
         res.status(500).json({ error: 'Failed to load user groups' });
     }
 });
-
 app.post('/api/groups/create', authenticateToken, async (req, res) => {
     try {
         const { name, members, createdBy } = req.body;
@@ -1381,20 +1381,27 @@ app.post('/api/groups/create', authenticateToken, async (req, res) => {
             return res.status(400).json({ error: 'Все поля обязательны' });
         }
 
+        // Убедитесь, что createdBy включен в members
+        let allMembers = [...members];
+        if (!allMembers.includes(createdBy)) {
+            allMembers.push(createdBy);
+        }
+
         const group = {
             id: 'group_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
             name: name,
-            members: members,
+            members: allMembers,
             createdBy: createdBy,
             createdAt: new Date().toISOString(),
             messages: [],
-            memberCount: members.length
+            memberCount: allMembers.length
         };
 
         groups.push(group);
         await saveGroups();
 
-        members.forEach(member => {
+        // Отправляем событие создания группы всем участникам
+        allMembers.forEach(member => {
             const memberSocketId = userSockets.get(member);
             if (memberSocketId) {
                 io.to(memberSocketId).emit('group_created', {
@@ -1403,19 +1410,41 @@ app.post('/api/groups/create', authenticateToken, async (req, res) => {
             }
         });
 
-        console.log(`✅ Group created: ${group.name} with ${members.length} members`);
+        console.log(`✅ Group created: ${group.name} with ${allMembers.length} members`);
         
         res.json({
             success: true,
-            group: group
+            group: group,
+            message: `Группа "${name}" создана успешно`
         });
         
     } catch (error) {
         console.error('❌ Group creation error:', error);
-        res.status(500).json({ error: 'Ошибка создания группы' });
+        res.status(500).json({ error: 'Ошибка создания группы: ' + error.message });
     }
 });
-
+app.get('/api/groups/:groupId/members', authenticateToken, (req, res) => {
+    try {
+        const { groupId } = req.params;
+        const currentUser = req.user.username;
+        
+        const group = groups.find(g => g.id === groupId);
+        
+        if (!group) {
+            return res.status(404).json({ error: 'Группа не найдена' });
+        }
+        
+        res.json({
+            groupId: groupId,
+            name: group.name,
+            members: group.members || [],
+            isMember: group.members && group.members.includes(currentUser)
+        });
+    } catch (error) {
+        console.error('❌ Group members error:', error);
+        res.status(500).json({ error: 'Failed to load group members' });
+    }
+});
 app.get('/api/groups', authenticateToken, (req, res) => {
     try {
         const currentUser = req.user.username;
@@ -1435,13 +1464,26 @@ app.get('/api/groups/:groupId/messages', authenticateToken, (req, res) => {
         const currentUser = req.user.username;
         
         const group = groups.find(g => g.id === groupId);
-        if (!group || !group.members.includes(currentUser)) {
-            return res.status(403).json({ error: 'Доступ запрещен' });
+        
+        if (!group) {
+            return res.status(404).json({ error: 'Группа не найдена' });
+        }
+        
+        // Проверяем, является ли пользователь членом группы
+        if (!group.members || !group.members.includes(currentUser)) {
+            return res.status(403).json({ 
+                error: 'Доступ запрещен. Вы не являетесь участником этой группы.',
+                groupId: groupId,
+                members: group.members || []
+            });
         }
         
         const groupMessages = messages.filter(msg => 
             msg.type === 'group' && msg.groupId === groupId
         );
+        
+        // Убедитесь, что сообщения отсортированы по времени
+        groupMessages.sort((a, b) => new Date(a.date) - new Date(b.date));
         
         res.json(groupMessages);
     } catch (error) {

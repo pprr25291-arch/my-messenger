@@ -1016,34 +1016,49 @@ getValidTimestamp(timestamp) {
         });
     }
 
-    async loadGroupMessages(groupId) {
+  async loadGroupMessages(groupId) {
+    try {
+        console.log(`🔄 Loading messages for group: ${groupId}`);
+        
+        let messages = [];
+        
         try {
-            let messages = [];
+            const response = await fetch(`/api/groups/${groupId}/messages`);
+            console.log(`📡 API response status: ${response.status}`);
             
-            try {
-                const response = await fetch(`/api/groups/${groupId}/messages`);
-                if (response.ok) {
-                    messages = await response.json();
-                    console.log(`✅ Messages loaded for group ${groupId}:`, messages.length);
-                } else {
-                    throw new Error(`HTTP ${response.status}`);
-                }
-            } catch (apiError) {
-                console.log('⚠️ Using local messages:', apiError.message);
-                messages = this.getLocalGroupMessages(groupId);
+            if (response.ok) {
+                messages = await response.json();
+                console.log(`✅ Messages loaded for group ${groupId}:`, messages.length);
+            } else {
+                const errorText = await response.text();
+                console.error(`❌ API error ${response.status}:`, errorText);
+                throw new Error(`HTTP ${response.status}: ${errorText}`);
             }
-            
-            const uniqueMessages = this.removeDuplicateMessages(messages);
-            this.displayGroupMessages(uniqueMessages);
-            
-        } catch (error) {
-            console.error('Error loading group messages:', error);
-            const container = document.getElementById('groupMessages');
-            if (container) {
-                container.innerHTML = '<div class="no-messages">❌ Ошибка загрузки сообщений</div>';
-            }
+        } catch (apiError) {
+            console.log('⚠️ API failed, trying local messages:', apiError.message);
+            messages = this.getLocalGroupMessages(groupId);
+        }
+        
+        const uniqueMessages = this.removeDuplicateMessages(messages);
+        this.displayGroupMessages(uniqueMessages);
+        
+    } catch (error) {
+        console.error('Error loading group messages:', error);
+        const container = document.getElementById('groupMessages');
+        if (container) {
+            container.innerHTML = `
+                <div class="no-messages">
+                    <div>❌ Ошибка загрузки сообщений</div>
+                    <div style="font-size: 12px; margin-top: 5px;">${error.message}</div>
+                    <button onclick="window.groupChatManager.loadGroupMessages('${groupId}')" 
+                            style="margin-top: 10px; padding: 5px 10px; background: #007bff; color: white; border: none; border-radius: 3px; cursor: pointer;">
+                        Повторить попытку
+                    </button>
+                </div>
+            `;
         }
     }
+}
 
     saveLocalGroupMessage(groupId, message) {
         const localMessages = JSON.parse(localStorage.getItem('groupMessages') || '{}');

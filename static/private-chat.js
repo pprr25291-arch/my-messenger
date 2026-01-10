@@ -1074,117 +1074,141 @@ handleAvatarError(img) {
         this.avatarCache.set(img.alt, img.src);
     }
 }
-    // Исправленный метод загрузки групп
-    async loadUserGroups() {
-        try {
-            console.log('🔄 Loading user groups...');
-            
-            const endpoints = [
-                '/api/groups/user',
-                '/api/user/groups', 
-                '/api/groups'
-            ];
-            
-            let groups = [];
-            
-            for (const endpoint of endpoints) {
-                try {
-                    console.log(`🔍 Trying endpoint: ${endpoint}`);
-                    const response = await fetch(endpoint);
-                    
-                    if (response.ok) {
-                        groups = await response.json();
-                        console.log(`✅ Groups loaded from ${endpoint}:`, groups.length);
-                        break;
-                    } else {
-                        console.log(`⚠️ ${endpoint} returned ${response.status}`);
-                    }
-                } catch (error) {
-                    console.log(`❌ ${endpoint} failed:`, error.message);
+  async loadUserGroups() {
+    try {
+        console.log('🔄 Loading user groups...');
+        
+        const endpoints = [
+            '/api/groups/user',
+            '/api/user/groups', 
+            '/api/groups'
+        ];
+        
+        let groups = [];
+        let lastError = null;
+        
+        for (const endpoint of endpoints) {
+            try {
+                console.log(`🔍 Trying endpoint: ${endpoint}`);
+                const response = await fetch(endpoint, {
+                    signal: AbortSignal.timeout(5000) // Таймаут 5 секунд
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    console.log(`✅ Groups loaded from ${endpoint}:`, data.length);
+                    groups = data;
+                    break;
+                } else {
+                    console.log(`⚠️ ${endpoint} returned ${response.status}`);
+                    lastError = new Error(`HTTP ${response.status}`);
                 }
+            } catch (error) {
+                console.log(`❌ ${endpoint} failed:`, error.message);
+                lastError = error;
+                // Продолжаем пробовать следующий endpoint
+                continue;
             }
-            
-            if (groups.length === 0) {
-                console.log('⚠️ All API endpoints failed, using local groups');
-                groups = this.getLocalGroups();
-            }
+        }
+        
+        if (groups.length === 0) {
+            console.log('⚠️ All API endpoints failed, using local groups');
+            console.log('Last error:', lastError?.message);
+            groups = this.getLocalGroups();
+        }
 
-            const currentUser = document.getElementById('username')?.textContent;
-            
-            const groupsWithMessages = await Promise.all(
-                groups.map(async group => {
+        const currentUser = document.getElementById('username')?.textContent;
+        
+        // Обрабатываем группы с обработкой ошибок для каждой
+        const groupsWithMessages = await Promise.all(
+            groups.map(async group => {
+                try {
+                    // Пропускаем группы без ID
+                    if (!group.id && !group._id) {
+                        console.warn('⚠️ Group without ID found:', group);
+                        return null;
+                    }
+                    
+                    const groupId = group.id || group._id;
+                    let lastMessage = null;
+                    
                     try {
-                        let lastMessage = null;
+                        // Используем Promise.race для таймаута запроса сообщений
+                        const messagesResponse = await Promise.race([
+                            fetch(`/api/groups/${groupId}/messages`),
+                            new Promise((_, reject) => 
+                                setTimeout(() => reject(new Error('Timeout')), 3000)
+                            )
+                        ]);
                         
-                        try {
-                            const messagesResponse = await fetch(`/api/groups/${group.id}/messages`);
-                            if (messagesResponse.ok) {
-                                const messages = await messagesResponse.json();
-                                if (messages && messages.length > 0) {
-                                    const sortedMessages = messages.sort((a, b) => 
-                                        new Date(b.date || b.timestamp) - new Date(a.date || a.timestamp)
-                                    );
-                                    lastMessage = sortedMessages[0];
-                                }
+                        if (messagesResponse.ok) {
+                            const messages = await messagesResponse.json();
+                            if (messages && messages.length > 0) {
+                                const sortedMessages = messages.sort((a, b) => 
+                                    new Date(b.date || b.timestamp) - new Date(a.date || a.timestamp)
+                                );
+                                lastMessage = sortedMessages[0];
                             }
-                        } catch (messageError) {
-                            console.log(`📝 No messages for group ${group.id}:`, messageError.message);
-                            
-                            const localMessages = this.getLocalGroupMessages(group.id);
+                        }
+                    } catch (messageError) {
+                        console.log(`📝 No messages for group ${groupId}:`, messageError.message);
+                        
+                        // Пробуем локальные сообщения
+                        try {
+                            const localMessages = this.getLocalGroupMessages(groupId);
                             if (localMessages && localMessages.length > 0) {
                                 const sortedLocalMessages = localMessages.sort((a, b) => 
                                     new Date(b.date || b.timestamp) - new Date(a.date || a.timestamp)
                                 );
                                 lastMessage = sortedLocalMessages[0];
                             }
+                        } catch (localError) {
+                            console.log(`📝 No local messages for group ${groupId}`);
                         }
-                        
-                        const formattedGroup = {
-                            id: group.id || group._id,
-                            name: group.name || group.groupName,
-                            isGroup: true,
-                            username: group.name || group.groupName,
-                            members: group.members || [],
-                            createdBy: group.createdBy,
-                            createdAt: group.createdAt,
-                            memberCount: group.members ? group.members.length : 
-                                       group.memberCount || group.participants ? group.participants.length : 0,
-                            lastMessage: lastMessage ? {
-                                text: lastMessage.message || lastMessage.text || 'Голосовое сообщение',
-                                timestamp: this.formatMessageTime(lastMessage.timestamp || lastMessage.date),
-                                sender: lastMessage.sender,
-                                type: lastMessage.messageType || lastMessage.type || 'text',
-                                isOwn: lastMessage.sender === currentUser
-                            } : null
-                        };
-                        
-                        return formattedGroup;
-                        
-                    } catch (error) {
-                        console.error(`❌ Error processing group ${group.id}:`, error);
-                        return {
-                            id: group.id || group._id,
-                            name: group.name || group.groupName,
-                            isGroup: true,
-                            username: group.name || group.groupName,
-                            members: group.members || [],
-                            lastMessage: null
-                        };
                     }
-                })
-            );
-            
-            const validGroups = groupsWithMessages.filter(group => group && group.id);
-            const uniqueGroups = this.removeDuplicateGroups(validGroups);
-            
-            console.log(`✅ Final processed groups:`, uniqueGroups.length);
-            return uniqueGroups;
-            
-        } catch (error) {
-            console.error('❌ Error loading user groups:', error);
-            return [];
-        }
+                    
+                    // Форматируем группу для отображения
+                    const formattedGroup = {
+                        id: groupId,
+                        name: group.name || group.groupName || `Группа ${groupId}`,
+                        isGroup: true,
+                        username: group.name || group.groupName || `Группа ${groupId}`,
+                        members: group.members || [],
+                        createdBy: group.createdBy,
+                        createdAt: group.createdAt,
+                        memberCount: group.members ? group.members.length : 
+                                   group.memberCount || group.participants ? group.participants.length : 0,
+                        lastMessage: lastMessage ? {
+                            text: lastMessage.message || lastMessage.text || 'Голосовое сообщение',
+                            timestamp: this.formatMessageTime(lastMessage.timestamp || lastMessage.date),
+                            sender: lastMessage.sender,
+                            type: lastMessage.messageType || lastMessage.type || 'text',
+                            isOwn: lastMessage.sender === currentUser
+                        } : null
+                    };
+                    
+                    return formattedGroup;
+                    
+                } catch (error) {
+                    console.error(`❌ Error processing group:`, error);
+                    return null;
+                }
+            })
+        );
+        
+        // Фильтруем null значения
+        const validGroups = groupsWithMessages.filter(group => group !== null);
+        const uniqueGroups = this.removeDuplicateGroups(validGroups);
+        
+        console.log(`✅ Final processed groups:`, uniqueGroups.length);
+        return uniqueGroups;
+        
+    } catch (error) {
+        console.error('❌ Error loading user groups:', error);
+        // Возвращаем пустой массив вместо выбрасывания ошибки
+        return [];
     }
+}
 
     displayMessageHistory(messages) {
         const container = document.getElementById('privateMessages');
@@ -5477,11 +5501,17 @@ openGiftForUser(username) {
         }
     }
 
-  getCurrentUser() {
-    return document.getElementById('username')?.textContent || 
-           window.USERNAME || 
-           localStorage.getItem('currentUsername') || 
-           'anonymous';
+getCurrentUser() {
+    // Пробуем разные источники для определения пользователя
+    const username = 
+        document.getElementById('username')?.textContent || 
+        window.USERNAME || 
+        localStorage.getItem('currentUsername') || 
+        sessionStorage.getItem('currentUsername') || 
+        'anonymous';
+    
+    console.log('👤 Current user determined as:', username);
+    return username;
 }
 }
 
