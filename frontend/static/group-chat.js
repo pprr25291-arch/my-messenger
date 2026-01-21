@@ -2583,49 +2583,25 @@ closeAllModals() {
             this.loadGroupMessages(this.currentGroup.id);
         }
     }
-    // Добавьте этот метод в класс GroupChatManager
-checkAuthStatus() {
-    const currentUser = document.getElementById('username')?.textContent?.trim();
-    const hasSession = document.cookie.includes('session') || 
-                      localStorage.getItem('userToken') || 
-                      sessionStorage.getItem('userSession');
-    
-    return {
-        isAuthenticated: !!currentUser && currentUser !== 'Гость' && hasSession,
-        username: currentUser
-    };
-}
 }
 document.addEventListener('DOMContentLoaded', function() {
     console.log('🚀 Initializing GroupChatManager...');
     
-    // Проверяем, авторизован ли пользователь
-    function checkAuth() {
-        const currentUser = document.getElementById('username')?.textContent?.trim();
-        if (!currentUser || currentUser === 'Гость') {
-            console.log('⚠️ User not authenticated, skipping group initialization');
-            return false;
-        }
-        return true;
+    // Инициализируем GroupChatManager
+    if (!window.groupChatManager) {
+        window.groupChatManager = new GroupChatManager();
+        console.log('✅ GroupChatManager initialized successfully');
     }
     
-    // Инициализируем GroupChatManager только если пользователь авторизован
-    if (checkAuth()) {
-        if (!window.groupChatManager) {
-            window.groupChatManager = new GroupChatManager();
-            console.log('✅ GroupChatManager initialized successfully');
+    // Настраиваем обработчик кнопки создания группы
+    setupCreateGroupButton();
+    
+    // Проверяем и добавляем в дефолтные группы при загрузке
+    setTimeout(async () => {
+        if (window.groupChatManager) {
+            await window.groupChatManager.checkAndAddToDefaultGroups();
         }
-        
-        // Настраиваем обработчик кнопки создания группы
-        setupCreateGroupButton();
-        
-        // Проверяем и добавляем в дефолтные группы при загрузке
-        setTimeout(async () => {
-            if (window.groupChatManager) {
-                await window.groupChatManager.checkAndAddToDefaultGroups();
-            }
-        }, 2000);
-    }
+    }, 3000); // Ждем 3 секунды после загрузки
 });
 
 function setupCreateGroupButton() {
