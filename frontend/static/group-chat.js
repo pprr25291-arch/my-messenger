@@ -1463,27 +1463,7 @@ closeAllModals() {
     }
 }
 
-    createTestUsers() {
-        const testUsers = [
-            { username: 'user1', isOnline: true },
-            { username: 'user2', isOnline: false },
-            { username: 'user3', isOnline: true },
-            { username: 'alice', isOnline: true },
-            { username: 'bob', isOnline: false },
-            { username: 'charlie', isOnline: true }
-        ];
-        
-        const moreUsers = ['david', 'eve', 'frank', 'grace', 'henry', 'ivan', 'julia', 'kevin'];
-        moreUsers.forEach(username => {
-            testUsers.push({
-                username: username,
-                isOnline: Math.random() > 0.5
-            });
-        });
-        
-        return testUsers;
-    }
-
+  
     async loadUsersFromServer() {
         const endpoints = [
             '/api/users/all',

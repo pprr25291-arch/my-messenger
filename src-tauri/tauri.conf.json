@@ -1,5 +1,4 @@
 {
-  "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "My Messenger",
   "version": "1.0.0",
   "identifier": "com.my.messenger",
@@ -8,7 +7,7 @@
     "devUrl": "http://localhost:3000"
   },
   "app": {
-    "withGlobalTauri": false,
+    "withGlobalTauri": true,
     "windows": [
       {
         "title": "My Messenger",
@@ -18,11 +17,18 @@
         "minHeight": 600,
         "resizable": true,
         "fullscreen": false,
-        "center": true
+        "center": true,
+        "url": {
+          "type": "http",
+          "allowNavigation": [
+            "https://my-messenger-9g2n.onrender.com",
+            "http://localhost:3000"
+          ]
+        }
       }
     ],
     "security": {
-      "csp": "default-src 'self' https://my-messenger-9g2n.onrender.com ws://localhost:* wss://my-messenger-9g2n.onrender.com; connect-src 'self' https://my-messenger-9g2n.onrender.com ws://localhost:* wss://my-messenger-9g2n.onrender.com; img-src 'self' https://my-messenger-9g2n.onrender.com data: blob:; media-src 'self' https://my-messenger-9g2n.onrender.com blob:;"
+      "csp": "default-src 'self' https://my-messenger-9g2n.onrender.com http://localhost:3000 ws://localhost:* wss://my-messenger-9g2n.onrender.com data:; connect-src 'self' https://my-messenger-9g2n.onrender.com http://localhost:3000 ws://localhost:* wss://my-messenger-9g2n.onrender.com data:; img-src 'self' https://my-messenger-9g2n.onrender.com http://localhost:3000 data: blob:; media-src 'self' https://my-messenger-9g2n.onrender.com http://localhost:3000 blob:; style-src 'self' https://my-messenger-9g2n.onrender.com 'unsafe-inline'; font-src 'self' https://my-messenger-9g2n.onrender.com data:; script-src 'self' https://my-messenger-9g2n.onrender.com 'unsafe-inline' 'unsafe-eval'; frame-src 'self' https://my-messenger-9g2n.onrender.com; worker-src 'self' blob:;"
     }
   },
   "bundle": {
@@ -33,6 +39,7 @@
       "icons/128x128.png",
       "icons/128x128@2x.png",
       "icons/icon.ico"
-    ]
+    ],
+    "createUpdaterArtifacts": false
   }
 }

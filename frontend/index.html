@@ -2,17 +2,159 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <title>Anonka</title>
-    <link rel="stylesheet" href="/static/style.css">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Messenger</title>
+    <link rel="stylesheet" href="static/style.css">
+    <style>
+        /* Дополнительные стили для Tauri */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .app-container {
+            width: 100%;
+            max-width: 400px;
+            padding: 20px;
+        }
+        
+        .app-card {
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            text-align: center;
+        }
+        
+        .logo {
+            width: 80px;
+            height: 80px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 50%;
+            margin: 0 auto 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 32px;
+            font-weight: bold;
+        }
+        
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 28px;
+        }
+        
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 16px;
+        }
+        
+        .btn {
+            display: inline-block;
+            width: 100%;
+            padding: 15px;
+            margin: 10px 0;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            text-decoration: none;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: 600;
+            border: none;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.4);
+        }
+        
+        .btn-secondary {
+            background: #f0f0f0;
+            color: #333;
+        }
+        
+        .btn-secondary:hover {
+            background: #e0e0e0;
+            box-shadow: 0 10px 20px rgba(0,0,0,0.1);
+        }
+        
+        .version {
+            margin-top: 20px;
+            color: #999;
+            font-size: 12px;
+        }
+        
+        .loading {
+            display: none;
+        }
+    </style>
 </head>
 <body>
-    <div class="container">
-        <h1>Добро пожаловать в Anonka</h1>
-        <div class="buttons">
-            <a href="templates/register.html" class="btn">Регистрация</a>
-            <a href="templates/login.html" class="btn">Вход</a>
+    <div class="app-container">
+        <div class="app-card">
+            <div class="logo">M</div>
+            <h1>My Messenger</h1>
+            <p class="subtitle">Безопасный мессенджер с видео-звонками</p>
+            
+            <div id="auth-buttons">
+                <button onclick="window.location.href='templates/register.html'" class="btn">
+                    📝 Регистрация
+                </button>
+                <button onclick="window.location.href='templates/login.html'" class="btn btn-secondary">
+                    🔑 Вход
+                </button>
+            </div>
+            
+            <div id="loading" class="loading">
+                <p>Загрузка...</p>
+            </div>
+            
+            <div class="version">Версия 1.0.0</div>
         </div>
     </div>
-    <script src="/static/auth.js"></script>
+    
+    <script>
+        // Проверяем, запущены ли мы в Tauri
+        window.isTauri = typeof window.__TAURI__ !== 'undefined';
+        
+        if (window.isTauri) {
+            console.log('🚀 Запущено в Tauri');
+            document.title = 'My Messenger (Desktop)';
+        } else {
+            console.log('🌐 Запущено в браузере');
+        }
+        
+        // Автопереход если уже есть токен
+        function checkAuth() {
+            const token = getCookie('token');
+            if (token) {
+                window.location.href = 'templates/chat.html';
+            }
+        }
+        
+        function getCookie(name) {
+            const value = `; ${document.cookie}`;
+            const parts = value.split(`; ${name}=`);
+            if (parts.length === 2) return parts.pop().split(';').shift();
+        }
+        
+        // Проверяем авторизацию при загрузке
+        window.addEventListener('DOMContentLoaded', checkAuth);
+    </script>
 </body>
 </html>
