@@ -2,18 +2,15 @@
 name = "my-messenger"
 version = "0.1.0"
 description = "My Messenger Desktop Application"
-authors = ["Your Name <your.email@example.com>"]
+authors = ["Your Name"]
 edition = "2021"
-license = "MIT"
-repository = "https://github.com/yourusername/my-messenger"
-readme = "README.md"
 
 [[bin]]
 name = "my-messenger"
 path = "src/main.rs"
 
 [dependencies]
-tauri = { version = "2.0", features = [] }
+tauri = { version = "2.0", features = [] } # Убрана функция "dialog"
 serde_json = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 
