@@ -1,0 +1,59 @@
+[
+  {
+    "id": "group_1768794235055_gluyu903y",
+    "name": "aaaa",
+    "members": [
+      "<%= username %>",
+      "admin"
+    ],
+    "createdBy": "<%= username %>",
+    "createdAt": "2026-01-19T03:43:55.055Z",
+    "messages": [],
+    "memberCount": 2
+  },
+  {
+    "id": "group_1768797153889_qe2wfj5xf",
+    "name": "ыыы",
+    "members": [
+      "<%= username %>",
+      "admin"
+    ],
+    "createdBy": "<%= username %>",
+    "createdAt": "2026-01-19T04:32:33.889Z",
+    "messages": [],
+    "memberCount": 2
+  },
+  {
+    "id": "group_default_1768894722184_puyjjgh2x",
+    "name": "Общий чат",
+    "members": [
+      "all"
+    ],
+    "createdBy": "system",
+    "createdAt": "2026-01-20T07:38:42.184Z",
+    "isGlobal": true,
+    "description": "Основной чат для общения"
+  },
+  {
+    "id": "group_default_1768894722184_jzr6muz04",
+    "name": "Новости",
+    "members": [
+      "all"
+    ],
+    "createdBy": "system",
+    "createdAt": "2026-01-20T07:38:42.184Z",
+    "isGlobal": true,
+    "description": "Новости и обновления"
+  },
+  {
+    "id": "group_default_1768894722185_7emjy1zvq",
+    "name": "Помощь",
+    "members": [
+      "all"
+    ],
+    "createdBy": "system",
+    "createdAt": "2026-01-20T07:38:42.185Z",
+    "isGlobal": true,
+    "description": "Вопросы и помощь"
+  }
+]

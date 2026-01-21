@@ -1,0 +1,32 @@
+{
+  "admin": {
+    "balance": 100,
+    "dailyStreak": 0,
+    "lastDailyReward": null,
+    "transactionHistory": []
+  },
+  "<%= username %>": {
+    "balance": 100,
+    "dailyStreak": 0,
+    "lastDailyReward": null,
+    "transactionHistory": []
+  },
+  "aaa": {
+    "balance": 100,
+    "dailyStreak": 0,
+    "lastDailyReward": null,
+    "transactionHistory": []
+  },
+  "anonymous": {
+    "balance": 100,
+    "dailyStreak": 0,
+    "lastDailyReward": null,
+    "transactionHistory": []
+  },
+  "ииииииии": {
+    "balance": 100,
+    "dailyStreak": 0,
+    "lastDailyReward": null,
+    "transactionHistory": []
+  }
+}

@@ -1,0 +1,20 @@
+[
+  {
+    "username": "admin",
+    "password": "$2a$10$S3W.se9QhVRfaZH67ETEk.NUr5JAg8AFEmVUDdnLDfyzQTd7JDsdq",
+    "avatar": "/static/default-avatar.png",
+    "createdAt": "2026-01-19T03:43:13.437Z"
+  },
+  {
+    "username": "aaa",
+    "password": "$2a$10$ub1O2DXC0RI3BHhxPXo.sOytDCFygfQuodNsMTNzdUJkb1bi0sUPK",
+    "avatar": "/static/default-avatar.png",
+    "createdAt": "2026-01-19T03:43:35.863Z"
+  },
+  {
+    "username": "ииииииии",
+    "password": "$2a$10$8vkDaklsk0jBvLFT/TdBJ.AVAmIC3wPDJV5YueiyNN..CZ6p7vJne",
+    "avatar": "/static/default-avatar.png",
+    "createdAt": "2026-01-20T04:13:03.730Z"
+  }
+]
