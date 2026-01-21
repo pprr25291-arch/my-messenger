@@ -170,8 +170,8 @@ async loadUserGroups() {
     try {
         console.log('🔄 GroupChatManager.loadUserGroups() - Loading user groups...');
         
-        // Первым делом проверяем, есть ли активный пользователь
-        const currentUser = document.getElementById('username')?.textContent;
+        // Получаем текущего пользователя
+        const currentUser = document.getElementById('username')?.textContent?.trim();
         if (!currentUser) {
             console.log('❌ No current user found');
             return [];
@@ -179,13 +179,26 @@ async loadUserGroups() {
         
         console.log(`👤 Current user: ${currentUser}`);
         
-        // Добавляем новый endpoint для новых пользователей
+        // Проверяем наличие токена/сессии
+        const hasSession = document.cookie.includes('session') || 
+                          localStorage.getItem('userToken') || 
+                          sessionStorage.getItem('userSession');
+        
+        if (!hasSession) {
+            console.log('⚠️ No active session found, using local groups');
+            return this.getLocalGroups();
+        }
+        
+        // Кодируем имя пользователя правильно
+        const encodedUsername = encodeURIComponent(currentUser);
+        console.log(`🔤 Encoded username: ${encodedUsername}`);
+        
         const endpoints = [
-            `/api/groups/user?username=${encodeURIComponent(currentUser)}`,
-            `/api/user/groups?username=${encodeURIComponent(currentUser)}`,
-            `/api/groups?member=${encodeURIComponent(currentUser)}`,
-            // Новый endpoint для новых пользователей
-            `/api/groups/new-user-groups?username=${encodeURIComponent(currentUser)}`
+            `/api/groups/user?username=${encodedUsername}`,
+            `/api/user/groups?username=${encodedUsername}`,
+            `/api/groups?member=${encodedUsername}`,
+            // Этот endpoint может требовать авторизации
+            `/api/groups/new-user-groups?username=${encodedUsername}`
         ];
         
         let groups = [];
@@ -196,7 +209,6 @@ async loadUserGroups() {
             try {
                 console.log(`🔍 Trying endpoint: ${endpoint}`);
                 
-                // Создаем AbortController для таймаута
                 const controller = new AbortController();
                 const timeoutId = setTimeout(() => controller.abort(), 5000);
                 
@@ -204,11 +216,21 @@ async loadUserGroups() {
                     signal: controller.signal,
                     headers: {
                         'Accept': 'application/json',
-                        'Cache-Control': 'no-cache'
-                    }
+                        'Cache-Control': 'no-cache',
+                        // Добавляем credentials для отправки cookies
+                        'Credentials': 'include'
+                    },
+                    // Важно: отправляем cookies для авторизации
+                    credentials: 'include'
                 });
                 
                 clearTimeout(timeoutId);
+                
+                if (response.status === 401) {
+                    console.log(`🔐 401 Unauthorized for ${endpoint}, user needs to login`);
+                    // Пропускаем этот endpoint, пробуем следующий
+                    continue;
+                }
                 
                 if (response.ok) {
                     const data = await response.json();
@@ -228,14 +250,18 @@ async loadUserGroups() {
                     continue;
                 }
             } catch (error) {
-                console.log(`❌ ${endpoint} failed:`, error.name, error.message);
+                if (error.name === 'AbortError') {
+                    console.log(`⏱️ ${endpoint} timeout`);
+                } else {
+                    console.log(`❌ ${endpoint} failed:`, error.name, error.message);
+                }
                 continue;
             }
         }
         
         // Если все endpoints не сработали, используем локальные группы
         if (groups.length === 0) {
-            console.log('⚠️ All API endpoints failed, using local groups');
+            console.log('⚠️ All API endpoints failed or unauthorized, using local groups');
             groups = this.getLocalGroups();
         } else {
             console.log(`✅ Got ${groups.length} groups from ${lastSuccessEndpoint}`);
@@ -323,8 +349,11 @@ processGroups(groups, currentUser) {
 }
 async checkAndAddToDefaultGroups() {
     try {
-        const currentUser = document.getElementById('username')?.textContent;
-        if (!currentUser) return;
+        const currentUser = document.getElementById('username')?.textContent?.trim();
+        if (!currentUser) {
+            console.log('❌ No current user found');
+            return;
+        }
         
         console.log(`🔍 Checking default groups for user: ${currentUser}`);
         
@@ -334,29 +363,109 @@ async checkAndAddToDefaultGroups() {
         if (userGroups.length === 0) {
             console.log(`🔄 User ${currentUser} has no groups, adding to default groups...`);
             
-            // Запрашиваем добавление в дефолтные группы
-            const response = await fetch('/api/groups/add-to-default', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    username: currentUser
-                })
-            });
-            
-            if (response.ok) {
-                const result = await response.json();
-                console.log(`✅ User added to default groups:`, result.groups);
+            try {
+                // Пробуем несколько возможных endpoints
+                const endpoints = [
+                    '/api/groups/add-to-default',
+                    '/api/groups/default/add',
+                    '/api/groups/join-default'
+                ];
                 
-                // Обновляем список групп
-                if (window.privateChatInstance) {
-                    await window.privateChatInstance.loadConversations();
+                let success = false;
+                
+                for (const endpoint of endpoints) {
+                    try {
+                        console.log(`🔍 Trying default groups endpoint: ${endpoint}`);
+                        
+                        const response = await fetch(endpoint, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify({
+                                username: currentUser
+                            }),
+                            credentials: 'include' // Отправляем cookies
+                        });
+                        
+                        console.log(`📨 Response from ${endpoint}: ${response.status}`);
+                        
+                        if (response.ok) {
+                            const result = await response.json();
+                            console.log(`✅ User added to default groups:`, result);
+                            
+                            // Обновляем список групп
+                            if (window.privateChatInstance) {
+                                setTimeout(() => {
+                                    window.privateChatInstance.loadConversations();
+                                }, 1000);
+                            }
+                            
+                            success = true;
+                            break;
+                        } else if (response.status === 404) {
+                            console.log(`❌ Endpoint ${endpoint} not found, trying next...`);
+                            continue;
+                        }
+                    } catch (error) {
+                        console.log(`❌ ${endpoint} failed:`, error.message);
+                        continue;
+                    }
                 }
+                
+                if (!success) {
+                    console.log('⚠️ No default groups endpoint worked, creating local default groups');
+                    this.createLocalDefaultGroups(currentUser);
+                }
+                
+            } catch (error) {
+                console.error('❌ Error adding to default groups:', error);
+                // Создаем локальные дефолтные группы
+                this.createLocalDefaultGroups(currentUser);
             }
+        } else {
+            console.log(`✅ User ${currentUser} already has ${userGroups.length} groups`);
         }
     } catch (error) {
         console.error('❌ Error checking default groups:', error);
+    }
+}
+
+createLocalDefaultGroups(username) {
+    console.log(`🏠 Creating local default groups for ${username}`);
+    
+    const defaultGroups = [
+        {
+            id: 'general_' + Date.now(),
+            name: 'Общий чат',
+            members: [username, 'system'],
+            createdBy: 'system',
+            createdAt: new Date().toISOString(),
+            isGlobal: true
+        },
+        {
+            id: 'welcome_' + Date.now(),
+            name: 'Приветствие',
+            members: [username, 'admin'],
+            createdBy: 'system',
+            createdAt: new Date().toISOString(),
+            isGlobal: false
+        }
+    ];
+    
+    // Сохраняем группы локально
+    defaultGroups.forEach(group => {
+        this.saveLocalGroup(group);
+    });
+    
+    // Показываем уведомление
+    this.showNotification('Добавлен в общие группы', 'success');
+    
+    // Обновляем список групп
+    if (window.privateChatInstance) {
+        setTimeout(() => {
+            window.privateChatInstance.loadConversations();
+        }, 500);
     }
 }
 async getGroupInfo(groupId) {
@@ -1629,12 +1738,20 @@ closeAllModals() {
         `;
     }
 
-    useTestUsers() {
-        console.log('🔄 Loading test users...');
-        const testUsers = this.createTestUsers();
-        this.displayAvailableUsers(testUsers);
-    }
-
+ useTestUsers() {
+    console.log('🔄 Loading test users...');
+    
+    // Создаем тестовых пользователей без кириллических символов для избежания проблем с кодировкой
+    const testUsers = [
+        { username: 'user1', isOnline: true },
+        { username: 'user2', isOnline: false },
+        { username: 'user3', isOnline: true },
+        { username: 'user4', isOnline: true },
+        { username: 'test_user', isOnline: false }
+    ];
+    
+    this.displayAvailableUsers(testUsers);
+}
     toggleUserSelection(username, selected) {
         console.log(`👤 User ${username} ${selected ? 'selected' : 'deselected'}`);
         
@@ -2466,25 +2583,49 @@ closeAllModals() {
             this.loadGroupMessages(this.currentGroup.id);
         }
     }
+    // Добавьте этот метод в класс GroupChatManager
+checkAuthStatus() {
+    const currentUser = document.getElementById('username')?.textContent?.trim();
+    const hasSession = document.cookie.includes('session') || 
+                      localStorage.getItem('userToken') || 
+                      sessionStorage.getItem('userSession');
+    
+    return {
+        isAuthenticated: !!currentUser && currentUser !== 'Гость' && hasSession,
+        username: currentUser
+    };
+}
 }
 document.addEventListener('DOMContentLoaded', function() {
     console.log('🚀 Initializing GroupChatManager...');
     
-    // Инициализируем GroupChatManager
-    if (!window.groupChatManager) {
-        window.groupChatManager = new GroupChatManager();
-        console.log('✅ GroupChatManager initialized successfully');
+    // Проверяем, авторизован ли пользователь
+    function checkAuth() {
+        const currentUser = document.getElementById('username')?.textContent?.trim();
+        if (!currentUser || currentUser === 'Гость') {
+            console.log('⚠️ User not authenticated, skipping group initialization');
+            return false;
+        }
+        return true;
     }
     
-    // Настраиваем обработчик кнопки создания группы
-    setupCreateGroupButton();
-    
-    // Проверяем и добавляем в дефолтные группы при загрузке
-    setTimeout(async () => {
-        if (window.groupChatManager) {
-            await window.groupChatManager.checkAndAddToDefaultGroups();
+    // Инициализируем GroupChatManager только если пользователь авторизован
+    if (checkAuth()) {
+        if (!window.groupChatManager) {
+            window.groupChatManager = new GroupChatManager();
+            console.log('✅ GroupChatManager initialized successfully');
         }
-    }, 3000); // Ждем 3 секунды после загрузки
+        
+        // Настраиваем обработчик кнопки создания группы
+        setupCreateGroupButton();
+        
+        // Проверяем и добавляем в дефолтные группы при загрузке
+        setTimeout(async () => {
+            if (window.groupChatManager) {
+                await window.groupChatManager.checkAndAddToDefaultGroups();
+            }
+        }, 2000);
+    }
 });
 
 function setupCreateGroupButton() {
