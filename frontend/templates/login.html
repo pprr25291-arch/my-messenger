@@ -88,42 +88,52 @@
             Нет аккаунта? <a href="/register">Зарегистрироваться</a>
         </p>
     </div>
-
-    <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            const loginForm = document.getElementById('loginForm');
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const loginForm = document.getElementById('loginForm');
+        
+        loginForm.addEventListener('submit', async function(e) {
+            e.preventDefault();
             
-            loginForm.addEventListener('submit', async function(e) {
-                e.preventDefault();
+            const formData = new FormData(this);
+            const username = formData.get('username').trim();
+            const password = formData.get('password');
+            
+            if (!username || !password) {
+                alert('Пожалуйста, заполните все поля');
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        username: username,
+                        password: password
+                    })
+                });
                 
-                const formData = new FormData(this);
-                const data = {
-                    username: formData.get('username'),
-                    password: formData.get('password')
-                };
+                const result = await response.json();
                 
-                try {
-                    const response = await fetch('/api/login', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify(data)
-                    });
+                if (result.success) {
+                    // Сохраняем токен
+                    localStorage.setItem('token', result.token);
+                    localStorage.setItem('username', result.user.username);
                     
-                    const result = await response.json();
-                    
-                    if (result.success) {
-                        window.location.href = '/chat';
-                    } else {
-                        alert(result.message || 'Ошибка входа');
-                    }
-                } catch (error) {
-                    console.error('Ошибка:', error);
-                    alert('Ошибка соединения с сервером');
+                    // Перенаправляем в чат
+                    window.location.href = '/chat';
+                } else {
+                    alert(result.message || 'Ошибка входа');
                 }
-            });
+            } catch (error) {
+                console.error('Ошибка:', error);
+                alert('Ошибка соединения с сервером');
+            }
         });
-    </script>
+    });
+</script>
 </body>
 </html>

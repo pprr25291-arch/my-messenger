@@ -37,14 +37,24 @@ const io = socketIo(server, {
     transports: ['websocket', 'polling']
 });
 
-// Middleware для обработки CORS в зависимости от окружения
 app.use((req, res, next) => {
-    const allowedOrigins = isTauri 
-        ? ["http://localhost:3000", "tauri://localhost", "https://my-messenger-9g2n.onrender.com"]
-        : "*";
+    const allowedOrigins = [
+        "https://my-messenger-9g2n.onrender.com",
+        "http://localhost:3000",
+        "tauri://localhost",
+        "http://tauri.localhost",
+        /^tauri:\/\//,
+        /^http:\/\/localhost:*/,
+        /^https:\/\/localhost:*/
+    ];
     
-    res.header('Access-Control-Allow-Origin', allowedOrigins);
-    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE');
+    const origin = req.headers.origin;
+    if (allowedOrigins.includes(origin) || 
+        allowedOrigins.some(pattern => pattern instanceof RegExp && pattern.test(origin))) {
+        res.header('Access-Control-Allow-Origin', origin);
+    }
+    
+    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
     res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, Origin, X-Requested-With, Accept');
     res.header('Access-Control-Allow-Credentials', 'true');
     
@@ -965,23 +975,46 @@ app.post('/api/register', avatarUpload.single('avatar'), async (req, res) => {
         });
     }
 });
-
 app.post('/api/login', async (req, res) => {
     try {
         const { username, password } = req.body;
         
         if (!username || !password) {
-            return res.status(400).json({ error: 'Username and password are required' });
+            return res.status(400).json({ 
+                success: false,
+                message: 'Имя пользователя и пароль обязательны' 
+            });
         }
         
         const user = users.find(u => u.username === username);
         
-        if (!user || !await bcrypt.compare(password, user.password)) {
-            return res.status(401).json({ error: 'Invalid credentials' });
+        if (!user) {
+            return res.status(401).json({ 
+                success: false,
+                message: 'Пользователь не найден' 
+            });
+        }
+        
+        const passwordMatch = await bcrypt.compare(password, user.password);
+        
+        if (!passwordMatch) {
+            return res.status(401).json({ 
+                success: false,
+                message: 'Неверный пароль' 
+            });
         }
 
-        const token = jwt.sign({ username }, JWT_SECRET);
-        res.cookie('token', token, { httpOnly: true, maxAge: 24 * 60 * 60 * 1000 });
+        const token = jwt.sign({ username: user.username }, JWT_SECRET, { expiresIn: '24h' });
+        
+        // Устанавливаем cookie
+        res.cookie('token', token, { 
+            httpOnly: true, 
+            maxAge: 24 * 60 * 60 * 1000,
+            sameSite: 'strict',
+            secure: process.env.NODE_ENV === 'production'
+        });
+        
+        // Отправляем JSON ответ
         res.json({ 
             success: true, 
             token,
@@ -992,7 +1025,10 @@ app.post('/api/login', async (req, res) => {
         });
     } catch (error) {
         console.error('❌ Login error:', error);
-        res.status(500).json({ error: 'Login failed' });
+        res.status(500).json({ 
+            success: false,
+            message: 'Ошибка сервера при авторизации' 
+        });
     }
 });
 
@@ -3060,44 +3096,8 @@ async function startServer() {
         await ensureStaticFiles();
         await ensureTemplates();
         
-        // Очищаем старые файлы при старте
         console.log('🗑️ Cleaning up old uploads...');
         await cleanupOldUploads();
-        
-        console.log('📱 Initializing Telegram storage...');
-        telegramStorage = new TelegramStorage(
-            '8501177708:AAETyTKHluPQOCeYBdvKvJ-YVr7cDwPQC6g',
-            '5324471398'
-        );
-        
-        const telegramInitialized = await telegramStorage.initialize();
-        if (telegramInitialized) {
-            console.log('✅ Telegram storage connected successfully');
-        } else {
-            console.error('❌ Failed to initialize Telegram storage');
-        }
-        
-        console.log('☁️ Initializing MEGA storage...');
-        const megaEmail = process.env.MEGA_EMAIL || 'pprr25291@gmail.com';
-        const megaPassword = process.env.MEGA_PASSWORD || 'e:cfLnZEiE44.5E';
-        
-        megaStorage = new MegaStorage(megaEmail, megaPassword);
-        const megaInitialized = await megaStorage.initialize();
-        
-        if (megaInitialized) {
-            console.log('✅ MEGA storage connected successfully');
-            
-            try {
-                await megaStorage.syncFromMega(dataDir);
-                console.log('✅ Data synced from MEGA');
-            } catch (syncError) {
-                console.warn('⚠️ MEGA sync failed:', syncError.message);
-            }
-            
-            megaSyncInterval = await megaStorage.startAutoSync(dataDir, 5);
-        } else {
-            console.error('❌ Failed to initialize MEGA storage');
-        }
         
         // Загружаем данные
         console.log('📂 Loading data...');
@@ -3107,91 +3107,22 @@ async function startServer() {
         await loadCurrencyData();
         await loadGiftsData();
         
-        // Создаем дефолтные группы при запуске
-        console.log('🔄 Checking and creating default groups...');
-        await createDefaultGroups();
-        
-        // Запускаем автосохранение каждые 30 секунд
+        // Запускаем автосохранение
         console.log('⏰ Starting auto-save every 30 seconds...');
         await startAutoSave();
         
-        // Попытка запуска сервера с обработкой занятого порта
-        const maxAttempts = 10;
-        let attempts = 0;
-        
-        async function tryStartServer() {
-            try {
-                // Проверяем, свободен ли порт
-                const portInUse = await isPortInUse(PORT);
-                
-                if (portInUse) {
-                    console.log(`⚠️ Port ${PORT} is busy. Attempting to kill process...`);
-                    
-                    // Пробуем завершить процесс
-                    const killed = await killPort(PORT);
-                    
-                    if (!killed) {
-                        // Если не удалось завершить, пробуем другой порт
-                        PORT++;
-                        console.log(`🔄 Trying port ${PORT} instead...`);
-                    }
-                    
-                    // Ждем немного
-                    await new Promise(resolve => setTimeout(resolve, 1000));
-                }
-                
-                // Запускаем сервер
-                server.listen(PORT, '0.0.0.0', () => {
-                    console.log(`🚀 Server running on port ${PORT}`);
-                    console.log(`📊 Health check: http://localhost:${PORT}/health`);
-                    console.log(`💾 Storage: Local + Telegram + MEGA (with smart sync)`);
-                    console.log(`👥 Users: ${users.length}`);
-                    console.log(`💬 Messages: ${messages.length}`);
-                    console.log(`👥 Groups: ${groups.length} (including default groups)`);
-                    console.log(`💰 Currency users: ${Object.keys(currencyData).length}`);
-                    console.log(`🎁 Gifts users: ${Object.keys(giftsData).length}`);
-                    console.log(`🖥️ Screen sharing: READY (WebRTC based)`);
-                    console.log(`⏰ Auto-save: ENABLED (every 30 seconds)`);
-                    
-                    scheduleDailyBackup();
-                });
-                
-            } catch (error) {
-                if (error.code === 'EADDRINUSE') {
-                    attempts++;
-                    if (attempts < maxAttempts) {
-                        console.log(`⚠️ Port ${PORT} is busy, trying ${PORT + 1}...`);
-                        PORT++;
-                        await new Promise(resolve => setTimeout(resolve, 1000));
-                        return tryStartServer();
-                    } else {
-                        console.error(`❌ Failed to start server after ${maxAttempts} attempts`);
-                        throw error;
-                    }
-                } else {
-                    throw error;
-                }
-            }
-        }
-        
-        await tryStartServer();
+        // Простой запуск сервера
+        server.listen(PORT, '0.0.0.0', () => {
+            console.log(`🚀 Server running on port ${PORT}`);
+            console.log(`📊 Health check: http://localhost:${PORT}/health`);
+            console.log(`👥 Users: ${users.length}`);
+            console.log(`💬 Messages: ${messages.length}`);
+            console.log(`👥 Groups: ${groups.length}`);
+        });
         
     } catch (error) {
         console.error('❌ Failed to start server:', error);
-        
-        // Пробуем альтернативный порт
-        console.log('🔄 Trying alternative port 3001...');
-        PORT = 3001;
-        
-        try {
-            server.listen(PORT, '0.0.0.0', () => {
-                console.log(`✅ Server started on alternative port ${PORT}`);
-                console.log(`🌐 http://localhost:${PORT}`);
-            });
-        } catch (fallbackError) {
-            console.error('❌ Failed to start on fallback port:', fallbackError);
-            process.exit(1);
-        }
+        process.exit(1);
     }
 }
 function scheduleDailyBackup() {

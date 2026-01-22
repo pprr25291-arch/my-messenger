@@ -1,20 +1,14 @@
 [
   {
-    "username": "admin",
-    "password": "$2a$10$S3W.se9QhVRfaZH67ETEk.NUr5JAg8AFEmVUDdnLDfyzQTd7JDsdq",
-    "avatar": "/static/default-avatar.png",
-    "createdAt": "2026-01-19T03:43:13.437Z"
-  },
-  {
     "username": "aaa",
-    "password": "$2a$10$ub1O2DXC0RI3BHhxPXo.sOytDCFygfQuodNsMTNzdUJkb1bi0sUPK",
+    "password": "$2a$10$am418mtAWWbmhUUUP/25LuAVNNft9nsg1T0nulSfqUb.PZCy5cYkW",
     "avatar": "/static/default-avatar.png",
-    "createdAt": "2026-01-19T03:43:35.863Z"
+    "createdAt": "2026-01-22T03:58:28.160Z"
   },
   {
-    "username": "ииииииии",
-    "password": "$2a$10$8vkDaklsk0jBvLFT/TdBJ.AVAmIC3wPDJV5YueiyNN..CZ6p7vJne",
+    "username": "admin",
+    "password": "$2a$10$cfdbja8SUgCJvB/3huphHuzKVNT6JrMpVpYoOAnit6Jc6mBLRLyba",
     "avatar": "/static/default-avatar.png",
-    "createdAt": "2026-01-20T04:13:03.730Z"
+    "createdAt": "2026-01-22T03:59:02.897Z"
   }
 ]

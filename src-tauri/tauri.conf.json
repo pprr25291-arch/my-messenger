@@ -1,28 +1,27 @@
 {
-  "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "My Messenger",
   "version": "1.0.0",
   "identifier": "com.my.messenger",
   "build": {
     "frontendDist": "../frontend",
-    "devUrl": "http://localhost:3000"
+    "devUrl": "http://localhost:3000",
+    "beforeDevCommand": "npm start"
   },
   "app": {
-    "withGlobalTauri": false,
+    "withGlobalTauri": true,
     "windows": [
       {
         "title": "My Messenger",
         "width": 1200,
         "height": 800,
-        "minWidth": 800,
-        "minHeight": 600,
+        "url": "https://my-messenger-9g2n.onrender.com",
         "resizable": true,
         "fullscreen": false,
         "center": true
       }
     ],
     "security": {
-      "csp": "default-src 'self' https://my-messenger-9g2n.onrender.com ws://localhost:* wss://my-messenger-9g2n.onrender.com; connect-src 'self' https://my-messenger-9g2n.onrender.com ws://localhost:* wss://my-messenger-9g2n.onrender.com; img-src 'self' https://my-messenger-9g2n.onrender.com data: blob:; media-src 'self' https://my-messenger-9g2n.onrender.com blob:;"
+      "csp": null
     }
   },
   "bundle": {
