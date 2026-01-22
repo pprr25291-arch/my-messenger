@@ -3,12 +3,37 @@
 let socket = null;
 let reconnectAttempts = 0;
 const MAX_RECONNECT_ATTEMPTS = 5;
+window.DEFAULT_SERVER_URL = 'https://my-messenger-9g2n.onrender.com';
 
 // Функция для определения устройства
 function isMobileDevice() {
     return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || 
            window.innerWidth <= 768;
 }
+
+// Функция для получения URL сервера
+function getServerUrl() {
+    // Если у нас есть дефолтный сервер
+    if (typeof window.DEFAULT_SERVER_URL !== 'undefined') {
+        return window.DEFAULT_SERVER_URL;
+    }
+    
+    // Пробуем определить сервер автоматически
+    if (window.location.hostname.includes('localhost') || 
+        window.location.hostname.includes('127.0.0.1')) {
+        // Локальная разработка
+        return '';
+    } else if (typeof window.isTauri !== 'undefined' && window.isTauri) {
+        // Tauri приложение
+        return 'https://my-messenger-9g2n.onrender.com';
+    } else {
+        // Веб-версия на вашем сайте
+        return '';
+    }
+}
+
+// Экспортируем функцию глобально
+window.getServerUrl = getServerUrl;
 
 // Инициализация мобильного интерфейса
 function initMobileInterface() {
@@ -74,26 +99,7 @@ function createMobileNavigation() {
     
     document.body.appendChild(mobileNav);
 }
-// Проверяем Tauri и настраиваем соединение
-if (typeof window.isTauri !== 'undefined' && window.isTauri) {
-    console.log('📱 Running in Tauri desktop app');
-    
-    // Используем Tauri-версию инициализации
-    window.initSocket = function() {
-        return initSocketForTauri();
-    };
-    
-    // Обновляем URL для API запросов
-    const originalFetch = window.fetch;
-    window.fetch = function(url, options) {
-        if (typeof url === 'string' && url.startsWith('/api/')) {
-            const fullUrl = getServerUrl() + url;
-            console.log(`🔄 Fetching: ${fullUrl}`);
-            return originalFetch(fullUrl, options);
-        }
-        return originalFetch(url, options);
-    };
-}
+
 // Настройка мобильной навигации
 function setupMobileNavigation() {
     // Кнопка "Назад" в чате
@@ -276,7 +282,8 @@ async function loadMobileGroups() {
     if (!groupsList) return;
     
     try {
-        const response = await fetch('/api/groups/user');
+        const serverUrl = window.getServerUrl ? window.getServerUrl() : '';
+        const response = await fetch(`${serverUrl}/api/groups/user`);
         if (response.ok) {
             const groups = await response.json();
             
@@ -390,7 +397,8 @@ async function loadMobileGroupMessages(groupId) {
     if (!messagesContainer) return;
     
     try {
-        const response = await fetch(`/api/groups/${groupId}/messages`);
+        const serverUrl = window.getServerUrl ? window.getServerUrl() : '';
+        const response = await fetch(`${serverUrl}/api/groups/${groupId}/messages`);
         if (response.ok) {
             const messages = await response.json();
             
@@ -434,7 +442,8 @@ async function sendMobileGroupMessage(groupId, message) {
     if (!message.trim()) return;
     
     try {
-        const response = await fetch(`/api/groups/${groupId}/messages`, {
+        const serverUrl = window.getServerUrl ? window.getServerUrl() : '';
+        const response = await fetch(`${serverUrl}/api/groups/${groupId}/messages`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -557,7 +566,9 @@ function initSocket() {
 }
 
 function loadNotifications() {
-    fetch('/api/notifications')
+    const serverUrl = window.getServerUrl ? window.getServerUrl() : '';
+    
+    fetch(`${serverUrl}/api/notifications`)
         .then(response => {
             if (!response.ok) {
                 throw new Error(`HTTP ${response.status}`);
@@ -757,7 +768,9 @@ function switchToPrivate() {
 }
 
 function logout() {
-    fetch('/api/logout', { method: 'POST' })
+    const serverUrl = window.getServerUrl ? window.getServerUrl() : '';
+    
+    fetch(`${serverUrl}/api/logout`, { method: 'POST' })
         .then(() => {
             localStorage.removeItem('authToken');
             localStorage.removeItem('username');
@@ -795,88 +808,61 @@ window.showMobileSection = showMobileSection;
 document.addEventListener('DOMContentLoaded', function() {
     console.log('🚀 Starting application initialization...');
     
+    // Инициализируем getServerUrl глобально
+    if (!window.getServerUrl) {
+        window.getServerUrl = getServerUrl;
+        console.log('🌐 getServerUrl function initialized');
+    }
+    
     // Инициализируем мобильный интерфейс если нужно
     const isMobile = initMobileInterface();
     
     // Настраиваем навигацию
     setupChatNavigation();
     
-    // Инициализируем socket
-    initSocket();
-    
-    // Инициализируем CurrencyManager
-    setTimeout(() => {
-        if (!window.currencyManager) {
-            console.log('💰 Creating CurrencyManager instance...');
-            window.currencyManager = new CurrencyManager();
+    // Инициализируем все менеджеры в правильном порядке
+    try {
+        console.log('💰 Creating CurrencyManager instance...');
+        window.currencyManager = new CurrencyManager();
+        
+        console.log('🎁 Creating GiftManager instance...');
+        window.giftManager = new GiftManager();
+        
+        console.log('🔄 Creating PrivateChat instance...');
+        window.privateChatInstance = new PrivateChat();
+        
+        console.log('🔄 Creating GroupChatManager instance...');
+        window.groupChatManager = new GroupChatManager();
+        if (window.groupChatManager.setupSocketListeners) {
+            window.groupChatManager.setupSocketListeners();
         }
-    }, 50);
-    
-    // Инициализируем GiftManager
-    setTimeout(() => {
-        if (!window.giftManager) {
-            console.log('🎁 Creating GiftManager instance...');
-            window.giftManager = new GiftManager();
-        }
-    }, 100);
-    
-    // Инициализируем приватный чат с учетом типа устройства
-    setTimeout(() => {
-        if (!window.privateChatInstance) {
-            console.log('🔄 Creating PrivateChat instance...');
-            window.privateChatInstance = new PrivateChat();
-            
-            // Добавляем мобильные обработчики если нужно
-            if (isMobile && window.privateChatInstance.setupMobileChatHandlers) {
+        
+        console.log('👤 Creating ProfileManager instance...');
+        window.profileManager = new ProfileManager();
+        
+        console.log('⚙️ Creating SettingsManager instance...');
+        window.settingsManager = new SettingsManager();
+        
+        console.log('📞 Creating CallManager instance...');
+        window.callManager = new CallManager();
+        
+        // Добавляем мобильные обработчики если нужно
+        if (isMobile) {
+            if (window.privateChatInstance.setupMobileChatHandlers) {
                 window.privateChatInstance.setupMobileChatHandlers();
             }
-        }
-    }, 150);
-    
-    // Инициализируем групповые чаты
-    setTimeout(() => {
-        if (!window.groupChatManager) {
-            console.log('🔄 Creating GroupChatManager instance...');
-            window.groupChatManager = new GroupChatManager();
-            window.groupChatManager.setupSocketListeners();
-            
-            // Добавляем мобильные обработчики если нужно
-            if (isMobile && window.groupChatManager.setupMobileGroupHandlers) {
+            if (window.groupChatManager.setupMobileGroupHandlers) {
                 window.groupChatManager.setupMobileGroupHandlers();
             }
         }
-    }, 200);
-    
-    // Инициализируем менеджер профилей
-    setTimeout(() => {
-        if (!window.profileManager) {
-            console.log('👤 Creating ProfileManager instance...');
-            window.profileManager = new ProfileManager();
-        }
-    }, 250);
-    
-    // Инициализируем менеджер настроек
-    setTimeout(() => {
-        if (!window.settingsManager) {
-            console.log('⚙️ Creating SettingsManager instance...');
-            window.settingsManager = new SettingsManager();
-        }
-    }, 300);
-    
-    // Инициализируем менеджер звонков
-    setTimeout(() => {
-        if (!window.callManager) {
-            console.log('📞 Creating CallManager instance...');
-            window.callManager = new CallManager();
-        }
-    }, 350);
-    
-    // Добавляем обработчик изменения размера окна
-    window.addEventListener('resize', function() {
-        if (isMobileDevice()) {
-            initMobileInterface();
-        }
-    });
+        
+        // Инициализируем socket последним
+        console.log('🔌 Initializing socket connection...');
+        initSocket();
+        
+    } catch (error) {
+        console.error('❌ Error during initialization:', error);
+    }
     
     console.log('✅ Application initialization complete');
 });
@@ -1024,3 +1010,10 @@ if (!document.getElementById('mobile-styles')) {
     styleEl.textContent = mobileStyles;
     document.head.appendChild(styleEl);
 }
+
+// Добавляем обработчик изменения размера окна
+window.addEventListener('resize', function() {
+    if (isMobileDevice()) {
+        initMobileInterface();
+    }
+});

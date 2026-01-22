@@ -9,6 +9,24 @@ class CurrencyManager {
         
         this.init();
     }
+getServerUrl() {
+    // Сначала проверяем глобальную функцию
+    if (typeof window.getServerUrl === 'function') {
+        const url = window.getServerUrl();
+        console.log('🌐 Using window.getServerUrl():', url);
+        return url;
+    }
+    
+    // Fallback логика
+    if (window.location.hostname.includes('localhost') || 
+        window.location.hostname.includes('127.0.0.1')) {
+        console.log('🌐 Using local server (fallback)');
+        return '';
+    } else {
+        console.log('🌐 Using remote server (fallback): https://my-messenger-9g2n.onrender.com');
+        return 'https://my-messenger-9g2n.onrender.com';
+    }
+}
 
     async init() {
         // Получаем имя пользователя правильно
@@ -43,39 +61,66 @@ class CurrencyManager {
         
         return 'anonymous';
     }
-
-    async loadUserData() {
-        try {
-            console.log('🔄 Loading currency data for:', this.currentUser);
-            
-            // Правильное кодирование URL
-            const encodedUsername = encodeURIComponent(this.currentUser);
-            const response = await fetch(`/api/user/${encodedUsername}/currency`);
-            
-            if (response.ok) {
-                const data = await response.json();
-                this.balance = data.balance || 0;
-                this.dailyStreak = data.dailyStreak || 0;
-                this.lastDailyReward = data.lastDailyReward;
-                this.transactionHistory = data.transactionHistory || [];
-                
-                console.log('✅ Currency data loaded from server');
-            } else if (response.status === 404) {
-                console.log('⚠️ Currency data not found on server, using defaults');
-                this.useDefaultCurrencyData();
+async loadUserData() {
+    try {
+        console.log('🔄 Loading currency data for:', this.currentUser);
+        
+        // Правильное кодирование URL
+        const encodedUsername = encodeURIComponent(this.currentUser);
+        
+        // Используем функцию getServerUrl или fallback
+        let serverUrl = '';
+        if (typeof window.getServerUrl === 'function') {
+            serverUrl = window.getServerUrl();
+            console.log('🌐 Using server URL:', serverUrl);
+        } else {
+            // Fallback на определение сервера
+            if (window.location.hostname.includes('localhost') || 
+                window.location.hostname.includes('127.0.0.1')) {
+                serverUrl = '';
+                console.log('🌐 Using local server');
             } else {
-                console.log(`⚠️ Server responded with status: ${response.status}`);
-                // Загружаем локальные данные как резерв
-                await this.loadLocalData();
+                serverUrl = 'https://my-messenger-9g2n.onrender.com';
+                console.log('🌐 Using remote server');
             }
+        }
+        
+        const response = await fetch(`${serverUrl}/api/user/${encodedUsername}/currency`, {
+            method: 'GET',
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
+            }
+        });
+        
+        if (response.ok) {
+            const data = await response.json();
+            this.balance = data.balance || 0;
+            this.dailyStreak = data.dailyStreak || 0;
+            this.lastDailyReward = data.lastDailyReward;
+            this.transactionHistory = data.transactionHistory || [];
             
-        } catch (error) {
-            console.error('❌ Error loading currency data from server:', error);
-            // Используем локальные данные при ошибке
+            console.log('✅ Currency data loaded from server:', {
+                balance: this.balance,
+                dailyStreak: this.dailyStreak,
+                historyLength: this.transactionHistory.length
+            });
+        } else if (response.status === 404) {
+            console.log('⚠️ Currency data not found on server, using defaults');
+            this.useDefaultCurrencyData();
+        } else {
+            console.log(`⚠️ Server responded with status: ${response.status}`);
+            // Загружаем локальные данные как резерв
             await this.loadLocalData();
         }
+        
+    } catch (error) {
+        console.error('❌ Error loading currency data from server:', error);
+        console.log('📦 Falling back to local data...');
+        // Используем локальные данные при ошибке
+        await this.loadLocalData();
     }
-
+}
     useDefaultCurrencyData() {
         this.balance = 100;
         this.dailyStreak = 0;
@@ -252,9 +297,11 @@ async saveUserData() {
 
         console.log('💾 Attempting to save currency data for:', currentUser);
 
-        // Используем один правильный эндпоинт
+        // Используем правильный URL
+        const serverUrl = this.getServerUrl();
+        
         try {
-            const response = await fetch('/api/currency/save', {
+            const response = await fetch(`${serverUrl}/api/currency/save`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -264,19 +311,21 @@ async saveUserData() {
 
             if (response.ok) {
                 const result = await response.json();
-                console.log('✅ Currency data saved successfully');
+                console.log('✅ Currency data saved successfully to server');
                 // Также сохраняем локально для резерва
                 this.saveLocalData();
                 return true;
             } else {
                 console.log('❌ Server responded with status:', response.status);
                 // Сохраняем локально если сервер недоступен
+                console.log('💾 Saving to local storage as fallback');
                 this.saveLocalData();
                 return false;
             }
         } catch (error) {
             console.error('❌ Error saving to server:', error);
             // Сохраняем локально при ошибке
+            console.log('💾 Saving to local storage as error fallback');
             this.saveLocalData();
             return false;
         }
@@ -286,7 +335,6 @@ async saveUserData() {
         return false;
     }
 }
-
     async buyGiftFromSettings(gift) {
         if (!window.giftManager) {
             this.showNotification('Магазин подарков недоступен', 'error');
@@ -479,7 +527,7 @@ async saveUserData() {
         }
     }
 
- async claimDailyReward() {
+async claimDailyReward() {
     try {
         console.log('🎁 Starting daily reward claim process...');
         
@@ -497,9 +545,11 @@ async saveUserData() {
 
         console.log('🎁 User can claim reward, proceeding...');
 
-        // Используем правильный эндпоинт
+        // Используем правильный URL
+        const serverUrl = this.getServerUrl();
+        
         try {
-            const response = await fetch('/api/currency/daily-reward', {
+            const response = await fetch(`${serverUrl}/api/currency/daily-reward`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
