@@ -74,26 +74,7 @@ function createMobileNavigation() {
     
     document.body.appendChild(mobileNav);
 }
-// Проверяем Tauri и настраиваем соединение
-if (typeof window.isTauri !== 'undefined' && window.isTauri) {
-    console.log('📱 Running in Tauri desktop app');
-    
-    // Используем Tauri-версию инициализации
-    window.initSocket = function() {
-        return initSocketForTauri();
-    };
-    
-    // Обновляем URL для API запросов
-    const originalFetch = window.fetch;
-    window.fetch = function(url, options) {
-        if (typeof url === 'string' && url.startsWith('/api/')) {
-            const fullUrl = getServerUrl() + url;
-            console.log(`🔄 Fetching: ${fullUrl}`);
-            return originalFetch(fullUrl, options);
-        }
-        return originalFetch(url, options);
-    };
-}
+
 // Настройка мобильной навигации
 function setupMobileNavigation() {
     // Кнопка "Назад" в чате
