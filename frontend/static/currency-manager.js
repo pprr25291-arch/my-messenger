@@ -9,24 +9,26 @@ class CurrencyManager {
         
         this.init();
     }
-getServerUrl() {
-    // Сначала проверяем глобальную функцию
-    if (typeof window.getServerUrl === 'function') {
-        const url = window.getServerUrl();
-        console.log('🌐 Using window.getServerUrl():', url);
-        return url;
+
+    // Метод для получения URL сервера (используем глобальную функцию)
+    getServerUrl() {
+        // Используем глобальную функцию window.getServerUrl напрямую
+        if (typeof window.getServerUrl === 'function') {
+            const url = window.getServerUrl();
+            console.log('🌐 Using window.getServerUrl():', url);
+            return url;
+        }
+        
+        // Fallback логика, если глобальная функция не определена
+        if (window.location.hostname.includes('localhost') || 
+            window.location.hostname.includes('127.0.0.1')) {
+            console.log('🌐 Using local server (fallback)');
+            return '';
+        } else {
+            console.log('🌐 Using remote server (fallback): https://my-messenger-9g2n.onrender.com');
+            return 'https://my-messenger-9g2n.onrender.com';
+        }
     }
-    
-    // Fallback логика
-    if (window.location.hostname.includes('localhost') || 
-        window.location.hostname.includes('127.0.0.1')) {
-        console.log('🌐 Using local server (fallback)');
-        return '';
-    } else {
-        console.log('🌐 Using remote server (fallback): https://my-messenger-9g2n.onrender.com');
-        return 'https://my-messenger-9g2n.onrender.com';
-    }
-}
 
     async init() {
         // Получаем имя пользователя правильно
@@ -61,66 +63,55 @@ getServerUrl() {
         
         return 'anonymous';
     }
-async loadUserData() {
-    try {
-        console.log('🔄 Loading currency data for:', this.currentUser);
-        
-        // Правильное кодирование URL
-        const encodedUsername = encodeURIComponent(this.currentUser);
-        
-        // Используем функцию getServerUrl или fallback
-        let serverUrl = '';
-        if (typeof window.getServerUrl === 'function') {
-            serverUrl = window.getServerUrl();
-            console.log('🌐 Using server URL:', serverUrl);
-        } else {
-            // Fallback на определение сервера
-            if (window.location.hostname.includes('localhost') || 
-                window.location.hostname.includes('127.0.0.1')) {
-                serverUrl = '';
-                console.log('🌐 Using local server');
-            } else {
-                serverUrl = 'https://my-messenger-9g2n.onrender.com';
-                console.log('🌐 Using remote server');
-            }
-        }
-        
-        const response = await fetch(`${serverUrl}/api/user/${encodedUsername}/currency`, {
-            method: 'GET',
-            headers: {
-                'Content-Type': 'application/json',
-                'Accept': 'application/json'
-            }
-        });
-        
-        if (response.ok) {
-            const data = await response.json();
-            this.balance = data.balance || 0;
-            this.dailyStreak = data.dailyStreak || 0;
-            this.lastDailyReward = data.lastDailyReward;
-            this.transactionHistory = data.transactionHistory || [];
+
+    async loadUserData() {
+        try {
+            console.log('🔄 Loading currency data for:', this.currentUser);
             
-            console.log('✅ Currency data loaded from server:', {
-                balance: this.balance,
-                dailyStreak: this.dailyStreak,
-                historyLength: this.transactionHistory.length
+            // Правильное кодирование URL
+            const encodedUsername = encodeURIComponent(this.currentUser);
+            
+            // Используем метод getServerUrl()
+            const serverUrl = this.getServerUrl();
+            console.log('🌐 Using server URL:', serverUrl);
+            
+            const response = await fetch(`${serverUrl}/api/user/${encodedUsername}/currency`, {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                }
             });
-        } else if (response.status === 404) {
-            console.log('⚠️ Currency data not found on server, using defaults');
-            this.useDefaultCurrencyData();
-        } else {
-            console.log(`⚠️ Server responded with status: ${response.status}`);
-            // Загружаем локальные данные как резерв
+            
+            if (response.ok) {
+                const data = await response.json();
+                this.balance = data.balance || 0;
+                this.dailyStreak = data.dailyStreak || 0;
+                this.lastDailyReward = data.lastDailyReward;
+                this.transactionHistory = data.transactionHistory || [];
+                
+                console.log('✅ Currency data loaded from server:', {
+                    balance: this.balance,
+                    dailyStreak: this.dailyStreak,
+                    historyLength: this.transactionHistory.length
+                });
+            } else if (response.status === 404) {
+                console.log('⚠️ Currency data not found on server, using defaults');
+                this.useDefaultCurrencyData();
+            } else {
+                console.log(`⚠️ Server responded with status: ${response.status}`);
+                // Загружаем локальные данные как резерв
+                await this.loadLocalData();
+            }
+            
+        } catch (error) {
+            console.error('❌ Error loading currency data from server:', error);
+            console.log('📦 Falling back to local data...');
+            // Используем локальные данные при ошибке
             await this.loadLocalData();
         }
-        
-    } catch (error) {
-        console.error('❌ Error loading currency data from server:', error);
-        console.log('📦 Falling back to local data...');
-        // Используем локальные данные при ошибке
-        await this.loadLocalData();
     }
-}
+
     useDefaultCurrencyData() {
         this.balance = 100;
         this.dailyStreak = 0;
@@ -279,62 +270,64 @@ async loadUserData() {
             }
         });
     }
-async saveUserData() {
-    try {
-        const currentUser = this.getCurrentUser();
-        if (!currentUser || currentUser === 'anonymous') {
-            console.error('❌ No valid user for saving currency data');
-            return false;
-        }
 
-        const dataToSave = {
-            username: currentUser,
-            balance: this.balance,
-            dailyStreak: this.dailyStreak,
-            lastDailyReward: this.lastDailyReward,
-            transactionHistory: this.transactionHistory
-        };
-
-        console.log('💾 Attempting to save currency data for:', currentUser);
-
-        // Используем правильный URL
-        const serverUrl = this.getServerUrl();
-        
+    async saveUserData() {
         try {
-            const response = await fetch(`${serverUrl}/api/currency/save`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify(dataToSave)
-            });
+            const currentUser = this.getCurrentUser();
+            if (!currentUser || currentUser === 'anonymous') {
+                console.error('❌ No valid user for saving currency data');
+                return false;
+            }
 
-            if (response.ok) {
-                const result = await response.json();
-                console.log('✅ Currency data saved successfully to server');
-                // Также сохраняем локально для резерва
-                this.saveLocalData();
-                return true;
-            } else {
-                console.log('❌ Server responded with status:', response.status);
-                // Сохраняем локально если сервер недоступен
-                console.log('💾 Saving to local storage as fallback');
+            const dataToSave = {
+                username: currentUser,
+                balance: this.balance,
+                dailyStreak: this.dailyStreak,
+                lastDailyReward: this.lastDailyReward,
+                transactionHistory: this.transactionHistory
+            };
+
+            console.log('💾 Attempting to save currency data for:', currentUser);
+
+            // Используем метод getServerUrl()
+            const serverUrl = this.getServerUrl();
+            
+            try {
+                const response = await fetch(`${serverUrl}/api/currency/save`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(dataToSave)
+                });
+
+                if (response.ok) {
+                    const result = await response.json();
+                    console.log('✅ Currency data saved successfully to server');
+                    // Также сохраняем локально для резерва
+                    this.saveLocalData();
+                    return true;
+                } else {
+                    console.log('❌ Server responded with status:', response.status);
+                    // Сохраняем локально если сервер недоступен
+                    console.log('💾 Saving to local storage as fallback');
+                    this.saveLocalData();
+                    return false;
+                }
+            } catch (error) {
+                console.error('❌ Error saving to server:', error);
+                // Сохраняем локально при ошибке
+                console.log('💾 Saving to local storage as error fallback');
                 this.saveLocalData();
                 return false;
             }
         } catch (error) {
-            console.error('❌ Error saving to server:', error);
-            // Сохраняем локально при ошибке
-            console.log('💾 Saving to local storage as error fallback');
-            this.saveLocalData();
+            console.error('❌ Error saving currency data:', error);
+            this.saveLocalData(); // Всегда сохраняем локально при ошибке
             return false;
         }
-    } catch (error) {
-        console.error('❌ Error saving currency data:', error);
-        this.saveLocalData(); // Всегда сохраняем локально при ошибке
-        return false;
     }
-}
+
     async buyGiftFromSettings(gift) {
         if (!window.giftManager) {
             this.showNotification('Магазин подарков недоступен', 'error');
@@ -527,106 +520,106 @@ async saveUserData() {
         }
     }
 
-async claimDailyReward() {
-    try {
-        console.log('🎁 Starting daily reward claim process...');
-        
-        const currentUser = this.getCurrentUser();
-        if (!currentUser || currentUser === 'anonymous') {
-            this.showNotification('Пользователь не определен', 'error');
-            return;
-        }
-
-        // Проверяем возможность получения награды
-        if (!this.canClaimDailyReward()) {
-            this.showNotification('Вы уже получали награду сегодня. Попробуйте позже.', 'error');
-            return;
-        }
-
-        console.log('🎁 User can claim reward, proceeding...');
-
-        // Используем правильный URL
-        const serverUrl = this.getServerUrl();
-        
+    async claimDailyReward() {
         try {
-            const response = await fetch(`${serverUrl}/api/currency/daily-reward`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    username: currentUser
-                })
-            });
+            console.log('🎁 Starting daily reward claim process...');
+            
+            const currentUser = this.getCurrentUser();
+            if (!currentUser || currentUser === 'anonymous') {
+                this.showNotification('Пользователь не определен', 'error');
+                return;
+            }
 
-            if (response.ok) {
-                const result = await response.json();
-                console.log('✅ Reward claimed successfully:', result);
+            // Проверяем возможность получения награды
+            if (!this.canClaimDailyReward()) {
+                this.showNotification('Вы уже получали награду сегодня. Попробуйте позже.', 'error');
+                return;
+            }
+
+            console.log('🎁 User can claim reward, proceeding...');
+
+            // Используем метод getServerUrl()
+            const serverUrl = this.getServerUrl();
+            
+            try {
+                const response = await fetch(`${serverUrl}/api/currency/daily-reward`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        username: currentUser
+                    })
+                });
+
+                if (response.ok) {
+                    const result = await response.json();
+                    console.log('✅ Reward claimed successfully:', result);
+                    
+                    // Обновляем локальные данные
+                    this.balance = result.newBalance || this.balance + (result.rewardAmount || 50);
+                    this.dailyStreak = result.streak || this.dailyStreak + 1;
+                    this.lastDailyReward = new Date().toISOString();
+                    
+                    // Добавляем в историю
+                    this.addTransaction({
+                        type: 'daily_reward',
+                        amount: result.rewardAmount || 50,
+                        description: `Ежедневная награда (серия: ${this.dailyStreak} дней)`,
+                        timestamp: new Date().toISOString()
+                    });
+
+                    // Сохраняем данные
+                    await this.saveUserData();
+                    
+                    this.updateDisplay();
+                    this.showRewardNotification(result.rewardAmount || 50, this.dailyStreak);
+                    
+                    console.log('✅ Daily reward claimed successfully', {
+                        newBalance: this.balance,
+                        newStreak: this.dailyStreak,
+                        lastReward: this.lastDailyReward
+                    });
+                    
+                } else {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || 'Failed to claim reward');
+                }
+            } catch (error) {
+                // Если серверный эндпоинт не работает, используем локальную логику
+                console.log('⚠️ Server endpoint failed, using local logic:', error.message);
+                const result = this.calculateLocalReward();
                 
-                // Обновляем локальные данные
-                this.balance = result.newBalance || this.balance + (result.rewardAmount || 50);
-                this.dailyStreak = result.streak || this.dailyStreak + 1;
+                this.balance = result.newBalance;
+                this.dailyStreak = result.streak;
                 this.lastDailyReward = new Date().toISOString();
                 
                 // Добавляем в историю
                 this.addTransaction({
                     type: 'daily_reward',
-                    amount: result.rewardAmount || 50,
+                    amount: result.rewardAmount,
                     description: `Ежедневная награда (серия: ${this.dailyStreak} дней)`,
                     timestamp: new Date().toISOString()
                 });
 
-                // Сохраняем данные
+                // Сохраняем данные локально
                 await this.saveUserData();
                 
                 this.updateDisplay();
-                this.showRewardNotification(result.rewardAmount || 50, this.dailyStreak);
+                this.showRewardNotification(result.rewardAmount, this.dailyStreak);
                 
-                console.log('✅ Daily reward claimed successfully', {
+                console.log('✅ Daily reward claimed locally', {
                     newBalance: this.balance,
                     newStreak: this.dailyStreak,
                     lastReward: this.lastDailyReward
                 });
-                
-            } else {
-                const errorData = await response.json();
-                throw new Error(errorData.error || 'Failed to claim reward');
             }
+            
         } catch (error) {
-            // Если серверный эндпоинт не работает, используем локальную логику
-            console.log('⚠️ Server endpoint failed, using local logic:', error.message);
-            const result = this.calculateLocalReward();
-            
-            this.balance = result.newBalance;
-            this.dailyStreak = result.streak;
-            this.lastDailyReward = new Date().toISOString();
-            
-            // Добавляем в историю
-            this.addTransaction({
-                type: 'daily_reward',
-                amount: result.rewardAmount,
-                description: `Ежедневная награда (серия: ${this.dailyStreak} дней)`,
-                timestamp: new Date().toISOString()
-            });
-
-            // Сохраняем данные локально
-            await this.saveUserData();
-            
-            this.updateDisplay();
-            this.showRewardNotification(result.rewardAmount, this.dailyStreak);
-            
-            console.log('✅ Daily reward claimed locally', {
-                newBalance: this.balance,
-                newStreak: this.dailyStreak,
-                lastReward: this.lastDailyReward
-            });
+            console.error('❌ Error claiming daily reward:', error);
+            this.showNotification('Ошибка получения награды: ' + error.message, 'error');
         }
-        
-    } catch (error) {
-        console.error('❌ Error claiming daily reward:', error);
-        this.showNotification('Ошибка получения награды: ' + error.message, 'error');
     }
-}
 
     calculateLocalReward() {
         const baseReward = 50;
@@ -648,8 +641,11 @@ async claimDailyReward() {
 
             usersList.innerHTML = '<div class="loading">Загрузка пользователей...</div>';
 
+            // Используем метод getServerUrl()
+            const serverUrl = this.getServerUrl();
+            
             // Получаем список пользователей
-            const response = await fetch('/api/users/all');
+            const response = await fetch(`${serverUrl}/api/users/all`);
             if (!response.ok) throw new Error('Failed to load users');
 
             const users = await response.json();
@@ -657,7 +653,7 @@ async claimDailyReward() {
             let html = '';
             for (const user of users) {
                 try {
-                    const currencyResponse = await fetch(`/api/user/${encodeURIComponent(user.username)}/currency`);
+                    const currencyResponse = await fetch(`${serverUrl}/api/user/${encodeURIComponent(user.username)}/currency`);
                     const currencyData = currencyResponse.ok ? await currencyResponse.json() : { balance: 0 };
                     
                     html += `
@@ -798,101 +794,105 @@ async claimDailyReward() {
         }
     }
 
-async addCurrencyToUser(username, amount, reason = '') {
-    if (!this.isAdmin) {
-        this.showNotification('Недостаточно прав', 'error');
-        return false;
-    }
-
-    try {
-        const currentUser = this.getCurrentUser();
-        
-        // Если это текущий пользователь, обновляем мгновенно
-        if (username === currentUser) {
-            return await this.addCurrency(amount, reason);
+    async addCurrencyToUser(username, amount, reason = '') {
+        if (!this.isAdmin) {
+            this.showNotification('Недостаточно прав', 'error');
+            return false;
         }
 
-        // Используем правильный эндпоинт для других пользователей
-        const response = await fetch('/api/currency/admin/add', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                targetUser: username,
-                amount: amount,
-                reason: reason
-            })
-        });
-
-        if (response.ok) {
-            const result = await response.json();
-            this.showNotification(result.message, 'success');
+        try {
+            const currentUser = this.getCurrentUser();
             
-            // Обновляем список пользователей если открыта админ-панель
-            if (document.getElementById('adminPanel')?.style.display === 'flex') {
-                this.loadUsersCurrencyList();
+            // Если это текущий пользователь, обновляем мгновенно
+            if (username === currentUser) {
+                return await this.addCurrency(amount, reason);
             }
+
+            // Используем метод getServerUrl()
+            const serverUrl = this.getServerUrl();
             
-            return true;
-        } else {
-            const errorData = await response.json();
-            throw new Error(errorData.error || 'Failed to add currency');
-        }
-    } catch (error) {
-        console.error('Error adding currency:', error);
-        this.showNotification('Ошибка добавления валюты: ' + error.message, 'error');
-        return false;
-    }
-}
+            const response = await fetch(`${serverUrl}/api/currency/admin/add`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    targetUser: username,
+                    amount: amount,
+                    reason: reason
+                })
+            });
 
-async removeCurrencyFromUser(username, amount, reason = '') {
-    if (!this.isAdmin) {
-        this.showNotification('Недостаточно прав', 'error');
-        return false;
-    }
-
-    try {
-        const currentUser = this.getCurrentUser();
-        
-        // Если это текущий пользователь, обновляем мгновенно
-        if (username === currentUser) {
-            return await this.removeCurrency(amount, reason);
-        }
-
-        // Используем правильный эндпоинт для других пользователей
-        const response = await fetch('/api/currency/admin/remove', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                targetUser: username,
-                amount: amount,
-                reason: reason
-            })
-        });
-
-        if (response.ok) {
-            const result = await response.json();
-            this.showNotification(result.message, 'success');
-            
-            // Обновляем список пользователей если открыта админ-панель
-            if (document.getElementById('adminPanel')?.style.display === 'flex') {
-                this.loadUsersCurrencyList();
+            if (response.ok) {
+                const result = await response.json();
+                this.showNotification(result.message, 'success');
+                
+                // Обновляем список пользователей если открыта админ-панель
+                if (document.getElementById('adminPanel')?.style.display === 'flex') {
+                    this.loadUsersCurrencyList();
+                }
+                
+                return true;
+            } else {
+                const errorData = await response.json();
+                throw new Error(errorData.error || 'Failed to add currency');
             }
-            
-            return true;
-        } else {
-            const errorData = await response.json();
-            throw new Error(errorData.error || 'Failed to remove currency');
+        } catch (error) {
+            console.error('Error adding currency:', error);
+            this.showNotification('Ошибка добавления валюты: ' + error.message, 'error');
+            return false;
         }
-    } catch (error) {
-        console.error('Error removing currency:', error);
-        this.showNotification('Ошибка списания валюты: ' + error.message, 'error');
-        return false;
     }
-}
+
+    async removeCurrencyFromUser(username, amount, reason = '') {
+        if (!this.isAdmin) {
+            this.showNotification('Недостаточно прав', 'error');
+            return false;
+        }
+
+        try {
+            const currentUser = this.getCurrentUser();
+            
+            // Если это текущий пользователь, обновляем мгновенно
+            if (username === currentUser) {
+                return await this.removeCurrency(amount, reason);
+            }
+
+            // Используем метод getServerUrl()
+            const serverUrl = this.getServerUrl();
+            
+            const response = await fetch(`${serverUrl}/api/currency/admin/remove`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    targetUser: username,
+                    amount: amount,
+                    reason: reason
+                })
+            });
+
+            if (response.ok) {
+                const result = await response.json();
+                this.showNotification(result.message, 'success');
+                
+                // Обновляем список пользователей если открыта админ-панель
+                if (document.getElementById('adminPanel')?.style.display === 'flex') {
+                    this.loadUsersCurrencyList();
+                }
+                
+                return true;
+            } else {
+                const errorData = await response.json();
+                throw new Error(errorData.error || 'Failed to remove currency');
+            }
+        } catch (error) {
+            console.error('Error removing currency:', error);
+            this.showNotification('Ошибка списания валюты: ' + error.message, 'error');
+            return false;
+        }
+    }
 
     async updateBalance(newBalance) {
         const oldBalance = this.balance;
@@ -988,7 +988,6 @@ async removeCurrencyFromUser(username, amount, reason = '') {
         });
     }
 
- 
     openGiftShop(targetUser = null) {
         console.log('🎁 Opening gift shop for user:', targetUser);
         
