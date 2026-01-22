@@ -74,76 +74,6 @@ function createMobileNavigation() {
     
     document.body.appendChild(mobileNav);
 }
-
-// Инициализация socket для Tauri (если приложение запущено в Tauri)
-function initSocketForTauri() {
-    console.log('📱 Initializing socket for Tauri environment');
-    
-    try {
-        // Используем тот же socket, но с абсолютным URL
-        const serverUrl = getServerUrl() || window.location.origin;
-        
-        socket = io(serverUrl, {
-            transports: ['websocket', 'polling'],
-            reconnection: true,
-            reconnectionAttempts: MAX_RECONNECT_ATTEMPTS,
-            reconnectionDelay: 1000
-        });
-
-        window.socket = socket;
-
-        socket.on('connect', () => {
-            console.log('✅ Connected to server from Tauri');
-            reconnectAttempts = 0;
-            showConnectionStatus('Подключено к серверу', 'success');
-            
-            const username = document.getElementById('username')?.textContent;
-            if (username) {
-                socket.emit('user authenticated', username);
-            }
-            
-            loadNotifications();
-        });
-
-        socket.on('disconnect', (reason) => {
-            console.log('🔌 Disconnected:', reason);
-            showConnectionStatus('Отключено от сервера', 'error');
-        });
-
-        socket.on('connect_error', (error) => {
-            console.error('❌ Connection error:', error);
-            reconnectAttempts++;
-            
-            if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
-                showConnectionStatus('Не удалось подключиться к серверу', 'error');
-            } else {
-                showConnectionStatus(`Переподключение... (${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`, 'warning');
-            }
-        });
-
-        // Остальные обработчики такие же
-        setupSocketListeners();
-
-        return socket;
-    } catch (error) {
-        console.error('❌ Failed to initialize socket for Tauri:', error);
-        showConnectionStatus('Ошибка инициализации соединения', 'error');
-        return null;
-    }
-}
-
-// Получение URL сервера для Tauri
-function getServerUrl() {
-    // Пробуем получить из конфигурации, если Tauri
-    if (window.isTauri) {
-        // В Tauri приложениях часто используют localhost
-        return 'http://localhost:3000';
-    }
-    
-    // Иначе используем текущий origin
-    return window.location.origin;
-}
-
 // Проверяем Tauri и настраиваем соединение
 if (typeof window.isTauri !== 'undefined' && window.isTauri) {
     console.log('📱 Running in Tauri desktop app');
@@ -164,7 +94,6 @@ if (typeof window.isTauri !== 'undefined' && window.isTauri) {
         return originalFetch(url, options);
     };
 }
-
 // Настройка мобильной навигации
 function setupMobileNavigation() {
     // Кнопка "Назад" в чате
@@ -566,35 +495,9 @@ function adaptInterfaceForMobile() {
     }
 }
 
-// Настройка общих обработчиков socket
-function setupSocketListeners() {
-    if (!socket) return;
-
-    socket.on('system_notification', (data) => {
-        console.log('📢 System notification:', data);
-        displayNotification(data, true);
-    });
-
-    socket.on('notifications_updated', () => {
-        console.log('🔄 Notifications updated');
-        loadNotifications();
-    });
-
-    socket.on('ping', () => {
-        socket.emit('pong');
-    });
-}
-
 // Основные функции управления соединением
 function initSocket() {
     try {
-        // Если это Tauri приложение и функция определена
-        if (typeof window.isTauri !== 'undefined' && window.isTauri && window.initSocket) {
-            console.log('🔄 Using Tauri socket initialization');
-            return window.initSocket();
-        }
-        
-        // Обычная инициализация для браузера
         socket = io({
             transports: ['websocket', 'polling'],
             reconnection: true,
@@ -627,14 +530,25 @@ function initSocket() {
             reconnectAttempts++;
             
             if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
-                showConnectionStatus('Не удалось подключиться к сервера', 'error');
+                showConnectionStatus('Не удалось подключиться к серверу', 'error');
             } else {
                 showConnectionStatus(`Переподключение... (${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`, 'warning');
             }
         });
 
-        // Настраиваем остальные обработчики
-        setupSocketListeners();
+        socket.on('system_notification', (data) => {
+            console.log('📢 System notification:', data);
+            displayNotification(data, true);
+        });
+
+        socket.on('notifications_updated', () => {
+            console.log('🔄 Notifications updated');
+            loadNotifications();
+        });
+
+        socket.on('ping', () => {
+            socket.emit('pong');
+        });
 
     } catch (error) {
         console.error('❌ Failed to initialize socket:', error);
@@ -876,8 +790,6 @@ window.switchToPrivate = switchToPrivate;
 window.isMobileDevice = isMobileDevice;
 window.updateMobileNavActive = updateMobileNavActive;
 window.showMobileSection = showMobileSection;
-window.getServerUrl = getServerUrl;
-window.initSocketForTauri = initSocketForTauri;
 
 // Инициализация при загрузке страницы
 document.addEventListener('DOMContentLoaded', function() {
