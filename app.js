@@ -1,4 +1,3 @@
-// server.js - Сервер мессенджера с автосохранением каждые 30 секунд
 const express = require('express');
 const socketIo = require('socket.io');
 const http = require('http');
@@ -6,250 +5,449 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const cookieParser = require('cookie-parser');
 const fs = require('fs').promises;
-const fsSync = require('fs'); // Добавляем синхронную версию fs
+const fsSync = require('fs');
 const path = require('path');
 const multer = require('multer');
 const sharp = require('sharp');
-const MegaStorage = require('./mega-storage');
-const TelegramStorage = require('./telegram-storage');
 const { exec } = require('child_process');
 const os = require('os');
+const net = require('net');
 
 const app = express();
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'frontend', 'templates'));
 const server = http.createServer(app);
 
+// Определение окружения
+const isTauri = process.env.TAURI_ENV === 'production' || process.env.NODE_ENV === 'tauri';
+const isDevelopment = process.env.NODE_ENV === 'development';
+const isProduction = process.env.NODE_ENV === 'production' && !isTauri;
+
+console.log(`🌍 Environment: ${isTauri ? 'Tauri Desktop' : isDevelopment ? 'Development' : 'Production'}`);
+
+// Конфигурация CORS
+const corsOrigins = [];
+if (isTauri) {
+    // Для Tauri разрешаем все источники
+    corsOrigins.push('*');
+    corsOrigins.push('tauri://localhost');
+    corsOrigins.push('http://tauri.localhost');
+    corsOrigins.push('http://localhost:1420');
+    corsOrigins.push('http://localhost:3000');
+} else if (isDevelopment) {
+    // Для разработки
+    corsOrigins.push('http://localhost:3000');
+    corsOrigins.push('http://localhost:1420');
+    corsOrigins.push('http://localhost:5173');
+    corsOrigins.push('http://localhost:8080');
+} else if (isProduction) {
+    // Для продакшена на Render
+    corsOrigins.push('https://my-messenger-9g2n.onrender.com');
+    corsOrigins.push('https://*.onrender.com');
+    corsOrigins.push('tauri://localhost');
+    corsOrigins.push('http://tauri.localhost');
+}
+
+console.log('🔧 CORS Origins:', corsOrigins);
+
+// Конфигурация Socket.IO
 const io = socketIo(server, {
     cors: {
-        origin: [
-            "https://my-messenger-9g2n.onrender.com",
-            "http://localhost:3000",
-            "tauri://localhost",
-            "http://tauri.localhost",
-            /^tauri:\/\//,
-            /^http:\/\/localhost:*/,
-            /^https:\/\/localhost:*/
-        ],
-        methods: ["GET", "POST"],
-        credentials: true
+        origin: function(origin, callback) {
+            // В Tauri режиме разрешаем все
+            if (isTauri) {
+                return callback(null, true);
+            }
+            
+            // В разработке разрешаем все локальные адреса
+            if (isDevelopment && (!origin || origin.includes('localhost') || origin.includes('127.0.0.1'))) {
+                return callback(null, true);
+            }
+            
+            // В продакшене проверяем разрешенные origin
+            if (isProduction) {
+                if (!origin || corsOrigins.some(allowed => {
+                    if (allowed === '*') return true;
+                    if (allowed instanceof RegExp) return allowed.test(origin);
+                    return allowed === origin;
+                })) {
+                    return callback(null, true);
+                }
+            }
+            
+            callback(new Error('CORS не разрешен'));
+        },
+        methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        credentials: true,
+        allowedHeaders: ["Content-Type", "Authorization", "Origin", "X-Requested-With", "Accept"]
     },
-    transports: ['websocket', 'polling']
+    transports: ['websocket', 'polling'],
+    pingTimeout: 60000,
+    pingInterval: 25000
 });
 
+// Middleware CORS
 app.use((req, res, next) => {
-    const allowedOrigins = [
-        "https://my-messenger-9g2n.onrender.com",
-        "http://localhost:3000",
-        "tauri://localhost",
-        "http://tauri.localhost",
-        /^tauri:\/\//,
-        /^http:\/\/localhost:*/,
-        /^https:\/\/localhost:*/
-    ];
-    
     const origin = req.headers.origin;
-    if (allowedOrigins.includes(origin) || 
-        allowedOrigins.some(pattern => pattern instanceof RegExp && pattern.test(origin))) {
-        res.header('Access-Control-Allow-Origin', origin);
+    
+    if (isTauri) {
+        // В Tauri разрешаем все
+        res.header('Access-Control-Allow-Origin', '*');
+    } else if (origin) {
+        // Проверяем, разрешен ли origin
+        const isAllowed = corsOrigins.some(allowed => {
+            if (allowed === '*') return true;
+            if (allowed instanceof RegExp) return allowed.test(origin);
+            return allowed === origin;
+        });
+        
+        if (isAllowed) {
+            res.header('Access-Control-Allow-Origin', origin);
+        }
     }
     
     res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, Origin, X-Requested-With, Accept');
+    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, Origin, X-Requested-With, Accept, X-Requested-With');
     res.header('Access-Control-Allow-Credentials', 'true');
+    res.header('Access-Control-Expose-Headers', 'Content-Disposition');
     
     if (req.method === 'OPTIONS') {
         return res.sendStatus(200);
     }
+    
     next();
 });
 
-const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-this';
-let PORT = process.env.PORT || 3000;
+// JWT секрет
+const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-this-in-production-for-security';
+let PORT = parseInt(process.env.PORT) || 3000;
 
-// Определяем путь для данных в зависимости от среды
-const getDataPath = () => {
-    if (process.env.TAURI_ENV === 'production') {
-        // В Tauri приложении используем папку рядом с .exe
-        const tauriPath = path.join(__dirname, '..');
-        return path.join(tauriPath, 'data');
+// Определение путей для данных
+function getDataPath() {
+    if (isTauri) {
+        // В Tauri используем папку рядом с исполняемым файлом
+        try {
+            const tauriPath = path.join(__dirname, '..', '..');
+            const dataPath = path.join(tauriPath, 'data');
+            console.log(`📁 Tauri data path: ${dataPath}`);
+            return dataPath;
+        } catch (error) {
+            console.error('❌ Error getting Tauri data path:', error);
+            return path.join(__dirname, 'data');
+        }
     } else if (process.env.DATA_PATH) {
-        // На сервере Render используем переменную окружения
-        return process.env.DATA_PATH;
+        // Используем переменную окружения
+        const dataPath = process.env.DATA_PATH;
+        console.log(`📁 Using DATA_PATH from env: ${dataPath}`);
+        return dataPath;
+    } else if (isProduction) {
+        // На Render используем /tmp для данных
+        const renderDataPath = path.join('/tmp', 'messenger-data');
+        console.log(`📁 Render data path: ${renderDataPath}`);
+        return renderDataPath;
     } else {
-        // Локально для разработки
-        return path.join(__dirname, 'data');
+        // Локальная разработка
+        const devDataPath = path.join(__dirname, 'data');
+        console.log(`📁 Development data path: ${devDataPath}`);
+        return devDataPath;
     }
-};
+}
 
 const dataDir = getDataPath();
 const uploadsDir = path.join(dataDir, 'uploads');
 const avatarsDir = path.join(uploadsDir, 'avatars');
+const backupsDir = path.join(dataDir, 'backups');
 
-// Создаём папки, если их нет (используем fsSync)
-try {
-    fsSync.mkdirSync(dataDir, { recursive: true });
-    fsSync.mkdirSync(uploadsDir, { recursive: true });
-    fsSync.mkdirSync(avatarsDir, { recursive: true });
-    console.log('✅ Directories created successfully');
-} catch (error) {
-    console.error('❌ Error creating directories:', error);
+console.log(`📂 Data directory: ${dataDir}`);
+console.log(`📂 Uploads directory: ${uploadsDir}`);
+console.log(`📂 Avatars directory: ${avatarsDir}`);
+
+// Создание необходимых директорий
+function createDirectoriesSync() {
+    const dirs = [dataDir, uploadsDir, avatarsDir, backupsDir];
+    
+    for (const dir of dirs) {
+        if (!fsSync.existsSync(dir)) {
+            try {
+                fsSync.mkdirSync(dir, { recursive: true });
+                console.log(`✅ Created directory: ${dir}`);
+            } catch (error) {
+                console.error(`❌ Failed to create directory ${dir}:`, error.message);
+            }
+        }
+    }
 }
 
+createDirectoriesSync();
+
+// Глобальные переменные для данных
 let users = [];
 let messages = [];
 let systemNotifications = [];
 let groups = [];
+let currencyData = {};
+let giftsData = {};
+
+// Map для управления соединениями
 const userSockets = new Map();
 const onlineUsers = new Set();
 const activeCalls = new Map();
 const screenShares = new Map();
-let currencyData = {};
-let giftsData = {};
+const userPresence = new Map();
 
-let megaStorage = null;
-let telegramStorage = null;
-let megaSyncInterval = null;
+// Интервалы
 let autoSaveInterval = null;
+let presenceCheckInterval = null;
 
-// Функция для освобождения порта
-function killPort(port) {
-    return new Promise((resolve) => {
-        console.log(`🔍 Checking port ${port}...`);
-        
-        if (os.platform() === 'win32') {
-            exec(`netstat -ano | findstr :${port}`, (err, stdout) => {
-                if (err || !stdout) {
-                    console.log(`✅ Port ${port} is free`);
-                    resolve(false);
-                    return;
-                }
-                
-                const lines = stdout.trim().split('\n');
-                let killed = false;
-                
-                lines.forEach(line => {
-                    const parts = line.trim().split(/\s+/);
-                    const pid = parts[parts.length - 1];
-                    if (pid && !isNaN(pid)) {
-                        exec(`taskkill /F /PID ${pid}`, (err) => {
-                            if (!err) {
-                                console.log(`✅ Killed process ${pid} on port ${port}`);
-                                killed = true;
-                            }
-                        });
-                    }
-                });
-                
-                setTimeout(() => {
-                    resolve(killed);
-                }, 1000);
-            });
-        } else {
-            // Linux/Mac
-            exec(`lsof -ti:${port}`, (err, stdout) => {
-                if (err || !stdout) {
-                    console.log(`✅ Port ${port} is free`);
-                    resolve(false);
-                    return;
-                }
-                
-                const pids = stdout.trim().split('\n');
-                let killed = false;
-                
-                pids.forEach(pid => {
-                    if (pid && !isNaN(pid)) {
-                        exec(`kill -9 ${pid}`, (err) => {
-                            if (!err) {
-                                console.log(`✅ Killed process ${pid} on port ${port}`);
-                                killed = true;
-                            }
-                        });
-                    }
-                });
-                
-                setTimeout(() => {
-                    resolve(killed);
-                }, 1000);
-            });
-        }
-    });
-}
+// Middleware
+app.use(express.json({ limit: '100mb' }));
+app.use(express.urlencoded({ extended: true, limit: '100mb' }));
+app.use(cookieParser());
 
-// Функция для поиска свободного порта
-async function findFreePort(startPort, maxAttempts = 10) {
-    let port = startPort;
-    let attempts = 0;
-    
-    while (attempts < maxAttempts) {
-        try {
-            const inUse = await isPortInUse(port);
-            
-            if (!inUse) {
-                console.log(`✅ Found free port: ${port}`);
-                return port;
-            }
-            
-            console.log(`⚠️ Port ${port} is busy, trying ${port + 1}`);
-            port++;
-            attempts++;
-            
-        } catch (error) {
-            console.log(`❌ Error checking port ${port}: ${error.message}`);
-            port++;
-            attempts++;
+// Обслуживание статических файлов
+app.use('/static', express.static(path.join(__dirname, 'frontend', 'static'), {
+    maxAge: '1d',
+    etag: true,
+    lastModified: true
+}));
+
+app.use('/uploads', express.static(uploadsDir, {
+    maxAge: '7d',
+    etag: true,
+    lastModified: true,
+    setHeaders: (res, filePath) => {
+        // Устанавливаем правильные заголовки для изображений
+        if (filePath.endsWith('.png') || filePath.endsWith('.jpg') || filePath.endsWith('.jpeg') || filePath.endsWith('.gif')) {
+            res.setHeader('Cache-Control', 'public, max-age=31536000');
         }
     }
-    
-    throw new Error(`Could not find free port after ${maxAttempts} attempts`);
+}));
+
+// Обслуживание всех статических файлов из frontend
+app.use(express.static(path.join(__dirname, 'frontend'), {
+    maxAge: '1d',
+    etag: true,
+    lastModified: true
+}));
+
+// Конфигурация Multer для загрузки файлов
+const storage = multer.diskStorage({
+    destination: (req, file, cb) => {
+        cb(null, uploadsDir);
+    },
+    filename: (req, file, cb) => {
+        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+        const ext = path.extname(file.originalname);
+        const filename = file.fieldname + '-' + uniqueSuffix + ext;
+        cb(null, filename);
+    }
+});
+
+const fileFilter = (req, file, cb) => {
+    const allowedMimes = [
+        'image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp', 'image/svg+xml', 'image/bmp',
+        'application/pdf',
+        'application/msword',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'application/vnd.ms-excel',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'application/vnd.ms-powerpoint',
+        'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+        'text/plain', 'text/csv', 'text/html',
+        'application/zip', 'application/x-rar-compressed', 'application/x-7z-compressed',
+        'application/x-tar', 'application/gzip', 'application/x-bzip2',
+        'audio/mpeg', 'audio/wav', 'audio/ogg', 'audio/mp4', 'audio/aac', 'audio/webm', 'audio/x-m4a', 'audio/x-wav', 'audio/flac',
+        'video/mp4', 'video/mpeg', 'video/ogg', 'video/webm', 'video/quicktime', 'video/x-msvideo', 'video/x-matroska',
+        'application/json', 'application/xml'
+    ];
+
+    const allowedExtensions = ['.jpeg', '.jpg', '.png', '.gif', '.webp', '.svg', '.bmp', '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx', '.txt', '.csv', '.html', '.zip', '.rar', '.7z', '.tar', '.gz', '.bz2', '.mp3', '.wav', '.ogg', '.m4a', '.mp4', '.aac', '.webm', '.flac', '.mov', '.avi', '.mkv', '.json', '.xml'];
+
+    const fileExt = path.extname(file.originalname).toLowerCase();
+
+    if (allowedMimes.includes(file.mimetype) || allowedExtensions.includes(fileExt)) {
+        cb(null, true);
+    } else {
+        cb(new Error(`Неподдерживаемый тип файла: ${file.mimetype}. Разрешены: изображения, документы, аудио, видео, архивы`), false);
+    }
+};
+
+const upload = multer({
+    storage: storage,
+    limits: {
+        fileSize: 100 * 1024 * 1024, // 100MB
+        files: 10
+    },
+    fileFilter: fileFilter
+});
+
+const avatarStorage = multer.diskStorage({
+    destination: (req, file, cb) => {
+        cb(null, avatarsDir);
+    },
+    filename: (req, file, cb) => {
+        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+        const ext = path.extname(file.originalname);
+        cb(null, 'avatar-' + uniqueSuffix + ext);
+    }
+});
+
+const avatarUpload = multer({
+    storage: avatarStorage,
+    limits: {
+        fileSize: 10 * 1024 * 1024 // 10MB
+    },
+    fileFilter: (req, file, cb) => {
+        if (file.mimetype.startsWith('image/')) {
+            cb(null, true);
+        } else {
+            cb(new Error('Разрешены только изображения'), false);
+        }
+    }
+});
+
+const voiceUpload = multer({
+    storage: storage,
+    limits: {
+        fileSize: 50 * 1024 * 1024 // 50MB
+    },
+    fileFilter: (req, file, cb) => {
+        if (file.mimetype.startsWith('audio/')) {
+            cb(null, true);
+        } else {
+            cb(new Error('Разрешены только аудио файлы'), false);
+        }
+    }
+});
+
+// Функции для работы с данными
+
+/**
+ * Инициализация директорий
+ */
+async function ensureDirectories() {
+    try {
+        const dirs = [
+            dataDir,
+            uploadsDir,
+            avatarsDir,
+            backupsDir,
+            path.join(__dirname, 'frontend', 'static'),
+            path.join(__dirname, 'frontend', 'templates')
+        ];
+
+        for (const dir of dirs) {
+            try {
+                await fs.access(dir);
+            } catch {
+                await fs.mkdir(dir, { recursive: true });
+                console.log(`✅ Created directory: ${dir}`);
+            }
+        }
+
+        return true;
+    } catch (error) {
+        console.error('❌ Error ensuring directories:', error);
+        return false;
+    }
 }
 
-// Функция проверки занятости порта
-function isPortInUse(port) {
-    return new Promise((resolve) => {
-        const tester = require('net').createServer()
-            .once('error', () => {
-                resolve(true);
-            })
-            .once('listening', () => {
-                tester.once('close', () => {
-                    resolve(false);
-                }).close();
-            })
-            .listen(port);
-    });
+/**
+ * Очистка старых аватаров пользователя
+ */
+async function cleanupUserAvatars(username) {
+    try {
+        if (!fsSync.existsSync(avatarsDir)) {
+            return;
+        }
+
+        const files = await fs.readdir(avatarsDir);
+        let deletedCount = 0;
+
+        for (const file of files) {
+            if (file.includes(`avatar_${username}_`) || file.startsWith(`avatar-${username}-`)) {
+                try {
+                    await fs.unlink(path.join(avatarsDir, file));
+                    deletedCount++;
+                    console.log(`🗑️ Deleted old avatar: ${file}`);
+                } catch (error) {
+                    console.error(`❌ Error deleting avatar ${file}:`, error.message);
+                }
+            }
+        }
+
+        if (deletedCount > 0) {
+            console.log(`✅ Cleaned up ${deletedCount} old avatars for ${username}`);
+        }
+    } catch (error) {
+        console.error('❌ Error in cleanupUserAvatars:', error.message);
+    }
 }
 
+/**
+ * Удаление дубликатов сообщений
+ */
+function removeDuplicateMessages(messagesArray) {
+    const uniqueMessages = [];
+    const seenMessages = new Set();
+
+    for (const msg of messagesArray) {
+        const msgKey = `${msg.sender}|${msg.receiver || msg.groupId}|${msg.message}|${msg.timestamp}`;
+        if (!seenMessages.has(msgKey)) {
+            seenMessages.add(msgKey);
+            uniqueMessages.push(msg);
+        }
+    }
+
+    return uniqueMessages;
+}
+
+/**
+ * Очистка старых загрузок
+ */
 async function cleanupOldUploads() {
     try {
-        // Используем fs.promises.access для проверки существования директории
-        try {
-            await fs.access(uploadsDir);
-        } catch (error) {
-            // Директория не существует
+        if (!fsSync.existsSync(uploadsDir)) {
             return { deleted: 0, skipped: 0 };
         }
-        
+
         const files = await fs.readdir(uploadsDir);
         const now = Date.now();
         const oneWeekAgo = now - (7 * 24 * 60 * 60 * 1000);
-        
+
         let deleted = 0;
         let skipped = 0;
-        
+
         for (const file of files) {
-            // Пропускаем аватары и системные файлы
-            if (file.includes('avatar_') || file === '.gitkeep' || file === 'avatars') {
+            // Пропускаем системные файлы и аватары
+            if (file.startsWith('.') || file === 'avatars' || file.includes('avatar')) {
                 skipped++;
                 continue;
             }
-            
+
             const filePath = path.join(uploadsDir, file);
             try {
                 const stats = await fs.stat(filePath);
-                
-                // Удаляем файлы старше 7 дней
-                if (stats.mtimeMs < oneWeekAgo) {
+
+                if (stats.isDirectory()) {
+                    // Рекурсивно очищаем поддиректории
+                    const subDirFiles = await fs.readdir(filePath);
+                    for (const subFile of subDirFiles) {
+                        const subFilePath = path.join(filePath, subFile);
+                        try {
+                            const subStats = await fs.stat(subFilePath);
+                            if (subStats.mtimeMs < oneWeekAgo) {
+                                await fs.unlink(subFilePath);
+                                deleted++;
+                            } else {
+                                skipped++;
+                            }
+                        } catch (error) {
+                            console.error(`❌ Error processing subfile ${subFile}:`, error.message);
+                            skipped++;
+                        }
+                    }
+                } else if (stats.mtimeMs < oneWeekAgo) {
                     await fs.unlink(filePath);
                     deleted++;
                     console.log(`🗑️ Deleted old file: ${file}`);
@@ -261,331 +459,159 @@ async function cleanupOldUploads() {
                 skipped++;
             }
         }
-        
-        console.log(`✅ Cleanup completed: ${deleted} deleted, ${skipped} skipped`);
+
+        console.log(`✅ Cleanup completed: ${deleted} files deleted, ${skipped} files kept`);
         return { deleted, skipped };
-        
     } catch (error) {
-        console.error('❌ Error cleaning up uploads:', error.message);
+        console.error('❌ Error in cleanupOldUploads:', error.message);
         return { deleted: 0, skipped: 0, error: error.message };
     }
 }
 
-// Функция для очистки дубликатов сообщений
-function removeDuplicateMessages(messagesArray) {
-    const uniqueMessages = [];
-    const seenMessages = new Set();
-    
-    for (const msg of messagesArray) {
-        const msgKey = `${msg.sender}|${msg.receiver || msg.groupId}|${msg.message}|${msg.date}`;
-        if (!seenMessages.has(msgKey)) {
-            seenMessages.add(msgKey);
-            uniqueMessages.push(msg);
-        }
-    }
-    
-    return uniqueMessages;
-}
+// Функции загрузки данных
 
-async function ensureDirectories() {
+/**
+ * Загрузка пользователей
+ */
+async function loadUsers() {
+    const usersPath = path.join(dataDir, 'users.json');
     try {
-        await fs.mkdir(dataDir, { recursive: true });
-        await fs.mkdir(uploadsDir, { recursive: true });
-        await fs.mkdir(avatarsDir, { recursive: true });
-        
-        const staticDir = path.join(__dirname, 'frontend', 'static');
-        await fs.mkdir(staticDir, { recursive: true });
-        
-        console.log('✅ Directories ensured');
-    } catch (error) {
-        console.error('❌ Error creating directories:', error);
-    }
-}
-
-async function cleanupUserAvatars(username) {
-    try {
-        // Проверяем существование директории
-        try {
-            await fs.access(avatarsDir);
-        } catch {
-            console.log(`📁 Avatar directory does not exist: ${avatarsDir}`);
-            return;
-        }
-        
-        const files = await fs.readdir(avatarsDir);
-        
-        console.log(`🗑️ Looking for old avatars for user: ${username}`);
-        console.log(`📂 Files in avatars directory: ${files.length}`);
-        
-        let deletedCount = 0;
-        
-        for (const file of files) {
-            if (file.startsWith(`avatar_${username}_`)) {
-                const filePath = path.join(avatarsDir, file);
-                try {
-                    await fs.unlink(filePath);
-                    deletedCount++;
-                    console.log(`🗑️ Deleted old avatar: ${file}`);
-                } catch (error) {
-                    console.error(`❌ Error deleting file ${file}:`, error.message);
+        if (fsSync.existsSync(usersPath)) {
+            const data = await fs.readFile(usersPath, 'utf8');
+            users = JSON.parse(data);
+            console.log(`✅ Users loaded: ${users.length}`);
+            
+            // Инициализируем валюту для всех пользователей
+            for (const user of users) {
+                if (!currencyData[user.username]) {
+                    currencyData[user.username] = {
+                        balance: 100,
+                        dailyStreak: 0,
+                        lastDailyReward: null,
+                        transactionHistory: []
+                    };
+                }
+                
+                if (!giftsData[user.username]) {
+                    giftsData[user.username] = {
+                        received: [],
+                        sent: []
+                    };
                 }
             }
-        }
-        
-        console.log(`✅ Cleaned up ${deletedCount} old avatars for user ${username}`);
-        
-    } catch (error) {
-        console.error('❌ Error cleaning up user avatars:', error.message);
-    }
-}
-
-// Функция для сохранения всех данных
-async function saveAllData() {
-    try {
-        console.log('💾 Auto-saving all data...');
-        
-        // Сохраняем все данные последовательно
-        await saveUsers();
-        await saveMessages();
-        await saveGroups();
-        await saveCurrencyData();
-        await saveGiftsData();
-        
-        console.log('✅ All data auto-saved');
-        return true;
-    } catch (error) {
-        console.error('❌ Error auto-saving data:', error.message);
-        return false;
-    }
-}
-
-// Запуск автоматического сохранения данных
-async function startAutoSave() {
-    console.log('⏰ Starting auto-save every 30 seconds');
-    
-    // Сохраняем сразу при старте
-    await saveAllData();
-    
-    // Устанавливаем интервал сохранения
-    autoSaveInterval = setInterval(async () => {
-        try {
-            await saveAllData();
-        } catch (error) {
-            console.error('❌ Error in auto-save:', error.message);
-        }
-    }, 30 * 1000); // 30 секунд
-    
-    return autoSaveInterval;
-}
-// Проверка на Tauri окружение
-const isTauri = process.env.TAURI_ENV === 'production';
-
-// Функция для получения правильного URL в зависимости от окружения
-function getWebSocketUrl(req) {
-    if (isTauri) {
-        // В Tauri используем локальный сервер
-        return `ws://localhost:${PORT}`;
-    } else {
-        // На сервере Render используем реальный хост
-        const host = req.headers.host || `localhost:${PORT}`;
-        return `wss://${host}`;
-    }
-}
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ extended: true, limit: '50mb' }));
-app.use(cookieParser());
-app.use('/static', express.static(path.join(__dirname, 'frontend', 'static')));
-app.use('/uploads', express.static(path.join(__dirname, 'frontend', 'uploads')));
-
-
-app.use((req, res, next) => {
-    res.header('Access-Control-Allow-Origin', '*');
-    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE');
-    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-    next();
-});
-
-const storage = multer.diskStorage({
-    destination: async (req, file, cb) => {
-        try {
-            await ensureDirectories();
-            cb(null, uploadsDir);
-        } catch (error) {
-            cb(error);
-        }
-    },
-    filename: (req, file, cb) => {
-        const uniqueName = `${Date.now()}-${Math.round(Math.random() * 1E9)}${path.extname(file.originalname)}`;
-        cb(null, uniqueName);
-    }
-});
-
-const fileFilter = (req, file, cb) => {
-    const allowedTypes = [
-        'image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/bmp', 'image/webp', 'image/svg+xml',
-        'application/pdf', 
-        'application/msword', 
-        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-        'application/vnd.ms-excel',
-        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        'application/vnd.ms-powerpoint',
-        'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-        'text/plain', 'text/csv',
-        'application/zip', 'application/x-rar-compressed', 'application/x-7z-compressed', 
-        'application/x-tar', 'application/gzip',
-        'audio/mpeg', 'audio/wav', 'audio/ogg', 'audio/mp4', 'audio/aac', 'audio/webm', 'audio/x-m4a', 'audio/x-wav',
-        'video/mp4', 'video/mpeg', 'video/ogg', 'video/webm', 'video/quicktime',
-        'application/json', 'application/xml'
-    ];
-
-    if (allowedTypes.includes(file.mimetype)) {
-        cb(null, true);
-    } else {
-        const allowedExtensions = /\.(jpeg|jpg|png|gif|bmp|webp|svg|pdf|doc|docx|xls|xlsx|ppt|pptx|txt|csv|zip|rar|7z|tar|gz|mp3|wav|ogg|m4a|mp4|aac|webm|mov|avi|mkv|json|xml)$/i;
-        if (allowedExtensions.test(file.originalname)) {
-            cb(null, true);
         } else {
-            cb(new Error('Неподдерживаемый тип файла: ' + file.mimetype));
+            console.log('⚠️ No users file found, starting with empty array');
+            users = [];
+            await saveUsers();
         }
-    }
-};
-
-const upload = multer({
-    storage: storage,
-    limits: {
-        fileSize: 50 * 1024 * 1024,
-    },
-    fileFilter: fileFilter
-});
-
-const voiceUpload = multer({
-    storage: storage,
-    limits: {
-        fileSize: 50 * 1024 * 1024,
-    },
-    fileFilter: (req, file, cb) => {
-        if (file.mimetype.startsWith('audio/')) {
-            cb(null, true);
-        } else {
-            cb(new Error('Разрешены только аудио файлы для голосовых сообщений'));
-        }
-    }
-});
-
-const avatarStorage = multer.diskStorage({
-    destination: function (req, file, cb) {
-        cb(null, avatarsDir);
-    },
-    filename: function (req, file, cb) {
-        const uniqueName = `avatar_${Date.now()}${path.extname(file.originalname)}`;
-        cb(null, uniqueName);
-    }
-});
-
-const avatarUpload = multer({
-    storage: avatarStorage,
-    limits: {
-        fileSize: 5 * 1024 * 1024
-    },
-    fileFilter: function (req, file, cb) {
-        if (file.mimetype.startsWith('image/')) {
-            cb(null, true);
-        } else {
-            cb(new Error('Разрешены только изображения'), false);
-        }
-    }
-});
-
-async function loadUsers() {
-    try {
-        const data = await fs.readFile(path.join(dataDir, 'users.json'), 'utf8');
-        users = JSON.parse(data);
-        console.log('✅ Users loaded:', users.length);
     } catch (error) {
-        console.log('⚠️ No users found, starting with empty array');
+        console.error('❌ Error loading users:', error);
         users = [];
-        await saveUsers();
     }
 }
 
+/**
+ * Загрузка сообщений
+ */
 async function loadMessages() {
+    const messagesPath = path.join(dataDir, 'messages.json');
     try {
-        const data = await fs.readFile(path.join(dataDir, 'messages.json'), 'utf8');
-        const loadedMessages = JSON.parse(data);
-        
-        // Удаляем дубликаты сообщений
-        messages = removeDuplicateMessages(loadedMessages);
-        
-        const duplicatesRemoved = loadedMessages.length - messages.length;
-        if (duplicatesRemoved > 0) {
-            console.log(`✅ Messages loaded: ${messages.length} (removed ${duplicatesRemoved} duplicates)`);
+        if (fsSync.existsSync(messagesPath)) {
+            const data = await fs.readFile(messagesPath, 'utf8');
+            const loadedMessages = JSON.parse(data);
+            messages = removeDuplicateMessages(loadedMessages);
             
-            // Сохраняем очищенные данные
-            await saveMessages();
+            const duplicatesRemoved = loadedMessages.length - messages.length;
+            if (duplicatesRemoved > 0) {
+                console.log(`✅ Messages loaded: ${messages.length} (removed ${duplicatesRemoved} duplicates)`);
+            } else {
+                console.log(`✅ Messages loaded: ${messages.length}`);
+            }
         } else {
-            console.log('✅ Messages loaded:', messages.length);
+            console.log('⚠️ No messages file found, starting with empty array');
+            messages = [];
+            await saveMessages();
         }
     } catch (error) {
-        console.log('⚠️ No messages found, starting with empty array');
+        console.error('❌ Error loading messages:', error);
         messages = [];
-        await saveMessages();
     }
 }
 
+/**
+ * Загрузка групп
+ */
 async function loadGroups() {
+    const groupsPath = path.join(dataDir, 'groups.json');
     try {
-        const data = await fs.readFile(path.join(dataDir, 'groups.json'), 'utf8');
-        groups = JSON.parse(data);
-        console.log('✅ Groups loaded:', groups.length);
+        if (fsSync.existsSync(groupsPath)) {
+            const data = await fs.readFile(groupsPath, 'utf8');
+            groups = JSON.parse(data);
+            console.log(`✅ Groups loaded: ${groups.length}`);
+        } else {
+            console.log('⚠️ No groups file found, starting with empty array');
+            groups = [];
+            await saveGroups();
+        }
     } catch (error) {
+        console.error('❌ Error loading groups:', error);
         groups = [];
-        await saveGroups();
     }
 }
 
+/**
+ * Загрузка данных валюты
+ */
 async function loadCurrencyData() {
+    const currencyPath = path.join(dataDir, 'currency.json');
     try {
-        const data = await fs.readFile(path.join(dataDir, 'currency.json'), 'utf8');
-        currencyData = JSON.parse(data);
-        console.log('✅ Currency data loaded');
+        if (fsSync.existsSync(currencyPath)) {
+            const data = await fs.readFile(currencyPath, 'utf8');
+            currencyData = JSON.parse(data);
+            console.log(`✅ Currency data loaded for ${Object.keys(currencyData).length} users`);
+        } else {
+            console.log('⚠️ No currency data found, starting with empty object');
+            currencyData = {};
+            await saveCurrencyData();
+        }
     } catch (error) {
+        console.error('❌ Error loading currency data:', error);
         currencyData = {};
-        await saveCurrencyData();
     }
 }
 
+/**
+ * Загрузка данных подарков
+ */
 async function loadGiftsData() {
+    const giftsPath = path.join(dataDir, 'gifts.json');
     try {
-        const data = await fs.readFile(path.join(dataDir, 'gifts.json'), 'utf8');
-        giftsData = JSON.parse(data);
-        console.log('✅ Gifts data loaded');
+        if (fsSync.existsSync(giftsPath)) {
+            const data = await fs.readFile(giftsPath, 'utf8');
+            giftsData = JSON.parse(data);
+            console.log(`✅ Gifts data loaded for ${Object.keys(giftsData).length} users`);
+        } else {
+            console.log('⚠️ No gifts data found, starting with empty object');
+            giftsData = {};
+            await saveGiftsData();
+        }
     } catch (error) {
+        console.error('❌ Error loading gifts data:', error);
         giftsData = {};
-        await saveGiftsData();
     }
 }
 
+// Функции сохранения данных
+
+/**
+ * Сохранение пользователей
+ */
 async function saveUsers() {
     try {
-        const filePath = path.join(dataDir, 'users.json');
+        const usersPath = path.join(dataDir, 'users.json');
         const usersData = JSON.stringify(users, null, 2);
-        
-        // Всегда перезаписываем файл
-        await fs.writeFile(filePath, usersData);
+        await fs.writeFile(usersPath, usersData);
         console.log('✅ Users saved locally');
-        
-        // Синхронизация с MEGA (если подключено)
-        if (megaStorage?.isInitialized && !megaStorage.syncInProgress) {
-            try {
-                const result = await megaStorage.uploadFile(filePath, 'users.json');
-                if (result && result.uploaded) {
-                    console.log(`✅ Users ${result.updated ? 'updated' : 'uploaded'} to MEGA`);
-                }
-            } catch (syncError) {
-                console.error('⚠️ MEGA sync error for users:', syncError.message);
-            }
-        }
-        
         return true;
     } catch (error) {
         console.error('❌ Error saving users:', error.message);
@@ -593,27 +619,15 @@ async function saveUsers() {
     }
 }
 
+/**
+ * Сохранение сообщений
+ */
 async function saveMessages() {
     try {
-        const filePath = path.join(dataDir, 'messages.json');
+        const messagesPath = path.join(dataDir, 'messages.json');
         const messagesData = JSON.stringify(messages, null, 2);
-        
-        // Всегда перезаписываем файл
-        await fs.writeFile(filePath, messagesData);
+        await fs.writeFile(messagesPath, messagesData);
         console.log('✅ Messages saved locally');
-        
-        // Синхронизация с MEGA (если подключено)
-        if (megaStorage?.isInitialized && !megaStorage.syncInProgress) {
-            try {
-                const result = await megaStorage.uploadFile(filePath, 'messages.json');
-                if (result && result.uploaded) {
-                    console.log(`✅ Messages ${result.updated ? 'updated' : 'uploaded'} to MEGA`);
-                }
-            } catch (syncError) {
-                console.error('⚠️ MEGA sync error for messages:', syncError.message);
-            }
-        }
-        
         return true;
     } catch (error) {
         console.error('❌ Error saving messages:', error.message);
@@ -621,27 +635,15 @@ async function saveMessages() {
     }
 }
 
+/**
+ * Сохранение групп
+ */
 async function saveGroups() {
     try {
-        const filePath = path.join(dataDir, 'groups.json');
+        const groupsPath = path.join(dataDir, 'groups.json');
         const groupsData = JSON.stringify(groups, null, 2);
-        
-        // Всегда перезаписываем файл
-        await fs.writeFile(filePath, groupsData);
+        await fs.writeFile(groupsPath, groupsData);
         console.log('✅ Groups saved locally');
-        
-        // Синхронизация с MEGA (если подключено)
-        if (megaStorage?.isInitialized && !megaStorage.syncInProgress) {
-            try {
-                const result = await megaStorage.uploadFile(filePath, 'groups.json');
-                if (result && result.uploaded) {
-                    console.log(`✅ Groups ${result.updated ? 'updated' : 'uploaded'} to MEGA`);
-                }
-            } catch (syncError) {
-                console.error('⚠️ MEGA sync error for groups:', syncError.message);
-            }
-        }
-        
         return true;
     } catch (error) {
         console.error('❌ Error saving groups:', error.message);
@@ -649,27 +651,15 @@ async function saveGroups() {
     }
 }
 
+/**
+ * Сохранение данных валюты
+ */
 async function saveCurrencyData() {
     try {
-        const filePath = path.join(dataDir, 'currency.json');
+        const currencyPath = path.join(dataDir, 'currency.json');
         const currencyDataStr = JSON.stringify(currencyData, null, 2);
-        
-        // Всегда перезаписываем файл
-        await fs.writeFile(filePath, currencyDataStr);
+        await fs.writeFile(currencyPath, currencyDataStr);
         console.log('✅ Currency data saved locally');
-        
-        // Синхронизация с MEGA (если подключено)
-        if (megaStorage?.isInitialized && !megaStorage.syncInProgress) {
-            try {
-                const result = await megaStorage.uploadFile(filePath, 'currency.json');
-                if (result && result.uploaded) {
-                    console.log(`✅ Currency data ${result.updated ? 'updated' : 'uploaded'} to MEGA`);
-                }
-            } catch (syncError) {
-                console.error('⚠️ MEGA sync error for currency data:', syncError.message);
-            }
-        }
-        
         return true;
     } catch (error) {
         console.error('❌ Error saving currency data:', error.message);
@@ -677,27 +667,15 @@ async function saveCurrencyData() {
     }
 }
 
+/**
+ * Сохранение данных подарков
+ */
 async function saveGiftsData() {
     try {
-        const filePath = path.join(dataDir, 'gifts.json');
+        const giftsPath = path.join(dataDir, 'gifts.json');
         const giftsDataStr = JSON.stringify(giftsData, null, 2);
-        
-        // Всегда перезаписываем файл
-        await fs.writeFile(filePath, giftsDataStr);
+        await fs.writeFile(giftsPath, giftsDataStr);
         console.log('✅ Gifts data saved locally');
-        
-        // Синхронизация с MEGA (если подключено)
-        if (megaStorage?.isInitialized && !megaStorage.syncInProgress) {
-            try {
-                const result = await megaStorage.uploadFile(filePath, 'gifts.json');
-                if (result && result.uploaded) {
-                    console.log(`✅ Gifts data ${result.updated ? 'updated' : 'uploaded'} to MEGA`);
-                }
-            } catch (syncError) {
-                console.error('⚠️ MEGA sync error for gifts data:', syncError.message);
-            }
-        }
-        
         return true;
     } catch (error) {
         console.error('❌ Error saving gifts data:', error.message);
@@ -705,6 +683,154 @@ async function saveGiftsData() {
     }
 }
 
+/**
+ * Сохранение всех данных
+ */
+async function saveAllData() {
+    try {
+        console.log('💾 Auto-saving all data...');
+        const results = await Promise.allSettled([
+            saveUsers(),
+            saveMessages(),
+            saveGroups(),
+            saveCurrencyData(),
+            saveGiftsData()
+        ]);
+        
+        let successCount = 0;
+        results.forEach((result, index) => {
+            if (result.status === 'fulfilled' && result.value) {
+                successCount++;
+            }
+        });
+        
+        console.log(`✅ Auto-save completed: ${successCount}/5 successful`);
+        return successCount === 5;
+    } catch (error) {
+        console.error('❌ Error in saveAllData:', error.message);
+        return false;
+    }
+}
+
+/**
+ * Автоматическое сохранение
+ */
+function startAutoSave() {
+    console.log('⏰ Starting auto-save every 30 seconds');
+    
+    // Сохраняем сразу при старте
+    saveAllData().catch(console.error);
+    
+    // Устанавливаем интервал
+    autoSaveInterval = setInterval(() => {
+        saveAllData().catch(console.error);
+    }, 30 * 1000);
+    
+    return autoSaveInterval;
+}
+
+/**
+ * Проверка активности пользователей
+ */
+function startPresenceCheck() {
+    console.log('👁️ Starting presence check every 60 seconds');
+    
+    presenceCheckInterval = setInterval(() => {
+        const now = Date.now();
+        const inactiveThreshold = 120 * 1000; // 2 минуты
+        
+        for (const [username, lastActivity] of userPresence.entries()) {
+            if (now - lastActivity > inactiveThreshold) {
+                // Пользователь неактивен слишком долго
+                const socketId = userSockets.get(username);
+                if (socketId) {
+                    const socket = io.sockets.sockets.get(socketId);
+                    if (socket) {
+                        socket.disconnect(true);
+                        console.log(`👋 Disconnected inactive user: ${username}`);
+                    }
+                }
+            }
+        }
+    }, 60 * 1000);
+    
+    return presenceCheckInterval;
+}
+
+// Middleware аутентификации
+
+/**
+ * Аутентификация по токену
+ */
+function authenticateToken(req, res, next) {
+    try {
+        // Получаем токен из разных источников
+        let token = req.cookies?.token;
+        
+        if (!token && req.headers.authorization) {
+            const authHeader = req.headers.authorization;
+            if (authHeader.startsWith('Bearer ')) {
+                token = authHeader.substring(7);
+            }
+        }
+        
+        if (!token && req.query.token) {
+            token = req.query.token;
+        }
+        
+        if (!token) {
+            return res.status(401).json({ 
+                success: false, 
+                error: 'Требуется аутентификация',
+                code: 'NO_TOKEN'
+            });
+        }
+        
+        jwt.verify(token, JWT_SECRET, (err, user) => {
+            if (err) {
+                console.error('❌ JWT verification error:', err.message);
+                return res.status(403).json({ 
+                    success: false, 
+                    error: 'Недействительный или просроченный токен',
+                    code: 'INVALID_TOKEN'
+                });
+            }
+            
+            req.user = user;
+            next();
+        });
+    } catch (error) {
+        console.error('❌ Authentication error:', error);
+        res.status(500).json({ 
+            success: false, 
+            error: 'Ошибка аутентификации',
+            code: 'AUTH_ERROR'
+        });
+    }
+}
+
+/**
+ * Аутентификация администратора
+ */
+function authenticateAdmin(req, res, next) {
+    authenticateToken(req, res, () => {
+        if (req.user.username === 'admin') {
+            next();
+        } else {
+            res.status(403).json({ 
+                success: false, 
+                error: 'Требуются права администратора',
+                code: 'ADMIN_REQUIRED'
+            });
+        }
+    });
+}
+
+// Вспомогательные функции для данных пользователя
+
+/**
+ * Инициализация валюты пользователя
+ */
 function initUserCurrency(username) {
     if (!currencyData[username]) {
         currencyData[username] = {
@@ -717,6 +843,9 @@ function initUserCurrency(username) {
     return currencyData[username];
 }
 
+/**
+ * Инициализация подарков пользователя
+ */
 function initUserGifts(username) {
     if (!giftsData[username]) {
         giftsData[username] = {
@@ -727,457 +856,492 @@ function initUserGifts(username) {
     return giftsData[username];
 }
 
+/**
+ * Получение подарков пользователя
+ */
 function getUserGifts(username) {
     return giftsData[username] || { received: [], sent: [] };
 }
 
-function authenticateToken(req, res, next) {
-    const token = req.cookies.token || req.headers.authorization?.replace('Bearer ', '');
-    if (!token) return res.sendStatus(401);
-
-    jwt.verify(token, JWT_SECRET, (err, user) => {
-        if (err) return res.sendStatus(403);
-        req.user = user;
-        next();
-    });
+/**
+ * Поиск пользователя
+ */
+function findUser(username) {
+    return users.find(u => u.username === username);
 }
 
-async function ensureStaticFiles() {
-    try {
-        const staticDir = path.join(__dirname, 'frontend', 'static');
-        
-        const cssPath = path.join(staticDir, 'style.css');
-        try {
-            await fs.access(cssPath);
-        } catch {
-            const defaultCSS = `
-body { font-family: Arial, sans-serif; margin: 0; padding: 20px; }
-.container { max-width: 800px; margin: 0 auto; }
-.form-group { margin-bottom: 15px; }
-input, button { padding: 10px; margin: 5px 0; width: 100%; box-sizing: border-box; }
-`;
-            await fs.writeFile(cssPath, defaultCSS);
-            console.log('✅ Created default style.css');
-        }
+/**
+ * Проверка существования пользователя
+ */
+function userExists(username) {
+    return users.some(u => u.username === username);
+}
 
-        const avatarPath = path.join(staticDir, 'default-avatar.png');
-        try {
-            await fs.access(avatarPath);
-        } catch {
-            // Используем базовый Canvas или копируем из существующих ресурсов
-            const { createCanvas } = require('canvas');
-            const canvas = createCanvas(200, 200);
-            const ctx = canvas.getContext('2d');
-            
-            // Простая аватарка
-            ctx.fillStyle = '#4facfe';
-            ctx.fillRect(0, 0, 200, 200);
-            
-            ctx.beginPath();
-            ctx.arc(100, 100, 80, 0, Math.PI * 2);
-            ctx.fillStyle = '#ffffff';
-            ctx.fill();
-            
-            const buffer = canvas.toBuffer('image/png');
-            await fs.writeFile(avatarPath, buffer);
-            console.log('✅ Created default-avatar.png');
-        }
+// Функции для работы с файлами
+
+/**
+ * Создание миниатюры для изображения
+ */
+async function createThumbnail(sourcePath, thumbnailPath, size = 200) {
+    try {
+        await sharp(sourcePath)
+            .resize(size, size, {
+                fit: 'cover',
+                position: 'center'
+            })
+            .jpeg({ quality: 80 })
+            .toFile(thumbnailPath);
+        return true;
     } catch (error) {
-        console.error('❌ Error creating static files:', error);
+        console.error('❌ Error creating thumbnail:', error);
+        return false;
     }
 }
 
-async function ensureTemplates() {
-    try {
-        const templatesDir = path.join(__dirname, 'frontend', 'templates');
-        await fs.mkdir(templatesDir, { recursive: true });
-        
-        const templates = [, 'register', 'login', 'chat'];
-        
-        for (const template of templates) {
-            const templatePath = path.join(templatesDir, `${template}.html`);
-            try {
-                await fs.access(templatePath);
-            } catch {
-                let content = '';
-                switch(template) {
-                    case 'register':
-                        content = `<!DOCTYPE html><html><head><title>Register</title><link rel="stylesheet" href="/static/style.css"></head><body><div class="container"><h1>Register</h1><form id="registerForm"><input type="text" name="username" placeholder="Username" required><input type="password" name="password" placeholder="Password" required><button type="submit">Register</button></form><a href="/login">Login</a></div><script src="/static/auth.js"></script></body></html>`;
-                        break;
-                    case 'login':
-                        content = `<!DOCTYPE html><html><head><title>Login</title><link rel="stylesheet" href="/static/style.css"></head><body><div class="container"><h1>Login</h1><form id="loginForm"><input type="text" name="username" placeholder="Username" required><input type="password" name="password" placeholder="Password" required><button type="submit">Login</button></form><a href="/register">Register</a></div><script src="/static/auth.js"></script></body></html>`;
-                        break;
-                    case 'chat':
-                        content = `<!DOCTYPE html><html><head><title>Chat</title><link rel="stylesheet" href="/static/style.css"></head><body><div class="container"><h1>Chat</h1><div id="chatContainer"></div></div><script>const token = "<%= token %>"; const username = "<%= username %>";</script><script src="/socket.io/socket.io.js"></script><script src="/static/chat.js"></script></body></html>`;
-                        break;
-                }
-                await fs.writeFile(templatePath, content);
-                console.log(`✅ Created ${template}.html`);
-            }
-        }
-    } catch (error) {
-        console.error('❌ Error creating templates:', error);
-    }
+/**
+ * Получение MIME типа по расширению файла
+ */
+function getMimeType(filename) {
+    const ext = path.extname(filename).toLowerCase();
+    const mimeTypes = {
+        '.jpg': 'image/jpeg',
+        '.jpeg': 'image/jpeg',
+        '.png': 'image/png',
+        '.gif': 'image/gif',
+        '.webp': 'image/webp',
+        '.svg': 'image/svg+xml',
+        '.pdf': 'application/pdf',
+        '.doc': 'application/msword',
+        '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        '.xls': 'application/vnd.ms-excel',
+        '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        '.ppt': 'application/vnd.ms-powerpoint',
+        '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+        '.txt': 'text/plain',
+        '.csv': 'text/csv',
+        '.zip': 'application/zip',
+        '.rar': 'application/x-rar-compressed',
+        '.7z': 'application/x-7z-compressed',
+        '.tar': 'application/x-tar',
+        '.gz': 'application/gzip',
+        '.mp3': 'audio/mpeg',
+        '.wav': 'audio/wav',
+        '.ogg': 'audio/ogg',
+        '.mp4': 'video/mp4',
+        '.webm': 'video/webm',
+        '.mov': 'video/quicktime',
+        '.avi': 'video/x-msvideo',
+        '.mkv': 'video/x-matroska',
+        '.json': 'application/json',
+        '.xml': 'application/xml'
+    };
+    
+    return mimeTypes[ext] || 'application/octet-stream';
 }
 
+// Маршруты
 
+/**
+ * Главная страница
+ */
+app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, 'frontend', 'index.html'));
+});
+
+/**
+ * Страница регистрации
+ */
 app.get('/register', (req, res) => {
     res.sendFile(path.join(__dirname, 'frontend', 'templates', 'register.html'));
 });
 
+/**
+ * Страница входа
+ */
 app.get('/login', (req, res) => {
     res.sendFile(path.join(__dirname, 'frontend', 'templates', 'login.html'));
 });
 
+/**
+ * Страница чата
+ */
 app.get('/chat', authenticateToken, (req, res) => {
-    // Получаем пользователя из токена
-    const user = req.user;
-    res.render('chat', { 
-        username: user.username,
-        token: req.cookies.token || req.headers.authorization?.replace('Bearer ', '')
-    });
-});
-app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'frontend', 'index.html'));
-});
-// Статические файлы
-app.use('/static', express.static(path.join(__dirname, 'frontend', 'static')));
-app.use('/uploads', express.static(path.join(__dirname, 'frontend', 'uploads')));
-
-// Также обслуживаем статические файлы из корня frontend
-app.use(express.static(path.join(__dirname, 'frontend')));
-// Также добавляем обслуживание из корня frontend/
-app.use('/style.css', express.static(path.join(__dirname, 'frontend', 'static', 'style.css')));
-app.use('/auth.js', express.static(path.join(__dirname, 'frontend', 'static', 'auth.js')));
-app.use('/chat.js', express.static(path.join(__dirname, 'frontend', 'static', 'chat.js')));
-app.use('/private-chat.js', express.static(path.join(__dirname, 'frontend', 'static', 'private-chat.js')));
-
-// Обслуживание всех статических файлов из корня frontend
-app.use(express.static(path.join(__dirname, 'frontend')));
-app.get('/static/default-avatar.png', (req, res) => {
-    res.sendFile(path.join(__dirname, 'frontend', 'static', 'default-avatar.png'));
+    try {
+        const user = req.user;
+        const token = req.cookies?.token || req.query.token;
+        
+        // Рендерим шаблон чата
+        res.render('chat', {
+            username: user.username,
+            token: token,
+            isAdmin: user.username === 'admin',
+            serverUrl: isTauri ? `http://localhost:${PORT}` : `https://${req.headers.host || `localhost:${PORT}`}`
+        });
+    } catch (error) {
+        console.error('❌ Chat page error:', error);
+        res.status(500).send('Ошибка загрузки чата');
+    }
 });
 
-// Для Socket.io
-app.get('/socket.io/socket.io.js', (req, res) => {
-    res.sendFile(path.join(__dirname, 'node_modules', 'socket.io', 'client-dist', 'socket.io.js'));
-});
-// server.js - Обновите POST /api/register endpoint
+/**
+ * API: Регистрация
+ */
 app.post('/api/register', avatarUpload.single('avatar'), async (req, res) => {
     try {
-        const { username, password } = req.body;
+        const { username, password, email } = req.body;
         
+        // Валидация
         if (!username || !password) {
-            return res.status(400).json({ error: 'Username and password are required' });
+            return res.status(400).json({ 
+                success: false, 
+                error: 'Имя пользователя и пароль обязательны' 
+            });
         }
         
-        if (username.length < 3) {
-            return res.status(400).json({ error: 'Username must be at least 3 characters' });
+        if (username.length < 3 || username.length > 20) {
+            return res.status(400).json({ 
+                success: false, 
+                error: 'Имя пользователя должно быть от 3 до 20 символов' 
+            });
         }
         
         if (password.length < 6) {
-            return res.status(400).json({ error: 'Password must be at least 6 characters' });
+            return res.status(400).json({ 
+                success: false, 
+                error: 'Пароль должен быть не менее 6 символов' 
+            });
         }
         
-        if (users.find(u => u.username === username)) {
-            return res.status(400).json({ error: 'Username already exists' });
+        if (!/^[a-zA-Z0-9_]+$/.test(username)) {
+            return res.status(400).json({ 
+                success: false, 
+                error: 'Имя пользователя может содержать только буквы, цифры и подчеркивания' 
+            });
         }
         
-        const hashedPassword = await bcrypt.hash(password, 10);
+        // Проверка существования пользователя
+        if (userExists(username)) {
+            return res.status(400).json({ 
+                success: false, 
+                error: 'Имя пользователя уже занято' 
+            });
+        }
         
-        const newUser = { 
-            username, 
+        // Хеширование пароля
+        const hashedPassword = await bcrypt.hash(password, 12);
+        
+        // Создание пользователя
+        const newUser = {
+            username,
             password: hashedPassword,
+            email: email || null,
             avatar: '/static/default-avatar.png',
-            createdAt: new Date().toISOString()
+            createdAt: new Date().toISOString(),
+            lastLogin: null,
+            bio: '',
+            isOnline: false,
+            isAdmin: username === 'admin'
         };
         
+        // Обработка аватара
         if (req.file) {
             try {
                 await cleanupUserAvatars(username);
                 
-                const uniqueName = `avatar_${username}_${Date.now()}${path.extname(req.file.originalname)}`;
-                const newAvatarPath = path.join(avatarsDir, uniqueName);
+                const avatarExt = path.extname(req.file.originalname);
+                const avatarFilename = `avatar_${username}_${Date.now()}${avatarExt}`;
+                const avatarPath = path.join(avatarsDir, avatarFilename);
                 
-                await fs.rename(req.file.path, newAvatarPath);
+                await fs.rename(req.file.path, avatarPath);
                 
-                newUser.avatar = `/uploads/avatars/${uniqueName}`;
+                // Создание миниатюры
+                const thumbFilename = `thumb_${avatarFilename}`;
+                const thumbPath = path.join(avatarsDir, thumbFilename);
+                await createThumbnail(avatarPath, thumbPath);
+                
+                newUser.avatar = `/uploads/avatars/${avatarFilename}`;
+                newUser.avatarThumb = `/uploads/avatars/${thumbFilename}`;
             } catch (avatarError) {
-                console.error('Avatar processing error:', avatarError);
+                console.error('❌ Avatar processing error:', avatarError);
+                // Продолжаем без аватара
             }
         }
         
+        // Добавление пользователя
         users.push(newUser);
         await saveUsers();
         
-        // Добавляем пользователя во все глобальные группы
-        const globalGroups = groups.filter(group => group.isGlobal === true);
-        for (const group of globalGroups) {
-            if (!group.members.includes(username)) {
-                group.members.push(username);
-            }
-        }
+        // Инициализация валюты и подарков
+        initUserCurrency(username);
+        initUserGifts(username);
+        await saveCurrencyData();
+        await saveGiftsData();
         
-        if (globalGroups.length > 0) {
-            await saveGroups();
-            console.log(`✅ User ${username} added to ${globalGroups.length} global groups`);
-        }
+        // Создание токена
+        const token = jwt.sign({ 
+            username: newUser.username,
+            isAdmin: newUser.isAdmin 
+        }, JWT_SECRET, { expiresIn: '7d' });
         
-        if (!currencyData[username]) {
-            currencyData[username] = {
-                balance: 100,
-                dailyStreak: 0,
-                lastDailyReward: null,
-                transactionHistory: []
-            };
-            await saveCurrencyData();
-        }
-        
-        if (!giftsData[username]) {
-            giftsData[username] = {
-                received: [],
-                sent: []
-            };
-            await saveGiftsData();
-        }
-
-        const token = jwt.sign({ username }, JWT_SECRET);
-        
-        res.cookie('token', token, { 
-            httpOnly: true, 
-            maxAge: 24 * 60 * 60 * 1000,
-            sameSite: 'strict'
+        // Установка cookie
+        res.cookie('token', token, {
+            httpOnly: true,
+            maxAge: 7 * 24 * 60 * 60 * 1000, // 7 дней
+            sameSite: 'strict',
+            secure: isProduction,
+            path: '/'
         });
         
-        // Отправляем информацию о добавленных группах
-        const userGroups = globalGroups.map(group => ({
-            id: group.id,
-            name: group.name,
-            isGlobal: true
-        }));
-        
-        res.json({ 
-            success: true, 
+        // Ответ
+        res.json({
+            success: true,
+            message: 'Регистрация успешна!',
             token,
             user: {
                 username: newUser.username,
-                avatar: newUser.avatar
-            },
-            groups: userGroups, // Добавляем информацию о группах
-            message: `Добро пожаловать! Вы добавлены в ${globalGroups.length} групп(ы)`
+                avatar: newUser.avatar,
+                isAdmin: newUser.isAdmin
+            }
         });
         
+        console.log(`✅ New user registered: ${username}`);
+        
     } catch (error) {
-        console.error('❌ Registration error details:', error);
+        console.error('❌ Registration error:', error);
         res.status(500).json({ 
-            error: 'Registration failed',
-            details: process.env.NODE_ENV === 'development' ? error.message : undefined
+            success: false, 
+            error: 'Ошибка регистрации',
+            details: isDevelopment ? error.message : undefined
         });
     }
 });
+
+/**
+ * API: Вход
+ */
 app.post('/api/login', async (req, res) => {
     try {
         const { username, password } = req.body;
         
         if (!username || !password) {
             return res.status(400).json({ 
-                success: false,
-                message: 'Имя пользователя и пароль обязательны' 
+                success: false, 
+                error: 'Имя пользователя и пароль обязательны' 
             });
         }
         
-        const user = users.find(u => u.username === username);
-        
+        // Поиск пользователя
+        const user = findUser(username);
         if (!user) {
             return res.status(401).json({ 
-                success: false,
-                message: 'Пользователь не найден' 
+                success: false, 
+                error: 'Неверное имя пользователя или пароль' 
             });
         }
         
+        // Проверка пароля
         const passwordMatch = await bcrypt.compare(password, user.password);
-        
         if (!passwordMatch) {
             return res.status(401).json({ 
-                success: false,
-                message: 'Неверный пароль' 
+                success: false, 
+                error: 'Неверное имя пользователя или пароль' 
             });
         }
-
-        const token = jwt.sign({ username: user.username }, JWT_SECRET, { expiresIn: '24h' });
         
-        // Устанавливаем cookie
-        res.cookie('token', token, { 
-            httpOnly: true, 
-            maxAge: 24 * 60 * 60 * 1000,
+        // Обновление времени последнего входа
+        user.lastLogin = new Date().toISOString();
+        await saveUsers();
+        
+        // Создание токена
+        const token = jwt.sign({ 
+            username: user.username,
+            isAdmin: user.isAdmin || false
+        }, JWT_SECRET, { expiresIn: '7d' });
+        
+        // Установка cookie
+        res.cookie('token', token, {
+            httpOnly: true,
+            maxAge: 7 * 24 * 60 * 60 * 1000,
             sameSite: 'strict',
-            secure: process.env.NODE_ENV === 'production'
+            secure: isProduction,
+            path: '/'
         });
         
-        // Отправляем JSON ответ
-        res.json({ 
-            success: true, 
+        // Ответ
+        res.json({
+            success: true,
+            message: 'Вход выполнен успешно!',
             token,
             user: {
                 username: user.username,
-                avatar: user.avatar || '/static/default-avatar.png'
+                avatar: user.avatar || '/static/default-avatar.png',
+                isAdmin: user.isAdmin || false,
+                bio: user.bio || ''
             }
         });
+        
+        console.log(`✅ User logged in: ${username}`);
+        
     } catch (error) {
         console.error('❌ Login error:', error);
         res.status(500).json({ 
-            success: false,
-            message: 'Ошибка сервера при авторизации' 
+            success: false, 
+            error: 'Ошибка входа',
+            details: isDevelopment ? error.message : undefined
         });
     }
 });
 
-app.post('/api/logout', (req, res) => {
-    res.clearCookie('token');
-    res.json({ success: true });
+/**
+ * API: Выход
+ */
+app.post('/api/logout', authenticateToken, (req, res) => {
+    try {
+        res.clearCookie('token', {
+            path: '/',
+            httpOnly: true,
+            sameSite: 'strict',
+            secure: isProduction
+        });
+        
+        res.json({
+            success: true,
+            message: 'Выход выполнен успешно'
+        });
+        
+        console.log(`✅ User logged out: ${req.user.username}`);
+        
+    } catch (error) {
+        console.error('❌ Logout error:', error);
+        res.status(500).json({ 
+            success: false, 
+            error: 'Ошибка выхода' 
+        });
+    }
 });
 
-app.get('/api/user/:username', authenticateToken, (req, res) => {
+/**
+ * API: Получение информации о текущем пользователе
+ */
+app.get('/api/me', authenticateToken, (req, res) => {
     try {
-        const { username } = req.params;
-        const user = users.find(u => u.username === username);
-        
+        const user = findUser(req.user.username);
         if (!user) {
-            return res.status(404).json({ error: 'User not found' });
+            return res.status(404).json({ 
+                success: false, 
+                error: 'Пользователь не найден' 
+            });
         }
         
-        const publicUserInfo = {
-            username: user.username,
-            avatar: user.avatar || '/static/default-avatar.png',
-            createdAt: user.createdAt
-        };
+        const { password, ...userWithoutPassword } = user;
         
-        res.json(publicUserInfo);
-    } catch (error) {
-        console.error('❌ User info error:', error);
-        res.status(500).json({ error: 'Failed to get user info' });
-    }
-});
-
-app.post('/api/user/avatar', authenticateToken, avatarUpload.single('avatar'), async (req, res) => {
-    try {
-        const username = req.user.username;
-        const user = users.find(u => u.username === username);
-        
-        if (!user) {
-            return res.status(404).json({ error: 'User not found' });
-        }
-        
-        if (!req.file) {
-            return res.status(400).json({ error: 'No avatar file provided' });
-        }
-        
-        await cleanupUserAvatars(username);
-        
-        const uniqueName = `avatar_${username}_${Date.now()}${path.extname(req.file.originalname)}`;
-        const newAvatarPath = path.join(avatarsDir, uniqueName);
-        
-        await fs.rename(req.file.path, newAvatarPath);
-        
-        user.avatar = `/uploads/avatars/${uniqueName}`;
-        await saveUsers();
-        
-        io.emit('user_avatar_updated', {
-            username: username,
-            avatar: user.avatar
-        });
-        
-        res.json({ 
-            success: true, 
-            avatar: user.avatar,
-            message: 'Avatar updated successfully'
-        });
-    } catch (error) {
-        console.error('❌ Avatar update error:', error);
-        res.status(500).json({ error: 'Failed to update avatar' });
-    }
-});
-
-app.get('/api/notifications', authenticateToken, (req, res) => {
-    try {
-        const recentNotifications = systemNotifications
-            .slice(-50)
-            .reverse();
-        res.json(recentNotifications);
-    } catch (error) {
-        console.error('❌ Notifications error:', error);
-        res.status(500).json({ error: 'Failed to load notifications' });
-    }
-});
-
-app.get('/api/conversations', authenticateToken, (req, res) => {
-    try {
-        const currentUser = req.user.username;
-        const conversationPartners = new Set();
-        
-        messages.forEach(msg => {
-            if (msg.type === 'private') {
-                if (msg.sender === currentUser) conversationPartners.add(msg.receiver);
-                else if (msg.receiver === currentUser) conversationPartners.add(msg.sender);
+        res.json({
+            success: true,
+            user: {
+                ...userWithoutPassword,
+                isOnline: onlineUsers.has(user.username)
             }
         });
         
-        const conversations = Array.from(conversationPartners).map(partner => {
-            const lastMessage = messages
-                .filter(msg => msg.type === 'private' && 
-                    ((msg.sender === currentUser && msg.receiver === partner) ||
-                     (msg.sender === partner && msg.receiver === currentUser)))
-                .sort((a, b) => new Date(b.date) - new Date(a.date))[0];
-            
-            return {
-                username: partner,
-                lastMessage: lastMessage ? {
-                    text: lastMessage.message,
-                    timestamp: lastMessage.timestamp,
-                    isOwn: lastMessage.sender === currentUser,
-                    type: lastMessage.messageType || 'text'
-                } : null
-            };
-        });
-        
-        conversations.sort((a, b) => {
-            if (!a.lastMessage) return 1;
-            if (!b.lastMessage) return -1;
-            return new Date(b.lastMessage.timestamp) - new Date(a.lastMessage.timestamp);
-        });
-        
-        res.json(conversations);
     } catch (error) {
-        console.error('❌ Conversations error:', error);
-        res.status(500).json({ error: 'Failed to load conversations' });
+        console.error('❌ Get me error:', error);
+        res.status(500).json({ 
+            success: false, 
+            error: 'Ошибка получения информации' 
+        });
     }
 });
 
-app.get('/api/messages/private/:username', authenticateToken, (req, res) => {
+/**
+ * API: Обновление профиля
+ */
+app.post('/api/profile/update', authenticateToken, avatarUpload.single('avatar'), async (req, res) => {
     try {
-        const otherUser = req.params.username;
-        const currentUser = req.user.username;
+        const username = req.user.username;
+        const { bio } = req.body;
+        const user = findUser(username);
         
-        const privateMessages = messages.filter(msg => 
-            msg.type === 'private' &&
-            ((msg.sender === currentUser && msg.receiver === otherUser) ||
-             (msg.sender === otherUser && msg.receiver === currentUser))
-        );
+        if (!user) {
+            return res.status(404).json({ 
+                success: false, 
+                error: 'Пользователь не найден' 
+            });
+        }
         
-        res.json(privateMessages);
+        // Обновление биографии
+        if (bio !== undefined) {
+            user.bio = bio.substring(0, 500); // Ограничение длины
+        }
+        
+        // Обновление аватара
+        if (req.file) {
+            try {
+                await cleanupUserAvatars(username);
+                
+                const avatarExt = path.extname(req.file.originalname);
+                const avatarFilename = `avatar_${username}_${Date.now()}${avatarExt}`;
+                const avatarPath = path.join(avatarsDir, avatarFilename);
+                
+                await fs.rename(req.file.path, avatarPath);
+                
+                // Создание миниатюры
+                const thumbFilename = `thumb_${avatarFilename}`;
+                const thumbPath = path.join(avatarsDir, thumbFilename);
+                await createThumbnail(avatarPath, thumbPath);
+                
+                user.avatar = `/uploads/avatars/${avatarFilename}`;
+                user.avatarThumb = `/uploads/avatars/${thumbFilename}`;
+                
+                // Уведомление об обновлении аватара
+                io.emit('user_avatar_updated', {
+                    username: username,
+                    avatar: user.avatar,
+                    avatarThumb: user.avatarThumb
+                });
+                
+            } catch (avatarError) {
+                console.error('❌ Avatar update error:', avatarError);
+            }
+        }
+        
+        await saveUsers();
+        
+        res.json({
+            success: true,
+            message: 'Профиль обновлен успешно',
+            user: {
+                username: user.username,
+                avatar: user.avatar,
+                bio: user.bio,
+                avatarThumb: user.avatarThumb
+            }
+        });
+        
+        console.log(`✅ Profile updated: ${username}`);
+        
     } catch (error) {
-        console.error('❌ Messages error:', error);
-        res.status(500).json({ error: 'Failed to load messages' });
+        console.error('❌ Profile update error:', error);
+        res.status(500).json({ 
+            success: false, 
+            error: 'Ошибка обновления профиля' 
+        });
     }
 });
 
+/**
+ * API: Поиск пользователей
+ */
 app.get('/api/users/search', authenticateToken, (req, res) => {
     try {
-        const { query } = req.query;
+        const { q: query, limit = 20 } = req.query;
         const currentUser = req.user.username;
         
         if (!query || query.trim().length < 2) {
-            return res.json([]);
+            return res.json({ 
+                success: true, 
+                users: [], 
+                total: 0 
+            });
         }
         
         const searchTerm = query.toLowerCase().trim();
@@ -1189,1144 +1353,1390 @@ app.get('/api/users/search', authenticateToken, (req, res) => {
                 }
                 
                 const username = user.username.toLowerCase();
-                return username.includes(searchTerm);
+                const bio = (user.bio || '').toLowerCase();
+                
+                return username.includes(searchTerm) || bio.includes(searchTerm);
             })
-            .map(({ password, ...user }) => {
-                return {
-                    ...user,
-                    isOnline: onlineUsers.has(user.username)
-                };
-            });
+            .slice(0, parseInt(limit))
+            .map(({ password, ...user }) => ({
+                ...user,
+                isOnline: onlineUsers.has(user.username),
+                lastSeen: user.lastLogin || user.createdAt
+            }));
         
-        res.json(results);
+        res.json({
+            success: true,
+            users: results,
+            total: results.length,
+            query: searchTerm
+        });
         
     } catch (error) {
-        console.error('❌ Search error:', error);
-        res.status(500).json({ error: 'Failed to search users' });
+        console.error('❌ User search error:', error);
+        res.status(500).json({ 
+            success: false, 
+            error: 'Ошибка поиска пользователей' 
+        });
     }
 });
 
-app.get('/api/users/all', authenticateToken, (req, res) => {
+/**
+ * API: Получение всех пользователей
+ */
+app.get('/api/users', authenticateToken, (req, res) => {
     try {
+        const { page = 1, limit = 50, onlineOnly = false } = req.query;
         const currentUser = req.user.username;
-        const usersWithoutPasswords = users
-            .filter(user => user.username !== currentUser)
-            .map(({ password, ...user }) => {
-                return {
-                    ...user,
-                    isOnline: onlineUsers.has(user.username)
-                };
-            });
         
-        res.json(usersWithoutPasswords);
+        let filteredUsers = users.filter(user => user.username !== currentUser);
+        
+        if (onlineOnly === 'true') {
+            filteredUsers = filteredUsers.filter(user => onlineUsers.has(user.username));
+        }
+        
+        const startIndex = (parseInt(page) - 1) * parseInt(limit);
+        const endIndex = startIndex + parseInt(limit);
+        
+        const paginatedUsers = filteredUsers
+            .slice(startIndex, endIndex)
+            .map(({ password, ...user }) => ({
+                ...user,
+                isOnline: onlineUsers.has(user.username),
+                lastSeen: user.lastLogin || user.createdAt
+            }));
+        
+        res.json({
+            success: true,
+            users: paginatedUsers,
+            pagination: {
+                page: parseInt(page),
+                limit: parseInt(limit),
+                total: filteredUsers.length,
+                totalPages: Math.ceil(filteredUsers.length / parseInt(limit))
+            }
+        });
+        
     } catch (error) {
-        console.error('❌ Error getting all users:', error);
-        res.status(500).json({ error: 'Failed to get users' });
+        console.error('❌ Get users error:', error);
+        res.status(500).json({ 
+            success: false, 
+            error: 'Ошибка получения пользователей' 
+        });
     }
 });
 
+/**
+ * API: Получение информации о пользователе
+ */
+app.get('/api/users/:username', authenticateToken, (req, res) => {
+    try {
+        const { username } = req.params;
+        const currentUser = req.user.username;
+        
+        const user = findUser(username);
+        if (!user) {
+            return res.status(404).json({ 
+                success: false, 
+                error: 'Пользователь не найден' 
+            });
+        }
+        
+        const { password, ...userWithoutPassword } = user;
+        
+        // Получение статистики
+        const userMessages = messages.filter(msg => 
+            msg.sender === username || msg.receiver === username
+        ).length;
+        
+        const userGroups = groups.filter(group => 
+            group.members && group.members.includes(username)
+        ).length;
+        
+        res.json({
+            success: true,
+            user: {
+                ...userWithoutPassword,
+                isOnline: onlineUsers.has(username),
+                statistics: {
+                    messages: userMessages,
+                    groups: userGroups,
+                    registrationDate: user.createdAt,
+                    lastLogin: user.lastLogin
+                }
+            },
+            canMessage: username !== currentUser
+        });
+        
+    } catch (error) {
+        console.error('❌ Get user error:', error);
+        res.status(500).json({ 
+            success: false, 
+            error: 'Ошибка получения информации о пользователе' 
+        });
+    }
+});
+
+/**
+ * API: Получение аватара пользователя
+ */
+app.get('/api/users/:username/avatar', async (req, res) => {
+    try {
+        const { username } = req.params;
+        const { size = 'original' } = req.query;
+        
+        const user = findUser(username);
+        if (!user) {
+            return res.redirect('/static/default-avatar.png');
+        }
+        
+        let avatarPath = user.avatar || '/static/default-avatar.png';
+        
+        // Если запрошена миниатюра
+        if (size === 'thumb' && user.avatarThumb) {
+            avatarPath = user.avatarThumb;
+        }
+        
+        // Если это путь к загруженному аватару
+        if (avatarPath.startsWith('/uploads/avatars/')) {
+            const filename = avatarPath.split('/').pop();
+            const filePath = path.join(avatarsDir, filename);
+            
+            try {
+                await fs.access(filePath);
+                return res.sendFile(filePath);
+            } catch {
+                // Файл не найден, используем дефолтный
+                return res.redirect('/static/default-avatar.png');
+            }
+        }
+        
+        // Дефолтный аватар или внешняя ссылка
+        res.redirect(avatarPath);
+        
+    } catch (error) {
+        console.error('❌ Get avatar error:', error);
+        res.redirect('/static/default-avatar.png');
+    }
+});
+
+/**
+ * API: Загрузка файла
+ */
 app.post('/api/upload', authenticateToken, upload.single('file'), async (req, res) => {
     try {
         if (!req.file) {
-            return res.status(400).json({ error: 'Файл не загружен' });
+            return res.status(400).json({ 
+                success: false, 
+                error: 'Файл не загружен' 
+            });
         }
-
-        // Проверяем размер файла
-        const maxSize = 50 * 1024 * 1024;
+        
+        const maxSize = 100 * 1024 * 1024; // 100MB
         if (req.file.size > maxSize) {
-            await fs.unlink(req.file.path).catch(console.error);
-            return res.status(400).json({ error: 'Файл слишком большой (макс. 50MB)' });
+            await fs.unlink(req.file.path).catch(() => {});
+            return res.status(400).json({ 
+                success: false, 
+                error: 'Файл слишком большой (максимум 100MB)' 
+            });
         }
-
-        // Проверяем, не существует ли уже такой файл
-        const existingFiles = await fs.readdir(uploadsDir);
-        const existingFile = existingFiles.find(f => {
-            if (f === req.file.filename) return false; // Это тот же файл
-            const stats = fsSync.statSync(path.join(uploadsDir, f));
-            return stats.size === req.file.size && 
-                   path.extname(f) === path.extname(req.file.originalname);
-        });
         
-        if (existingFile) {
-            // Если файл уже существует, используем существующий
-            await fs.unlink(req.file.path).catch(console.error);
-            
-            const fileResponse = {
-                success: true,
-                file: {
-                    originalName: req.file.originalname,
-                    filename: existingFile,
-                    path: `/uploads/${existingFile}`,
-                    size: req.file.size,
-                    mimetype: req.file.mimetype,
-                    uploadDate: new Date().toISOString(),
-                    reused: true
-                }
-            };
-            
-            return res.json(fileResponse);
-        }
-
-        let thumbnailPath = null;
-        let telegramFileData = null;
+        const fileInfo = {
+            originalName: req.file.originalname,
+            filename: req.file.filename,
+            path: `/uploads/${req.file.filename}`,
+            size: req.file.size,
+            mimetype: req.file.mimetype,
+            uploadDate: new Date().toISOString(),
+            uploadedBy: req.user.username
+        };
         
-        if (telegramStorage?.isInitialized) {
-            try {
-                telegramFileData = await telegramStorage.uploadFile(
-                    req.file.path,
-                    `File: ${req.file.originalname}`
-                );
-                
-                if (telegramFileData) {
-                    console.log(`✅ Media uploaded to Telegram: ${req.file.originalname}`);
-                }
-            } catch (telegramError) {
-                console.error('⚠️ Telegram upload failed:', telegramError.message);
-            }
-        }
-
+        // Создание миниатюры для изображений
         if (req.file.mimetype.startsWith('image/')) {
             try {
-                const thumbnailFilename = `thumb_${req.file.filename}`;
-                const thumbnailFullPath = path.join(uploadsDir, thumbnailFilename);
+                const thumbFilename = `thumb_${req.file.filename}`;
+                const thumbPath = path.join(uploadsDir, thumbFilename);
                 
-                await sharp(req.file.path)
-                    .resize(200, 200, {
-                        fit: 'inside',
-                        withoutEnlargement: true
-                    })
-                    .jpeg({ quality: 80 })
-                    .toFile(thumbnailFullPath);
+                await createThumbnail(req.file.path, thumbPath, 300);
+                fileInfo.thumbnail = `/uploads/${thumbFilename}`;
                 
-                thumbnailPath = `/uploads/${thumbnailFilename}`;
-                
-            } catch (sharpError) {
-                console.error('❌ Thumbnail creation error:', sharpError);
-                thumbnailPath = `/uploads/${req.file.filename}`;
+            } catch (thumbError) {
+                console.error('❌ Thumbnail creation error:', thumbError);
             }
         }
-
-        const fileResponse = {
+        
+        res.json({
             success: true,
-            file: {
-                originalName: req.file.originalname,
-                filename: req.file.filename,
-                path: `/uploads/${req.file.filename}`,
-                thumbnail: thumbnailPath,
-                size: req.file.size,
-                mimetype: req.file.mimetype,
-                uploadDate: new Date().toISOString(),
-                reused: false
-            }
-        };
-
-        if (telegramFileData) {
-            const directUrl = await telegramStorage.getDirectFileUrl(telegramFileData.file_id);
-            fileResponse.telegram = {
-                file_id: telegramFileData.file_id,
-                message_id: telegramFileData.message_id,
-                media_type: telegramFileData.media_type || 'document',
-                telegram_url: directUrl,
-                file_url: `/api/media/${telegramFileData.file_id}`
-            };
-        }
-
-        res.json(fileResponse);
-
+            message: 'Файл загружен успешно',
+            file: fileInfo
+        });
+        
+        console.log(`✅ File uploaded: ${req.file.originalname} by ${req.user.username}`);
+        
     } catch (error) {
         console.error('❌ Upload error:', error);
         
+        // Удаляем файл при ошибке
         if (req.file) {
-            await fs.unlink(req.file.path).catch(console.error);
+            await fs.unlink(req.file.path).catch(() => {});
         }
         
-        res.status(500).json({ error: 'Ошибка загрузки файла: ' + error.message });
+        res.status(500).json({ 
+            success: false, 
+            error: 'Ошибка загрузки файла' 
+        });
     }
 });
 
-app.get('/api/media/:fileId', authenticateToken, async (req, res) => {
-    try {
-        const { fileId } = req.params;
-        
-        if (!telegramStorage?.isInitialized) {
-            return res.status(503).json({ error: 'Telegram storage not available' });
-        }
-
-        const directUrl = await telegramStorage.getDirectFileUrl(fileId);
-        
-        if (directUrl) {
-            res.redirect(directUrl);
-        } else {
-            res.status(404).json({ error: 'File not found in Telegram' });
-        }
-        
-    } catch (error) {
-        console.error('❌ Media error:', error);
-        res.status(500).json({ error: 'Failed to get media' });
-    }
-});
-
-app.post('/api/upload-voice', authenticateToken, voiceUpload.single('file'), async (req, res) => {
+/**
+ * API: Загрузка голосового сообщения
+ */
+app.post('/api/upload/voice', authenticateToken, voiceUpload.single('voice'), async (req, res) => {
     try {
         if (!req.file) {
-            return res.status(400).json({ error: 'Файл не загружен' });
+            return res.status(400).json({ 
+                success: false, 
+                error: 'Аудио файл не загружен' 
+            });
         }
-
-        let telegramFileData = null;
         
-        if (telegramStorage?.isInitialized) {
-            try {
-                telegramFileData = await telegramStorage.uploadFile(
-                    req.file.path,
-                    `Voice message: ${req.file.originalname}`
-                );
-            } catch (telegramError) {
-                console.error('⚠️ Telegram voice upload failed:', telegramError.message);
-            }
+        const maxSize = 50 * 1024 * 1024; // 50MB
+        if (req.file.size > maxSize) {
+            await fs.unlink(req.file.path).catch(() => {});
+            return res.status(400).json({ 
+                success: false, 
+                error: 'Аудио файл слишком большой (максимум 50MB)' 
+            });
         }
-
-        const fileResponse = {
-            success: true,
-            file: {
-                originalName: req.file.originalname,
-                filename: req.file.filename,
-                path: `/uploads/${req.file.filename}`,
-                size: req.file.size,
-                mimetype: req.file.mimetype,
-                uploadDate: new Date().toISOString(),
-                type: 'voice'
-            }
+        
+        const duration = req.body.duration || 0;
+        
+        const voiceInfo = {
+            originalName: req.file.originalname,
+            filename: req.file.filename,
+            path: `/uploads/${req.file.filename}`,
+            size: req.file.size,
+            mimetype: req.file.mimetype,
+            duration: parseInt(duration),
+            uploadDate: new Date().toISOString(),
+            uploadedBy: req.user.username,
+            type: 'voice'
         };
-
-        if (telegramFileData) {
-            const directUrl = await telegramStorage.getDirectFileUrl(telegramFileData.file_id);
-            fileResponse.telegram = {
-                file_id: telegramFileData.file_id,
-                message_id: telegramFileData.message_id,
-                media_type: 'audio',
-                telegram_url: directUrl,
-                file_url: `/api/media/${telegramFileData.file_id}`
-            };
-        }
-
-        console.log('✅ Voice message uploaded:', req.file.originalname);
-        res.json(fileResponse);
-
+        
+        res.json({
+            success: true,
+            message: 'Голосовое сообщение загружено успешно',
+            voice: voiceInfo
+        });
+        
+        console.log(`✅ Voice message uploaded: ${req.file.originalname} by ${req.user.username}`);
+        
     } catch (error) {
         console.error('❌ Voice upload error:', error);
         
         if (req.file) {
-            await fs.unlink(req.file.path).catch(console.error);
+            await fs.unlink(req.file.path).catch(() => {});
         }
         
-        res.status(500).json({ error: 'Ошибка загрузки голосового сообщения: ' + error.message });
-    }
-});
-app.get('/api/groups/new-user-groups', authenticateToken, async (req, res) => {
-    try {
-        const { username } = req.query;
-        
-        if (!username) {
-            return res.status(400).json({ error: 'Username is required' });
-        }
-        
-        // Для новых пользователей - возвращаем только общие/глобальные группы
-        // или пустой массив, если таких нет
-        const newUserGroups = groups.filter(group => {
-            // Проверяем, является ли группа глобальной (общей для всех)
-            return group.isGlobal === true || 
-                   group.name === 'Общий чат' || 
-                   group.name === 'Новости' ||
-                   group.members?.includes('all');
-        }).map(group => {
-            // Убедимся, что пользователь добавлен в группу
-            if (!group.members.includes(username)) {
-                group.members.push(username);
-            }
-            
-            return {
-                id: group.id,
-                name: group.name,
-                members: group.members,
-                createdBy: group.createdBy,
-                createdAt: group.createdAt,
-                isGroup: true,
-                isGlobal: true // Флаг, что это глобальная группа
-            };
+        res.status(500).json({ 
+            success: false, 
+            error: 'Ошибка загрузки голосового сообщения' 
         });
-        
-        // Сохраняем обновленные группы
-        await saveGroups();
-        
-        res.json(newUserGroups);
-        
-    } catch (error) {
-        console.error('❌ New user groups error:', error);
-        res.status(500).json({ error: 'Failed to load new user groups' });
     }
 });
-app.get('/api/user/groups', authenticateToken, async (req, res) => {
+
+/**
+ * API: Получение приватных сообщений
+ */
+app.get('/api/messages/private/:username', authenticateToken, (req, res) => {
     try {
+        const { username: otherUser } = req.params;
         const currentUser = req.user.username;
+        const { limit = 100, before = null } = req.query;
         
-        const userGroups = groups
-            .filter(group => {
-                const isMember = group.members && group.members.includes(currentUser);
-                return isMember;
-            })
-            .map(group => {
-                const groupMessages = messages.filter(msg => 
-                    msg.type === 'group' && msg.groupId === group.id
-                );
-                
-                const lastMessage = groupMessages.length > 0 
-                    ? groupMessages[groupMessages.length - 1]
-                    : null;
-                
-                return {
-                    id: group.id,
-                    name: group.name,
-                    members: group.members || [],
-                    createdBy: group.createdBy,
-                    createdAt: group.createdAt,
-                    memberCount: group.members ? group.members.length : 0,
-                    isGroup: true,
-                    lastMessage: lastMessage ? {
-                        text: lastMessage.message,
-                        timestamp: lastMessage.timestamp,
-                        sender: lastMessage.sender,
-                        type: lastMessage.messageType || 'text',
-                        isOwn: lastMessage.sender === currentUser
-                    } : null
-                };
+        // Проверка существования пользователя
+        if (!userExists(otherUser)) {
+            return res.status(404).json({ 
+                success: false, 
+                error: 'Пользователь не найден' 
             });
-        
-        res.json(userGroups);
-        
-    } catch (error) {
-        console.error('❌ User groups error:', error);
-        res.status(500).json({ error: 'Failed to load user groups: ' + error.message });
-    }
-});
-app.get('/api/groups/user', authenticateToken, async (req, res) => {
-    try {
-        const currentUser = req.user.username;
-        
-        // Фильтруем только группы, где пользователь действительно является участником
-        const userGroups = groups.filter(group => {
-            if (!group.members || !Array.isArray(group.members)) {
-                return false;
-            }
-            
-            return group.members.includes(currentUser);
-        }).map(group => ({
-            id: group.id,
-            name: group.name,
-            members: group.members,
-            createdBy: group.createdBy,
-            createdAt: group.createdAt,
-            isGroup: true
-        }));
-        
-        console.log(`✅ Returning ${userGroups.length} groups for user ${currentUser}`);
-        res.json(userGroups);
-    } catch (error) {
-        console.error('❌ User groups error:', error);
-        res.status(500).json({ error: 'Failed to load user groups' });
-    }
-});
-app.post('/api/groups/create', authenticateToken, async (req, res) => {
-    try {
-        const { name, members, createdBy } = req.body;
-        
-        if (!name || !members || !createdBy) {
-            return res.status(400).json({ error: 'Все поля обязательны' });
         }
-
-        // Убедитесь, что createdBy включен в members
-        let allMembers = [...members];
-        if (!allMembers.includes(createdBy)) {
-            allMembers.push(createdBy);
+        
+        // Фильтрация сообщений
+        let privateMessages = messages.filter(msg => 
+            msg.type === 'private' &&
+            ((msg.sender === currentUser && msg.receiver === otherUser) ||
+             (msg.sender === otherUser && msg.receiver === currentUser))
+        );
+        
+        // Фильтрация по времени если указано
+        if (before) {
+            const beforeDate = new Date(before);
+            privateMessages = privateMessages.filter(msg => new Date(msg.date) < beforeDate);
         }
-
-        const group = {
-            id: 'group_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
-            name: name,
-            members: allMembers,
-            createdBy: createdBy,
-            createdAt: new Date().toISOString(),
-            messages: [],
-            memberCount: allMembers.length
-        };
-
-        groups.push(group);
-        await saveGroups();
-
-        // Отправляем событие создания группы всем участникам
-        allMembers.forEach(member => {
-            const memberSocketId = userSockets.get(member);
-            if (memberSocketId) {
-                io.to(memberSocketId).emit('group_created', {
-                    group: group
-                });
-            }
-        });
-
-        console.log(`✅ Group created: ${group.name} with ${allMembers.length} members`);
+        
+        // Сортировка по времени (новые в конце)
+        privateMessages.sort((a, b) => new Date(a.date) - new Date(b.date));
+        
+        // Ограничение количества
+        const limitedMessages = privateMessages.slice(-parseInt(limit));
         
         res.json({
             success: true,
-            group: group,
-            message: `Группа "${name}" создана успешно`
+            messages: limitedMessages,
+            total: privateMessages.length,
+            hasMore: privateMessages.length > parseInt(limit),
+            currentUser,
+            otherUser
         });
         
     } catch (error) {
-        console.error('❌ Group creation error:', error);
-        res.status(500).json({ error: 'Ошибка создания группы: ' + error.message });
+        console.error('❌ Get private messages error:', error);
+        res.status(500).json({ 
+            success: false, 
+            error: 'Ошибка получения сообщений' 
+        });
     }
 });
 
-app.get('/api/groups/:groupId/members', authenticateToken, (req, res) => {
+/**
+ * API: Получение списка бесед
+ */
+app.get('/api/conversations', authenticateToken, (req, res) => {
     try {
-        const { groupId } = req.params;
+        const currentUser = req.user.username;
+        const conversationsMap = new Map();
+        
+        // Собираем все приватные сообщения пользователя
+        messages.forEach(msg => {
+            if (msg.type === 'private') {
+                let otherUser = null;
+                
+                if (msg.sender === currentUser) {
+                    otherUser = msg.receiver;
+                } else if (msg.receiver === currentUser) {
+                    otherUser = msg.sender;
+                }
+                
+                if (otherUser) {
+                    if (!conversationsMap.has(otherUser)) {
+                        conversationsMap.set(otherUser, {
+                            user: otherUser,
+                            lastMessage: msg,
+                            unreadCount: 0,
+                            messageCount: 0
+                        });
+                    }
+                    
+                    const conversation = conversationsMap.get(otherUser);
+                    conversation.messageCount++;
+                    
+                    // Обновляем последнее сообщение если оно новее
+                    if (new Date(msg.date) > new Date(conversation.lastMessage.date)) {
+                        conversation.lastMessage = msg;
+                    }
+                    
+                    // Считаем непрочитанные
+                    if (msg.sender === otherUser && !msg.read) {
+                        conversation.unreadCount++;
+                    }
+                }
+            }
+        });
+        
+        // Преобразуем Map в массив и сортируем по времени последнего сообщения
+        const conversations = Array.from(conversationsMap.values())
+            .map(conv => {
+                const user = findUser(conv.user);
+                return {
+                    user: conv.user,
+                    userInfo: user ? {
+                        username: user.username,
+                        avatar: user.avatar,
+                        isOnline: onlineUsers.has(user.username),
+                        bio: user.bio
+                    } : null,
+                    lastMessage: conv.lastMessage,
+                    unreadCount: conv.unreadCount,
+                    messageCount: conv.messageCount,
+                    lastActivity: conv.lastMessage.date
+                };
+            })
+            .sort((a, b) => new Date(b.lastActivity) - new Date(a.lastActivity));
+        
+        res.json({
+            success: true,
+            conversations,
+            total: conversations.length
+        });
+        
+    } catch (error) {
+        console.error('❌ Get conversations error:', error);
+        res.status(500).json({ 
+            success: false, 
+            error: 'Ошибка получения бесед' 
+        });
+    }
+});
+
+/**
+ * API: Отметка сообщений как прочитанных
+ */
+app.post('/api/messages/mark-read', authenticateToken, async (req, res) => {
+    try {
+        const { sender, messageIds } = req.body;
         const currentUser = req.user.username;
         
-        const group = groups.find(g => g.id === groupId);
+        let markedCount = 0;
         
-        if (!group) {
-            return res.status(404).json({ error: 'Группа не найдена' });
+        for (const msgId of messageIds) {
+            const message = messages.find(msg => 
+                msg.id === msgId && 
+                msg.sender === sender && 
+                msg.receiver === currentUser &&
+                msg.type === 'private' &&
+                !msg.read
+            );
+            
+            if (message) {
+                message.read = true;
+                message.readAt = new Date().toISOString();
+                markedCount++;
+            }
+        }
+        
+        if (markedCount > 0) {
+            await saveMessages();
+            
+            // Уведомляем отправителя о прочтении
+            const senderSocketId = userSockets.get(sender);
+            if (senderSocketId) {
+                io.to(senderSocketId).emit('messages_read', {
+                    reader: currentUser,
+                    messageIds,
+                    readAt: new Date().toISOString()
+                });
+            }
         }
         
         res.json({
-            groupId: groupId,
-            name: group.name,
-            members: group.members || [],
-            isMember: group.members && group.members.includes(currentUser)
+            success: true,
+            message: `Отмечено как прочитано: ${markedCount} сообщений`,
+            markedCount
         });
+        
     } catch (error) {
-        console.error('❌ Group members error:', error);
-        res.status(500).json({ error: 'Failed to load group members' });
+        console.error('❌ Mark read error:', error);
+        res.status(500).json({ 
+            success: false, 
+            error: 'Ошибка отметки сообщений' 
+        });
     }
 });
 
-app.get('/api/groups', authenticateToken, (req, res) => {
+/**
+ * API: Создание группы
+ */
+app.post('/api/groups/create', authenticateToken, async (req, res) => {
     try {
-        const currentUser = req.user.username;
-        const userGroups = groups.filter(group => 
-            group.members && group.members.includes(currentUser)
-        );
-        res.json(userGroups);
-    } catch (error) {
-        console.error('❌ Groups error:', error);
-        res.status(500).json({ error: 'Failed to load groups' });
-    }
-});
-
-app.get('/api/groups/:groupId/messages', authenticateToken, (req, res) => {
-    try {
-        const { groupId } = req.params;
-        const currentUser = req.user.username;
+        const { name, description, members, isPublic = false } = req.body;
+        const creator = req.user.username;
         
-        const group = groups.find(g => g.id === groupId);
-        
-        if (!group) {
-            return res.status(404).json({ error: 'Группа не найдена' });
-        }
-        
-        // Проверяем, является ли пользователь членом группы
-        if (!group.members || !group.members.includes(currentUser)) {
-            return res.status(403).json({ 
-                error: 'Доступ запрещен. Вы не являетесь участником этой группы.',
-                groupId: groupId,
-                members: group.members || []
+        if (!name || !members || !Array.isArray(members)) {
+            return res.status(400).json({ 
+                success: false, 
+                error: 'Название и участники группы обязательны' 
             });
         }
         
-        const groupMessages = messages.filter(msg => 
-            msg.type === 'group' && msg.groupId === groupId
+        if (name.length < 3 || name.length > 50) {
+            return res.status(400).json({ 
+                success: false, 
+                error: 'Название группы должно быть от 3 до 50 символов' 
+            });
+        }
+        
+        // Проверяем существующих участников
+        const validMembers = members.filter(member => userExists(member));
+        if (!validMembers.includes(creator)) {
+            validMembers.push(creator);
+        }
+        
+        // Проверяем уникальность названия для создателя
+        const existingGroup = groups.find(group => 
+            group.name === name && group.createdBy === creator
         );
         
-        // Убедитесь, что сообщения отсортированы по времени
-        groupMessages.sort((a, b) => new Date(a.date) - new Date(b.date));
+        if (existingGroup) {
+            return res.status(400).json({ 
+                success: false, 
+                error: 'У вас уже есть группа с таким названием' 
+            });
+        }
         
-        res.json(groupMessages);
-    } catch (error) {
-        console.error('❌ Group messages error:', error);
-        res.status(500).json({ error: 'Failed to load group messages' });
-    }
-});
-
-app.post('/api/groups/:groupId/messages', authenticateToken, async (req, res) => {
-    try {
-        const { groupId } = req.params;
-        const { message, messageType = 'text', fileData = null } = req.body;
-        const sender = req.user.username;
-
-        if (!message && !fileData) {
-            return res.status(400).json({ error: 'Сообщение не может быть пустым' });
-        }
-
-        const group = groups.find(g => g.id === groupId);
-        if (!group || !group.members.includes(sender)) {
-            return res.status(403).json({ error: 'Доступ запрещен' });
-        }
-
-        const messageData = {
-            id: 'msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
-            sender: sender,
-            groupId: groupId,
-            message: message,
-            timestamp: new Date().toLocaleTimeString(),
-            type: 'group',
-            date: new Date().toISOString(),
-            messageType: messageType,
-            fileData: fileData
+        // Создаем группу
+        const group = {
+            id: `group_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+            name,
+            description: description || '',
+            members: validMembers,
+            createdBy: creator,
+            createdAt: new Date().toISOString(),
+            isPublic: !!isPublic,
+            avatar: null,
+            settings: {
+                allowMessages: true,
+                allowFiles: true,
+                allowVoice: true,
+                adminOnlyMessages: false
+            },
+            admins: [creator]
         };
         
-        messages.push(messageData);
-        await saveMessages();
-
-        group.members.forEach(member => {
+        groups.push(group);
+        await saveGroups();
+        
+        // Уведомляем участников о создании группы
+        validMembers.forEach(member => {
             const memberSocketId = userSockets.get(member);
             if (memberSocketId) {
-                io.to(memberSocketId).emit('group_message', messageData);
+                io.to(memberSocketId).emit('group_created', {
+                    group,
+                    createdBy: creator
+                });
             }
         });
-
-        console.log(`✅ Group message sent to ${group.members.length} members in group ${group.name}`);
         
-        res.json({ success: true, message: messageData });
+        res.json({
+            success: true,
+            message: 'Группа создана успешно',
+            group
+        });
+        
+        console.log(`✅ Group created: ${name} by ${creator} with ${validMembers.length} members`);
         
     } catch (error) {
-        console.error('❌ Group message error:', error);
-        res.status(500).json({ error: 'Ошибка отправки сообщения' });
+        console.error('❌ Create group error:', error);
+        res.status(500).json({ 
+            success: false, 
+            error: 'Ошибка создания группы' 
+        });
     }
 });
 
+/**
+ * API: Получение списка групп пользователя
+ */
+app.get('/api/groups', authenticateToken, (req, res) => {
+    try {
+        const currentUser = req.user.username;
+        const { type = 'all' } = req.query; // all, member, admin, public
+        
+        let userGroups = groups;
+        
+        if (type === 'member') {
+            userGroups = groups.filter(group => 
+                group.members && group.members.includes(currentUser)
+            );
+        } else if (type === 'admin') {
+            userGroups = groups.filter(group => 
+                group.admins && group.admins.includes(currentUser)
+            );
+        } else if (type === 'public') {
+            userGroups = groups.filter(group => group.isPublic);
+        }
+        
+        // Добавляем информацию о последнем сообщении и статистику
+        const groupsWithInfo = userGroups.map(group => {
+            const groupMessages = messages.filter(msg => 
+                msg.type === 'group' && msg.groupId === group.id
+            );
+            
+            const lastMessage = groupMessages.length > 0 
+                ? groupMessages[groupMessages.length - 1]
+                : null;
+            
+            const unreadCount = groupMessages.filter(msg => 
+                !msg.read && msg.sender !== currentUser
+            ).length;
+            
+            return {
+                ...group,
+                memberCount: group.members ? group.members.length : 0,
+                messageCount: groupMessages.length,
+                lastMessage,
+                unreadCount,
+                isMember: group.members && group.members.includes(currentUser),
+                isAdmin: group.admins && group.admins.includes(currentUser)
+            };
+        });
+        
+        // Сортировка по времени последнего сообщения
+        groupsWithInfo.sort((a, b) => {
+            if (!a.lastMessage && !b.lastMessage) return 0;
+            if (!a.lastMessage) return 1;
+            if (!b.lastMessage) return -1;
+            return new Date(b.lastMessage.date) - new Date(a.lastMessage.date);
+        });
+        
+        res.json({
+            success: true,
+            groups: groupsWithInfo,
+            total: groupsWithInfo.length
+        });
+        
+    } catch (error) {
+        console.error('❌ Get groups error:', error);
+        res.status(500).json({ 
+            success: false, 
+            error: 'Ошибка получения групп' 
+        });
+    }
+});
+
+/**
+ * API: Получение информации о группе
+ */
 app.get('/api/groups/:groupId', authenticateToken, (req, res) => {
     try {
         const { groupId } = req.params;
         const currentUser = req.user.username;
         
         const group = groups.find(g => g.id === groupId);
-        
         if (!group) {
-            return res.status(404).json({ error: 'Группа не найдена' });
+            return res.status(404).json({ 
+                success: false, 
+                error: 'Группа не найдена' 
+            });
         }
         
-        if (!group.members.includes(currentUser)) {
-            return res.status(403).json({ error: 'Доступ запрещен' });
+        // Проверка доступа
+        if (!group.isPublic && (!group.members || !group.members.includes(currentUser))) {
+            return res.status(403).json({ 
+                success: false, 
+                error: 'Доступ к группе запрещен' 
+            });
         }
         
-        const groupInfo = {
-            id: group.id,
-            name: group.name,
-            members: group.members,
-            createdBy: group.createdBy,
-            createdAt: group.createdAt,
-            memberCount: group.members ? group.members.length : 0
-        };
+        // Получаем информацию об участниках
+        const membersInfo = (group.members || []).map(username => {
+            const user = findUser(username);
+            return user ? {
+                username: user.username,
+                avatar: user.avatar,
+                isOnline: onlineUsers.has(user.username),
+                isAdmin: group.admins && group.admins.includes(user.username),
+                joinedAt: user.createdAt
+            } : null;
+        }).filter(Boolean);
         
-        res.json(groupInfo);
+        // Получаем статистику группы
+        const groupMessages = messages.filter(msg => 
+            msg.type === 'group' && msg.groupId === groupId
+        );
+        
+        res.json({
+            success: true,
+            group: {
+                ...group,
+                members: membersInfo,
+                memberCount: membersInfo.length,
+                messageCount: groupMessages.length,
+                isMember: group.members && group.members.includes(currentUser),
+                isAdmin: group.admins && group.admins.includes(currentUser),
+                statistics: {
+                    totalMessages: groupMessages.length,
+                    lastActivity: groupMessages.length > 0 
+                        ? groupMessages[groupMessages.length - 1].date 
+                        : group.createdAt,
+                    filesCount: groupMessages.filter(msg => msg.fileData).length,
+                    voiceCount: groupMessages.filter(msg => msg.messageType === 'voice').length
+                }
+            }
+        });
+        
     } catch (error) {
-        console.error('❌ Group info error:', error);
-        res.status(500).json({ error: 'Failed to load group info' });
+        console.error('❌ Get group error:', error);
+        res.status(500).json({ 
+            success: false, 
+            error: 'Ошибка получения информации о группе' 
+        });
     }
 });
 
-app.get('/api/user/:username/currency', authenticateToken, (req, res) => {
+/**
+ * API: Получение сообщений группы
+ */
+app.get('/api/groups/:groupId/messages', authenticateToken, (req, res) => {
     try {
-        const { username } = req.params;
+        const { groupId } = req.params;
+        const currentUser = req.user.username;
+        const { limit = 100, before = null } = req.query;
         
-        // Проверка прав доступа
-        if (req.user.username !== username && req.user.username !== 'admin') {
-            return res.status(403).json({ error: 'Доступ запрещен' });
-        }
-
-        const userCurrency = initUserCurrency(username);
-        
-        res.json(userCurrency);
-        
-    } catch (error) {
-        console.error('❌ Currency data error:', error);
-        res.status(500).json({ error: 'Ошибка загрузки данных валюты' });
-    }
-});
-
-app.post('/api/currency/daily-reward', authenticateToken, async (req, res) => {
-    try {
-        const { username } = req.body;
-        
-        if (!username) {
-            return res.status(400).json({
-                success: false,
-                error: 'Имя пользователя обязательно'
+        const group = groups.find(g => g.id === groupId);
+        if (!group) {
+            return res.status(404).json({ 
+                success: false, 
+                error: 'Группа не найдена' 
             });
         }
-
-        if (req.user.username !== username) {
-            return res.status(403).json({
-                success: false,
-                error: 'Доступ запрещен'
+        
+        // Проверка доступа
+        if (!group.isPublic && (!group.members || !group.members.includes(currentUser))) {
+            return res.status(403).json({ 
+                success: false, 
+                error: 'Доступ к сообщениям группы запрещен' 
             });
         }
-
-        const userCurrency = initUserCurrency(username);
-        const now = new Date();
         
-        if (userCurrency.lastDailyReward) {
-            const lastReward = new Date(userCurrency.lastDailyReward);
-            const hoursSinceLastReward = (now - lastReward) / (1000 * 60 * 60);
+        // Фильтрация сообщений группы
+        let groupMessages = messages.filter(msg => 
+            msg.type === 'group' && msg.groupId === groupId
+        );
+        
+        // Фильтрация по времени если указано
+        if (before) {
+            const beforeDate = new Date(before);
+            groupMessages = groupMessages.filter(msg => new Date(msg.date) < beforeDate);
+        }
+        
+        // Сортировка по времени (старые в начале)
+        groupMessages.sort((a, b) => new Date(a.date) - new Date(b.date));
+        
+        // Ограничение количества
+        const limitedMessages = groupMessages.slice(-parseInt(limit));
+        
+        // Помечаем сообщения как прочитанные для текущего пользователя
+        const unreadMessages = limitedMessages.filter(msg => 
+            !msg.readBy || !msg.readBy.includes(currentUser)
+        );
+        
+        if (unreadMessages.length > 0) {
+            unreadMessages.forEach(msg => {
+                if (!msg.readBy) msg.readBy = [];
+                if (!msg.readBy.includes(currentUser)) {
+                    msg.readBy.push(currentUser);
+                }
+            });
             
-            if (hoursSinceLastReward < 23) {
-                return res.status(400).json({
-                    success: false,
-                    error: 'Вы уже получали награду сегодня'
+            // Сохраняем асинхронно
+            saveMessages().catch(console.error);
+        }
+        
+        res.json({
+            success: true,
+            messages: limitedMessages,
+            total: groupMessages.length,
+            hasMore: groupMessages.length > parseInt(limit),
+            groupId,
+            unreadCount: unreadMessages.length
+        });
+        
+    } catch (error) {
+        console.error('❌ Get group messages error:', error);
+        res.status(500).json({ 
+            success: false, 
+            error: 'Ошибка получения сообщений группы' 
+        });
+    }
+});
+
+/**
+ * API: Вступление в группу
+ */
+app.post('/api/groups/:groupId/join', authenticateToken, async (req, res) => {
+    try {
+        const { groupId } = req.params;
+        const currentUser = req.user.username;
+        
+        const group = groups.find(g => g.id === groupId);
+        if (!group) {
+            return res.status(404).json({ 
+                success: false, 
+                error: 'Группа не найдена' 
+            });
+        }
+        
+        if (!group.isPublic) {
+            return res.status(403).json({ 
+                success: false, 
+                error: 'Группа является приватной' 
+            });
+        }
+        
+        if (group.members && group.members.includes(currentUser)) {
+            return res.status(400).json({ 
+                success: false, 
+                error: 'Вы уже являетесь участником этой группы' 
+            });
+        }
+        
+        // Добавляем пользователя в группу
+        if (!group.members) group.members = [];
+        group.members.push(currentUser);
+        
+        await saveGroups();
+        
+        // Уведомляем участников группы
+        group.members.forEach(member => {
+            const memberSocketId = userSockets.get(member);
+            if (memberSocketId) {
+                io.to(memberSocketId).emit('group_member_joined', {
+                    groupId,
+                    username: currentUser,
+                    joinedAt: new Date().toISOString()
+                });
+            }
+        });
+        
+        res.json({
+            success: true,
+            message: 'Вы успешно присоединились к группе',
+            group
+        });
+        
+        console.log(`✅ User joined group: ${currentUser} -> ${group.name}`);
+        
+    } catch (error) {
+        console.error('❌ Join group error:', error);
+        res.status(500).json({ 
+            success: false, 
+            error: 'Ошибка вступления в группу' 
+        });
+    }
+});
+
+/**
+ * API: Выход из группы
+ */
+app.post('/api/groups/:groupId/leave', authenticateToken, async (req, res) => {
+    try {
+        const { groupId } = req.params;
+        const currentUser = req.user.username;
+        
+        const group = groups.find(g => g.id === groupId);
+        if (!group) {
+            return res.status(404).json({ 
+                success: false, 
+                error: 'Группа не найдена' 
+            });
+        }
+        
+        if (!group.members || !group.members.includes(currentUser)) {
+            return res.status(400).json({ 
+                success: false, 
+                error: 'Вы не являетесь участником этой группы' 
+            });
+        }
+        
+        // Нельзя покинуть группу если вы создатель
+        if (group.createdBy === currentUser) {
+            return res.status(400).json({ 
+                success: false, 
+                error: 'Создатель группы не может покинуть её' 
+            });
+        }
+        
+        // Удаляем пользователя из группы
+        group.members = group.members.filter(member => member !== currentUser);
+        
+        // Удаляем из администраторов если был
+        if (group.admins) {
+            group.admins = group.admins.filter(admin => admin !== currentUser);
+        }
+        
+        await saveGroups();
+        
+        // Уведомляем участников группы
+        group.members.forEach(member => {
+            const memberSocketId = userSockets.get(member);
+            if (memberSocketId) {
+                io.to(memberSocketId).emit('group_member_left', {
+                    groupId,
+                    username: currentUser,
+                    leftAt: new Date().toISOString()
+                });
+            }
+        });
+        
+        res.json({
+            success: true,
+            message: 'Вы успешно покинули группу',
+            groupId
+        });
+        
+        console.log(`✅ User left group: ${currentUser} -> ${group.name}`);
+        
+    } catch (error) {
+        console.error('❌ Leave group error:', error);
+        res.status(500).json({ 
+            success: false, 
+            error: 'Ошибка выхода из группы' 
+        });
+    }
+});
+
+/**
+ * API: Управление участниками группы (только для администраторов)
+ */
+app.post('/api/groups/:groupId/members', authenticateToken, async (req, res) => {
+    try {
+        const { groupId } = req.params;
+        const { action, username, role } = req.body;
+        const currentUser = req.user.username;
+        
+        const group = groups.find(g => g.id === groupId);
+        if (!group) {
+            return res.status(404).json({ 
+                success: false, 
+                error: 'Группа не найдена' 
+            });
+        }
+        
+        // Проверка прав администратора
+        if (!group.admins || !group.admins.includes(currentUser)) {
+            return res.status(403).json({ 
+                success: false, 
+                error: 'Требуются права администратора' 
+            });
+        }
+        
+        // Проверка существования пользователя
+        if (!userExists(username)) {
+            return res.status(404).json({ 
+                success: false, 
+                error: 'Пользователь не найден' 
+            });
+        }
+        
+        if (action === 'add') {
+            // Добавление пользователя в группу
+            if (group.members && group.members.includes(username)) {
+                return res.status(400).json({ 
+                    success: false, 
+                    error: 'Пользователь уже является участником группы' 
                 });
             }
             
-            if (hoursSinceLastReward < 48) {
-                userCurrency.dailyStreak += 1;
-            } else {
-                userCurrency.dailyStreak = 1;
+            if (!group.members) group.members = [];
+            group.members.push(username);
+            
+            // Уведомление пользователя
+            const userSocketId = userSockets.get(username);
+            if (userSocketId) {
+                io.to(userSocketId).emit('group_invitation', {
+                    groupId,
+                    groupName: group.name,
+                    invitedBy: currentUser,
+                    invitedAt: new Date().toISOString()
+                });
+            }
+            
+            res.json({
+                success: true,
+                message: `Пользователь ${username} добавлен в группу`
+            });
+            
+        } else if (action === 'remove') {
+            // Удаление пользователя из группы
+            if (!group.members || !group.members.includes(username)) {
+                return res.status(400).json({ 
+                    success: false, 
+                    error: 'Пользователь не является участником группы' 
+                });
+            }
+            
+            // Нельзя удалить создателя
+            if (group.createdBy === username) {
+                return res.status(400).json({ 
+                    success: false, 
+                    error: 'Нельзя удалить создателя группы' 
+                });
+            }
+            
+            group.members = group.members.filter(member => member !== username);
+            
+            // Удаляем из администраторов если был
+            if (group.admins) {
+                group.admins = group.admins.filter(admin => admin !== username);
+            }
+            
+            // Уведомление пользователя
+            const userSocketId = userSockets.get(username);
+            if (userSocketId) {
+                io.to(userSocketId).emit('group_removed', {
+                    groupId,
+                    groupName: group.name,
+                    removedBy: currentUser,
+                    removedAt: new Date().toISOString()
+                });
+            }
+            
+            res.json({
+                success: true,
+                message: `Пользователь ${username} удален из группы`
+            });
+            
+        } else if (action === 'promote' || action === 'demote') {
+            // Изменение роли пользователя
+            if (!group.members || !group.members.includes(username)) {
+                return res.status(400).json({ 
+                    success: false, 
+                    error: 'Пользователь не является участником группы' 
+                });
+            }
+            
+            if (!group.admins) group.admins = [];
+            
+            if (action === 'promote') {
+                // Назначение администратором
+                if (group.admins.includes(username)) {
+                    return res.status(400).json({ 
+                        success: false, 
+                        error: 'Пользователь уже является администратором' 
+                    });
+                }
+                
+                group.admins.push(username);
+                res.json({
+                    success: true,
+                    message: `Пользователь ${username} назначен администратором`
+                });
+                
+            } else if (action === 'demote') {
+                // Снятие прав администратора
+                if (!group.admins.includes(username)) {
+                    return res.status(400).json({ 
+                        success: false, 
+                        error: 'Пользователь не является администратором' 
+                    });
+                }
+                
+                // Нельзя снять права у создателя
+                if (group.createdBy === username) {
+                    return res.status(400).json({ 
+                        success: false, 
+                        error: 'Нельзя снять права администратора у создателя группы' 
+                    });
+                }
+                
+                group.admins = group.admins.filter(admin => admin !== username);
+                res.json({
+                    success: true,
+                    message: `Пользователь ${username} лишен прав администратора`
+                });
             }
         } else {
+            return res.status(400).json({ 
+                success: false, 
+                error: 'Неизвестное действие' 
+            });
+        }
+        
+        await saveGroups();
+        
+        // Уведомляем всех участников группы об изменениях
+        group.members.forEach(member => {
+            const memberSocketId = userSockets.get(member);
+            if (memberSocketId) {
+                io.to(memberSocketId).emit('group_updated', {
+                    groupId,
+                    action,
+                    username,
+                    by: currentUser,
+                    timestamp: new Date().toISOString()
+                });
+            }
+        });
+        
+    } catch (error) {
+        console.error('❌ Group members management error:', error);
+        res.status(500).json({ 
+            success: false, 
+            error: 'Ошибка управления участниками группы' 
+        });
+    }
+});
+
+/**
+ * API: Получение ежедневной награды
+ */
+app.get('/api/currency/daily-reward', authenticateToken, async (req, res) => {
+    try {
+        const username = req.user.username;
+        const userCurrency = initUserCurrency(username);
+        const now = new Date();
+        
+        // Проверяем, получал ли пользователь награду сегодня
+        if (userCurrency.lastDailyReward) {
+            const lastReward = new Date(userCurrency.lastDailyReward);
+            const timeDiff = now - lastReward;
+            const hoursDiff = timeDiff / (1000 * 60 * 60);
+            
+            if (hoursDiff < 23) {
+                const hoursLeft = Math.ceil(23 - hoursDiff);
+                return res.status(400).json({
+                    success: false,
+                    error: `Вы уже получали награду сегодня. Следующая награда через ${hoursLeft} часов`,
+                    nextRewardIn: hoursLeft
+                });
+            }
+            
+            // Проверяем серию (получал ли вчера)
+            const yesterday = new Date(now);
+            yesterday.setDate(yesterday.getDate() - 1);
+            
+            if (lastReward.toDateString() === yesterday.toDateString()) {
+                // Продолжаем серию
+                userCurrency.dailyStreak++;
+            } else if (hoursDiff >= 48) {
+                // Сбрасываем серию (пропустил день)
+                userCurrency.dailyStreak = 1;
+            }
+            // Если получал сегодня, но уже прошло 23+ часов, продолжаем серию
+        } else {
+            // Первая награда
             userCurrency.dailyStreak = 1;
         }
-
+        
+        // Рассчитываем награду
         const baseReward = 50;
-        const streakBonus = Math.min(userCurrency.dailyStreak * 5, 100);
+        const streakBonus = Math.min(userCurrency.dailyStreak * 10, 100); // Максимум +100 за серию
         const totalReward = baseReward + streakBonus;
         
+        // Обновляем баланс
         userCurrency.balance += totalReward;
         userCurrency.lastDailyReward = now.toISOString();
         
+        // Добавляем запись в историю
         userCurrency.transactionHistory.unshift({
             type: 'daily_reward',
             amount: totalReward,
             description: `Ежедневная награда (серия: ${userCurrency.dailyStreak} дней)`,
-            timestamp: now.toISOString()
+            timestamp: now.toISOString(),
+            streak: userCurrency.dailyStreak
         });
         
-        if (userCurrency.transactionHistory.length > 50) {
-            userCurrency.transactionHistory = userCurrency.transactionHistory.slice(0, 50);
+        // Ограничиваем историю последними 100 транзакциями
+        if (userCurrency.transactionHistory.length > 100) {
+            userCurrency.transactionHistory = userCurrency.transactionHistory.slice(0, 100);
         }
         
         await saveCurrencyData();
-
+        
         res.json({
             success: true,
-            newBalance: userCurrency.balance,
-            rewardAmount: totalReward,
-            streak: userCurrency.dailyStreak,
-            message: `Получено ${totalReward} монет! Серия: ${userCurrency.dailyStreak} дней`
+            message: `Получено ${totalReward} монет! Серия: ${userCurrency.dailyStreak} дней`,
+            reward: {
+                base: baseReward,
+                streakBonus: streakBonus,
+                total: totalReward
+            },
+            currency: {
+                balance: userCurrency.balance,
+                streak: userCurrency.dailyStreak,
+                lastReward: userCurrency.lastDailyReward
+            }
         });
+        
+        console.log(`💰 Daily reward claimed: ${username} received ${totalReward} coins (streak: ${userCurrency.dailyStreak})`);
         
     } catch (error) {
         console.error('❌ Daily reward error:', error);
         res.status(500).json({
             success: false,
-            error: 'Ошибка получения награды'
+            error: 'Ошибка получения ежедневной награды'
         });
     }
 });
 
-app.get('/api/users/:username', authenticateToken, (req, res) => {
+/**
+ * API: Получение информации о валюте пользователя
+ */
+app.get('/api/currency', authenticateToken, (req, res) => {
     try {
-        const { username } = req.params;
-        const user = users.find(u => u.username === username);
+        const username = req.user.username;
+        const userCurrency = initUserCurrency(username);
         
-        if (!user) {
-            return res.status(404).json({ error: 'User not found' });
-        }
+        // Проверяем возможность получения ежедневной награды
+        let canClaimDaily = true;
+        let nextDailyReward = null;
         
-        const publicUserInfo = {
-            username: user.username,
-            avatar: user.avatar || '/static/default-avatar.png',
-            registrationDate: user.createdAt,
-            status: onlineUsers.has(username) ? 'online' : 'offline'
-        };
-        
-        res.json(publicUserInfo);
-    } catch (error) {
-        console.error('❌ User info error:', error);
-        res.status(500).json({ error: 'Failed to get user info' });
-    }
-});
-
-app.get('/api/user/:username/avatar', authenticateToken, async (req, res) => {
-    try {
-        const { username } = req.params;
-        const cleanUsername = username.trim().replace(/[^a-zA-Z0-9_]/g, '');
-        
-        const user = users.find(u => u.username === cleanUsername);
-        
-        if (!user) {
-            return res.status(404).json({ error: 'User not found' });
-        }
-        
-        const avatarPath = user.avatar || '/static/default-avatar.png';
-        
-        if (avatarPath.startsWith('/uploads/avatars/')) {
-            const fileName = avatarPath.split('/').pop();
-            const fullPath = path.join(avatarsDir, fileName);
-            try {
-                await fs.access(fullPath);
-                return res.sendFile(fullPath);
-            } catch (error) {
-                console.log(`Avatar file not found: ${fullPath}, using default`);
-                return res.redirect('/static/default-avatar.png');
+        if (userCurrency.lastDailyReward) {
+            const lastReward = new Date(userCurrency.lastDailyReward);
+            const now = new Date();
+            const timeDiff = now - lastReward;
+            const hoursDiff = timeDiff / (1000 * 60 * 60);
+            
+            if (hoursDiff < 23) {
+                canClaimDaily = false;
+                const nextRewardTime = new Date(lastReward);
+                nextRewardTime.setHours(nextRewardTime.getHours() + 23);
+                nextDailyReward = nextRewardTime.toISOString();
             }
         }
         
-        res.redirect(avatarPath);
-        
-    } catch (error) {
-        console.error('❌ Avatar error:', error);
-        res.redirect('/static/default-avatar.png');
-    }
-});
-app.post('/api/currency/save', authenticateToken, async (req, res) => {
-    try {
-        const { username, balance, dailyStreak, lastDailyReward, transactionHistory } = req.body;
-        
-        // Проверка прав доступа
-        if (req.user.username !== username && req.user.username !== 'admin') {
-            return res.status(403).json({ 
-                success: false,
-                error: 'Доступ запрещен' 
-            });
-        }
-
-        // Инициализируем данные пользователя если их нет
-        if (!currencyData[username]) {
-            currencyData[username] = {
-                balance: 0,
-                dailyStreak: 0,
-                lastDailyReward: null,
-                transactionHistory: []
-            };
-        }
-
-        // Обновляем данные
-        currencyData[username].balance = balance !== undefined ? Number(balance) : 0;
-        currencyData[username].dailyStreak = dailyStreak !== undefined ? Number(dailyStreak) : 0;
-        currencyData[username].lastDailyReward = lastDailyReward;
-        currencyData[username].transactionHistory = transactionHistory || [];
-
-        await saveCurrencyData();
-        
-        res.json({ 
-            success: true, 
-            message: 'Данные валюты сохранены',
-            balance: currencyData[username].balance
-        });
-        
-    } catch (error) {
-        console.error('❌ Currency save error:', error);
-        res.status(500).json({ 
-            success: false,
-            error: 'Ошибка сохранения данных валюты' 
-        });
-    }
-});
-app.post('/api/currency/admin/add', authenticateToken, async (req, res) => {
-    try {
-        const { targetUser, amount, reason } = req.body;
-        
-        // Проверяем права администратора
-        if (req.user.username !== 'admin') {
-            return res.status(403).json({
-                success: false,
-                error: 'Недостаточно прав'
-            });
-        }
-        
-        if (!targetUser || !amount) {
-            return res.status(400).json({
-                success: false,
-                error: 'Пользователь и сумма обязательны'
-            });
-        }
-
-        // Инициализируем данные пользователя если их нет
-        const userCurrency = initUserCurrency(targetUser);
-        const numericAmount = Number(amount);
-        
-        userCurrency.balance += numericAmount;
-        
-        userCurrency.transactionHistory.unshift({
-            type: 'admin_add',
-            amount: numericAmount,
-            description: reason || 'Административное начисление',
-            timestamp: new Date().toISOString(),
-            admin: req.user.username
-        });
-        
-        await saveCurrencyData();
-
-        console.log(`✅ Admin ${req.user.username} added ${amount} currency to ${targetUser}. Reason: ${reason}`);
-        
         res.json({
             success: true,
-            message: `Добавлено ${amount} монет пользователю ${targetUser}`,
-            targetUser: targetUser,
-            amount: amount,
-            reason: reason,
-            newBalance: userCurrency.balance
-        });
-        
-    } catch (error) {
-        console.error('❌ Add currency error:', error);
-        res.status(500).json({
-            success: false,
-            error: 'Ошибка добавления валюты'
-        });
-    }
-});
-app.post('/api/currency/admin/remove', authenticateToken, async (req, res) => {
-    try {
-        const { targetUser, amount, reason } = req.body;
-        
-        // Проверяем права администратора
-        if (req.user.username !== 'admin') {
-            return res.status(403).json({
-                success: false,
-                error: 'Недостаточно прав'
-            });
-        }
-        
-        if (!targetUser || !amount) {
-            return res.status(400).json({
-                success: false,
-                error: 'Пользователь и сумма обязательны'
-            });
-        }
-        
-        const userCurrency = initUserCurrency(targetUser);
-        const numericAmount = Number(amount);
-        
-        if (userCurrency.balance < numericAmount) {
-            return res.status(400).json({
-                success: false,
-                error: 'Недостаточно средств у пользователя'
-            });
-        }
-        
-        userCurrency.balance -= numericAmount;
-        
-        userCurrency.transactionHistory.unshift({
-            type: 'admin_remove',
-            amount: -numericAmount,
-            description: reason || 'Административное списание',
-            timestamp: new Date().toISOString(),
-            admin: req.user.username
-        });
-        
-        await saveCurrencyData();
-
-        console.log(`✅ Admin ${req.user.username} removed ${amount} currency from ${targetUser}. Reason: ${reason}`);
-        
-        res.json({
-            success: true,
-            message: `Списано ${amount} монет у пользователя ${targetUser}`,
-            targetUser: targetUser,
-            amount: amount,
-            reason: reason,
-            newBalance: userCurrency.balance
-        });
-        
-    } catch (error) {
-        console.error('❌ Remove currency error:', error);
-        res.status(500).json({
-            success: false,
-            error: 'Ошибка списания валюты'
-        });
-    }
-});
-app.post('/api/currency/add', authenticateToken, async (req, res) => {
-    try {
-        const { targetUser, amount, reason, admin } = req.body;
-        
-        if (req.user.username !== 'admin') {
-            return res.status(403).json({
-                success: false,
-                error: 'Недостаточно прав'
-            });
-        }
-        
-        if (!targetUser || !amount) {
-            return res.status(400).json({
-                success: false,
-                error: 'Пользователь и сумма обязательны'
-            });
-        }
-
-        const userCurrency = initUserCurrency(targetUser);
-        userCurrency.balance += amount;
-        
-        userCurrency.transactionHistory.unshift({
-            type: 'admin_add',
-            amount: amount,
-            description: reason || 'Административное начисление',
-            timestamp: new Date().toISOString(),
-            admin: admin
-        });
-        
-        await saveCurrencyData();
-
-        console.log(`Admin ${admin} added ${amount} currency to ${targetUser}. Reason: ${reason}`);
-        
-        res.json({
-            success: true,
-            message: `Добавлено ${amount} монет пользователю ${targetUser}`,
-            targetUser: targetUser,
-            amount: amount,
-            reason: reason,
-            newBalance: userCurrency.balance
-        });
-        
-    } catch (error) {
-        console.error('❌ Add currency error:', error);
-        res.status(500).json({
-            success: false,
-            error: 'Ошибка добавления валюты'
-        });
-    }
-});
-
-app.post('/api/currency/remove', authenticateToken, async (req, res) => {
-    try {
-        const { targetUser, amount, reason, admin } = req.body;
-        
-        if (req.user.username !== 'admin') {
-            return res.status(403).json({
-                success: false,
-                error: 'Недостаточно прав'
-            });
-        }
-        
-        if (!targetUser || !amount) {
-            return res.status(400).json({
-                success: false,
-                error: 'Пользователь и сумма обязательны'
-            });
-        }
-        
-        const userCurrency = initUserCurrency(targetUser);
-        
-        if (userCurrency.balance < amount) {
-            return res.status(400).json({
-                success: false,
-                error: 'Недостаточно средств у пользователя'
-            });
-        }
-        
-        userCurrency.balance -= amount;
-        
-        userCurrency.transactionHistory.unshift({
-            type: 'admin_remove',
-            amount: -amount,
-            description: reason || 'Административное списание',
-            timestamp: new Date().toISOString(),
-            admin: admin
-        });
-        
-        await saveCurrencyData();
-
-        console.log(`Admin ${admin} removed ${amount} currency from ${targetUser}. Reason: ${reason}`);
-        
-        res.json({
-            success: true,
-            message: `Списано ${amount} монет у пользователя ${targetUser}`,
-            targetUser: targetUser,
-            amount: amount,
-            reason: reason,
-            newBalance: userCurrency.balance
-        });
-        
-    } catch (error) {
-        console.error('❌ Remove currency error:', error);
-        res.status(500).json({
-            success: false,
-            error: 'Ошибка списания валюты'
-        });
-    }
-});
-
-app.post('/api/admin/send-notification', authenticateToken, async (req, res) => {
-    try {
-        if (req.user.username !== 'admin') {
-            return res.status(403).json({ error: 'Требуются права администратора' });
-        }
-
-        const { title, message, type, targetUser, messageType, sender } = req.body;
-        
-        if (!message) {
-            return res.status(400).json({ error: 'Сообщение обязательно' });
-        }
-
-        const notificationData = {
-            id: 'notif_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
-            title: title || 'Системное уведомление',
-            message: message,
-            type: messageType || 'info',
-            sender: sender || 'Администратор',
-            target: type || 'all',
-            targetUser: targetUser || null,
-            timestamp: new Date().toLocaleTimeString(),
-            date: new Date().toISOString(),
-            isSystem: true
-        };
-
-        systemNotifications.push(notificationData);
-        
-        if (systemNotifications.length > 1000) {
-            systemNotifications = systemNotifications.slice(-500);
-        }
-
-        if (notificationData.target === 'all') {
-            io.emit('system_notification', notificationData);
-        } else if (notificationData.target === 'user' && notificationData.targetUser) {
-            const targetSocketId = userSockets.get(notificationData.targetUser);
-            if (targetSocketId) {
-                io.to(targetSocketId).emit('system_notification', notificationData);
+            currency: {
+                balance: userCurrency.balance,
+                streak: userCurrency.dailyStreak,
+                lastDailyReward: userCurrency.lastDailyReward,
+                transactionHistory: userCurrency.transactionHistory.slice(0, 20), // Последние 20 транзакций
+                canClaimDaily,
+                nextDailyReward
             }
-        }
-
-        io.emit('notifications_updated');
-
-        console.log(`✅ Admin notification sent: ${notificationData.title}`);
-        
-        res.json({ 
-            success: true,
-            message: 'Уведомление отправлено'
         });
         
     } catch (error) {
-        console.error('❌ Admin notification error:', error);
-        res.status(500).json({ error: 'Ошибка отправки уведомления: ' + error.message });
+        console.error('❌ Get currency error:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Ошибка получения информации о валюте'
+        });
     }
 });
 
-app.get('/api/user/:username/gifts', authenticateToken, async (req, res) => {
-    try {
-        const { username } = req.params;
-        
-        if (req.user.username !== username && req.user.username !== 'admin') {
-            return res.status(403).json({ error: 'Доступ запрещен' });
-        }
-
-        const userGifts = getUserGifts(username);
-        res.json(userGifts);
-        
-    } catch (error) {
-        console.error('❌ User gifts error:', error);
-        res.status(500).json({ error: 'Ошибка загрузки подарков' });
-    }
-});
-
+/**
+ * API: Отправка подарка
+ */
 app.post('/api/gifts/send', authenticateToken, async (req, res) => {
     try {
-        const { sender, receiver, giftId, giftName, giftPrice, giftImage } = req.body;
+        const { receiver, giftId, giftName, giftPrice, giftImage, message = '' } = req.body;
+        const sender = req.user.username;
         
-        if (req.user.username !== sender) {
-            return res.status(403).json({
+        if (!receiver || !giftId || !giftName || giftPrice === undefined) {
+            return res.status(400).json({
                 success: false,
-                error: 'Доступ запрещен'
+                error: 'Необходимо указать получателя и информацию о подарке'
             });
         }
-
-        const receiverUser = users.find(u => u.username === receiver);
-        if (!receiverUser) {
+        
+        // Проверка существования получателя
+        if (!userExists(receiver)) {
             return res.status(404).json({
                 success: false,
-                error: 'Пользователь не найден'
+                error: 'Получатель не найден'
             });
         }
-
+        
+        // Нельзя отправлять подарок самому себе
+        if (sender === receiver) {
+            return res.status(400).json({
+                success: false,
+                error: 'Нельзя отправлять подарок самому себе'
+            });
+        }
+        
+        // Проверка баланса отправителя
         const senderCurrency = initUserCurrency(sender);
         if (senderCurrency.balance < giftPrice) {
             return res.status(400).json({
                 success: false,
-                error: 'Недостаточно монет для покупки подарка'
+                error: 'Недостаточно монет для отправки подарка'
             });
         }
-
-        const senderGifts = initUserGifts(sender);
-        const receiverGifts = initUserGifts(receiver);
-
-        const gift = {
-            id: `gift_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-            giftId: giftId,
-            name: giftName,
-            price: giftPrice,
-            image: giftImage,
-            sender: sender,
-            receiver: receiver,
-            sentAt: new Date().toISOString(),
-            isRead: false
-        };
-
-        receiverGifts.received.unshift(gift);
         
-        senderGifts.sent.unshift({
-            ...gift,
-            received: true
-        });
-
+        // Проверяем, не отправлял ли уже подарок сегодня этому пользователю
+        const today = new Date().toDateString();
+        const alreadySentToday = giftsData[sender]?.sent?.some(gift => 
+            gift.receiver === receiver && 
+            new Date(gift.sentAt).toDateString() === today
+        );
+        
+        if (alreadySentToday) {
+            return res.status(400).json({
+                success: false,
+                error: 'Вы уже отправляли подарок этому пользователю сегодня'
+            });
+        }
+        
+        // Списываем монеты у отправителя
         senderCurrency.balance -= giftPrice;
-
         senderCurrency.transactionHistory.unshift({
             type: 'gift_sent',
             amount: -giftPrice,
-            description: `Подарок для ${receiver}: ${giftName}`,
-            timestamp: new Date().toISOString()
+            description: `Подарок для ${receiver}: ${giftName}${message ? ` (${message})` : ''}`,
+            timestamp: new Date().toISOString(),
+            receiver: receiver,
+            giftId: giftId
         });
-
+        
+        // Создаем запись о подарке
+        const gift = {
+            id: `gift_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+            giftId,
+            name: giftName,
+            price: giftPrice,
+            image: giftImage || '/static/default-gift.png',
+            sender,
+            receiver,
+            message: message || '',
+            sentAt: new Date().toISOString(),
+            isRead: false,
+            isDelivered: false
+        };
+        
+        // Добавляем подарок в данные отправителя и получателя
+        const senderGifts = initUserGifts(sender);
+        const receiverGifts = initUserGifts(receiver);
+        
+        senderGifts.sent.unshift(gift);
+        receiverGifts.received.unshift(gift);
+        
+        // Дарим бонус получателю (10% от стоимости подарка)
         const receiverBonus = Math.floor(giftPrice * 0.1);
         const receiverCurrency = initUserCurrency(receiver);
         receiverCurrency.balance += receiverBonus;
-
         receiverCurrency.transactionHistory.unshift({
             type: 'gift_received',
             amount: receiverBonus,
             description: `Бонус за подарок от ${sender}: ${giftName}`,
-            timestamp: new Date().toISOString()
+            timestamp: new Date().toISOString(),
+            sender: sender,
+            giftId: giftId
         });
-
-        await saveGiftsData();
-        await saveCurrencyData();
-
+        
+        // Сохраняем данные
+        await Promise.all([
+            saveCurrencyData(),
+            saveGiftsData()
+        ]);
+        
+        // Уведомляем получателя
         const receiverSocketId = userSockets.get(receiver);
         if (receiverSocketId) {
             io.to(receiverSocketId).emit('gift_received', {
-                gift: gift,
+                gift,
                 bonus: receiverBonus,
-                newBalance: receiverCurrency.balance
+                from: sender,
+                timestamp: new Date().toISOString()
             });
         }
-
+        
+        // Уведомляем отправителя об успешной отправке
         const senderSocketId = userSockets.get(sender);
         if (senderSocketId) {
             io.to(senderSocketId).emit('gift_sent_success', {
-                gift: gift,
+                gift,
                 newBalance: senderCurrency.balance
             });
         }
-
-        console.log(`🎁 Gift sent: ${sender} -> ${receiver} (${giftName})`);
-
+        
         res.json({
             success: true,
             message: `Подарок "${giftName}" успешно отправлен пользователю ${receiver}!`,
-            gift: gift,
-            senderNewBalance: senderCurrency.balance,
+            gift: {
+                ...gift,
+                bonusGiven: receiverBonus
+            },
+            senderBalance: senderCurrency.balance,
             receiverBonus: receiverBonus
         });
-
+        
+        console.log(`🎁 Gift sent: ${sender} -> ${receiver} (${giftName}, ${giftPrice} coins)`);
+        
     } catch (error) {
-        console.error('❌ Gift send error:', error);
+        console.error('❌ Send gift error:', error);
         res.status(500).json({
             success: false,
             error: 'Ошибка отправки подарка'
@@ -2334,770 +2744,1700 @@ app.post('/api/gifts/send', authenticateToken, async (req, res) => {
     }
 });
 
-app.post('/api/gifts/mark-read', authenticateToken, async (req, res) => {
+/**
+ * API: Получение подарков пользователя
+ */
+app.get('/api/gifts', authenticateToken, (req, res) => {
     try {
-        const { username, giftId } = req.body;
+        const username = req.user.username;
+        const { type = 'received', limit = 20, offset = 0 } = req.query;
         
-        if (req.user.username !== username) {
-            return res.status(403).json({ error: 'Доступ запрещен' });
-        }
-
         const userGifts = getUserGifts(username);
-        const gift = userGifts.received.find(g => g.id === giftId);
+        let gifts = [];
         
-        if (gift) {
-            gift.isRead = true;
-            await saveGiftsData();
-        }
-
-        res.json({ success: true });
-        
-    } catch (error) {
-        console.error('❌ Mark gift read error:', error);
-        res.status(500).json({ error: 'Ошибка обновления статуса подарка' });
-    }
-});
-
-app.get('/api/mega/sync', authenticateToken, async (req, res) => {
-    try {
-        if (req.user.username !== 'admin') {
-            return res.status(403).json({ error: 'Требуются права администратора' });
-        }
-
-        const result = await megaStorage.syncToMega(dataDir);
-        res.json(result);
-        
-    } catch (error) {
-        console.error('❌ MEGA sync error:', error);
-        res.status(500).json({ error: 'Ошибка синхронизации с MEGA' });
-    }
-});
-
-app.get('/api/mega/backup', authenticateToken, async (req, res) => {
-    try {
-        if (req.user.username !== 'admin') {
-            return res.status(403).json({ error: 'Требуются права администратора' });
-        }
-
-        const backupName = req.query.name || null;
-        const result = await megaStorage.backupData(dataDir, backupName);
-        
-        if (result) {
-            res.json({ 
-                success: true, 
-                message: 'Backup created successfully' 
-            });
-        } else {
-            res.status(500).json({ error: 'Failed to create backup' });
+        if (type === 'received') {
+            gifts = userGifts.received || [];
+        } else if (type === 'sent') {
+            gifts = userGifts.sent || [];
+        } else if (type === 'unread') {
+            gifts = (userGifts.received || []).filter(gift => !gift.isRead);
         }
         
-    } catch (error) {
-        console.error('❌ MEGA backup error:', error);
-        res.status(500).json({ error: 'Ошибка создания бэкапа' });
-    }
-});
-
-app.get('/api/mega/restore', authenticateToken, async (req, res) => {
-    try {
-        if (req.user.username !== 'admin') {
-            return res.status(403).json({ error: 'Требуются права администратора' });
-        }
-
-        const { backupName } = req.query;
-        if (!backupName) {
-            return res.status(400).json({ error: 'Имя бэкапа обязательно' });
-        }
-
-        const result = await megaStorage.restoreFromBackup(backupName, dataDir);
+        // Сортировка по времени (новые первые)
+        gifts.sort((a, b) => new Date(b.sentAt) - new Date(a.sentAt));
         
-        if (result) {
-            await loadUsers();
-            await loadMessages();
-            await loadGroups();
-            await loadCurrencyData();
-            await loadGiftsData();
-            
-            res.json({ 
-                success: true, 
-                message: 'Data restored successfully' 
-            });
-        } else {
-            res.status(500).json({ error: 'Failed to restore from backup' });
+        // Пагинация
+        const paginatedGifts = gifts.slice(
+            parseInt(offset),
+            parseInt(offset) + parseInt(limit)
+        );
+        
+        // Помечаем полученные подарки как прочитанные
+        if (type === 'received' || type === 'unread') {
+            const unreadGifts = paginatedGifts.filter(gift => !gift.isRead);
+            if (unreadGifts.length > 0) {
+                unreadGifts.forEach(gift => {
+                    gift.isRead = true;
+                    gift.readAt = new Date().toISOString();
+                });
+                
+                // Сохраняем асинхронно
+                saveGiftsData().catch(console.error);
+            }
         }
-        
-    } catch (error) {
-        console.error('❌ MEGA restore error:', error);
-        res.status(500).json({ error: 'Ошибка восстановления из бэкапа' });
-    }
-});
-
-app.get('/api/mega/force-sync', authenticateToken, async (req, res) => {
-    try {
-        if (req.user.username !== 'admin') {
-            return res.status(403).json({ error: 'Требуются права администратора' });
-        }
-
-        console.log('🔄 Force syncing all data to MEGA...');
-        
-        await saveUsers();
-        await saveMessages();
-        await saveGroups();
-        await saveCurrencyData();
-        await saveGiftsData();
-        
-        const result = await megaStorage.syncToMega(dataDir);
         
         res.json({
             success: true,
-            message: 'Force sync completed',
-            result: result
-        });
-        
-    } catch (error) {
-        console.error('❌ Force sync error:', error);
-        res.status(500).json({ error: 'Ошибка принудительной синхронизации' });
-    }
-});
-
-app.get('/api/storage/info', authenticateToken, async (req, res) => {
-    try {
-        const megaInfo = megaStorage ? await megaStorage.getStorageInfo() : null;
-        const telegramInfo = telegramStorage ? await telegramStorage.getStorageInfo() : null;
-        
-        res.json({
-            mega: megaInfo,
-            telegram: telegramInfo,
-            local: {
-                users: users.length,
-                messages: messages.length,
-                groups: groups.length,
-                currency_users: Object.keys(currencyData).length,
-                gifts_users: Object.keys(giftsData).length
+            gifts: paginatedGifts,
+            pagination: {
+                total: gifts.length,
+                limit: parseInt(limit),
+                offset: parseInt(offset),
+                hasMore: parseInt(offset) + parseInt(limit) < gifts.length
+            },
+            statistics: {
+                totalReceived: (userGifts.received || []).length,
+                totalSent: (userGifts.sent || []).length,
+                unreadCount: (userGifts.received || []).filter(gift => !gift.isRead).length
             }
         });
         
     } catch (error) {
-        console.error('❌ Storage info error:', error);
-        res.status(500).json({ error: 'Failed to get storage info' });
+        console.error('❌ Get gifts error:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Ошибка получения подарков'
+        });
     }
 });
 
-app.post('/api/admin/cleanup', authenticateToken, async (req, res) => {
+/**
+ * API: Получение доступных подарков
+ */
+app.get('/api/gifts/shop', authenticateToken, (req, res) => {
     try {
-        if (req.user.username !== 'admin') {
-            return res.status(403).json({ error: 'Требуются права администратора' });
-        }
+        // Список доступных подарков
+        const availableGifts = [
+            {
+                id: 'gift_rose',
+                name: 'Роза',
+                price: 10,
+                image: '/static/gifts/rose.png',
+                description: 'Красная роза как символ любви и уважения',
+                category: 'flowers'
+            },
+            {
+                id: 'gift_chocolate',
+                name: 'Шоколад',
+                price: 15,
+                image: '/static/gifts/chocolate.png',
+                description: 'Сладкий подарок для хорошего настроения',
+                category: 'food'
+            },
+            {
+                id: 'gift_crown',
+                name: 'Корона',
+                price: 50,
+                image: '/static/gifts/crown.png',
+                description: 'Корона для короля или королевы чата',
+                category: 'premium'
+            },
+            {
+                id: 'gift_star',
+                name: 'Звезда',
+                price: 30,
+                image: '/static/gifts/star.png',
+                description: 'Сияющая звезда для особенных людей',
+                category: 'premium'
+            },
+            {
+                id: 'gift_heart',
+                name: 'Сердце',
+                price: 20,
+                image: '/static/gifts/heart.png',
+                description: 'Сердечко для выражения симпатии',
+                category: 'emotions'
+            },
+            {
+                id: 'gift_coffee',
+                name: 'Кофе',
+                price: 12,
+                image: '/static/gifts/coffee.png',
+                description: 'Чашечка кофе для бодрости',
+                category: 'food'
+            },
+            {
+                id: 'gift_diamond',
+                name: 'Алмаз',
+                price: 100,
+                image: '/static/gifts/diamond.png',
+                description: 'Драгоценный алмаз для самых важных людей',
+                category: 'premium'
+            },
+            {
+                id: 'gift_music',
+                name: 'Музыка',
+                price: 25,
+                image: '/static/gifts/music.png',
+                description: 'Музыкальная нота для меломанов',
+                category: 'hobbies'
+            },
+            {
+                id: 'gift_game',
+                name: 'Игра',
+                price: 40,
+                image: '/static/gifts/game.png',
+                description: 'Игровой контроллер для геймеров',
+                category: 'hobbies'
+            },
+            {
+                id: 'gift_book',
+                name: 'Книга',
+                price: 18,
+                image: '/static/gifts/book.png',
+                description: 'Книга знаний для любознательных',
+                category: 'hobbies'
+            }
+        ];
+        
+        // Группировка по категориям
+        const giftsByCategory = {};
+        availableGifts.forEach(gift => {
+            if (!giftsByCategory[gift.category]) {
+                giftsByCategory[gift.category] = [];
+            }
+            giftsByCategory[gift.category].push(gift);
+        });
+        
+        res.json({
+            success: true,
+            gifts: availableGifts,
+            byCategory: giftsByCategory,
+            categories: [
+                { id: 'flowers', name: 'Цветы', icon: '🌹' },
+                { id: 'food', name: 'Еда', icon: '🍫' },
+                { id: 'premium', name: 'Премиум', icon: '👑' },
+                { id: 'emotions', name: 'Эмоции', icon: '❤️' },
+                { id: 'hobbies', name: 'Хобби', icon: '🎮' }
+            ]
+        });
+        
+    } catch (error) {
+        console.error('❌ Get gifts shop error:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Ошибка получения магазина подарков'
+        });
+    }
+});
 
-        const result = {
-            uploads: await cleanupOldUploads(),
-            mega: megaStorage ? await megaStorage.cleanupOldBackups() : null
+/**
+ * API: Получение статистики подарков
+ */
+app.get('/api/gifts/stats', authenticateToken, (req, res) => {
+    try {
+        const username = req.user.username;
+        
+        const allGifts = [];
+        for (const user in giftsData) {
+            if (giftsData[user].received) {
+                allGifts.push(...giftsData[user].received.map(gift => ({ ...gift, recipient: user })));
+            }
+        }
+        
+        // Самые популярные подарки
+        const giftCounts = {};
+        allGifts.forEach(gift => {
+            if (!giftCounts[gift.giftId]) {
+                giftCounts[gift.giftId] = {
+                    giftId: gift.giftId,
+                    name: gift.name,
+                    count: 0,
+                    totalSpent: 0
+                };
+            }
+            giftCounts[gift.giftId].count++;
+            giftCounts[gift.giftId].totalSpent += gift.price;
+        });
+        
+        const popularGifts = Object.values(giftCounts)
+            .sort((a, b) => b.count - a.count)
+            .slice(0, 10);
+        
+        // Самые щедрые отправители
+        const senderStats = {};
+        allGifts.forEach(gift => {
+            if (!senderStats[gift.sender]) {
+                senderStats[gift.sender] = {
+                    username: gift.sender,
+                    sentCount: 0,
+                    totalSpent: 0
+                };
+            }
+            senderStats[gift.sender].sentCount++;
+            senderStats[gift.sender].totalSpent += gift.price;
+        });
+        
+        const topSenders = Object.values(senderStats)
+            .sort((a, b) => b.totalSpent - a.totalSpent)
+            .slice(0, 10);
+        
+        // Статистика по пользователю
+        const userGifts = getUserGifts(username);
+        const userStats = {
+            sentCount: userGifts.sent?.length || 0,
+            receivedCount: userGifts.received?.length || 0,
+            totalSpent: userGifts.sent?.reduce((sum, gift) => sum + gift.price, 0) || 0,
+            totalReceived: userGifts.received?.reduce((sum, gift) => sum + gift.price, 0) || 0
         };
         
         res.json({
             success: true,
-            message: 'Cleanup completed',
-            result: result
+            globalStats: {
+                totalGifts: allGifts.length,
+                totalUsers: Object.keys(giftsData).length,
+                totalSpent: allGifts.reduce((sum, gift) => sum + gift.price, 0)
+            },
+            popularGifts,
+            topSenders,
+            userStats
         });
         
     } catch (error) {
-        console.error('❌ Cleanup error:', error);
-        res.status(500).json({ error: 'Ошибка очистки' });
+        console.error('❌ Get gifts stats error:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Ошибка получения статистики подарков'
+        });
     }
 });
 
+/**
+ * API: Административные функции - добавление валюты
+ */
+app.post('/api/admin/currency/add', authenticateAdmin, async (req, res) => {
+    try {
+        const { username, amount, reason } = req.body;
+        const admin = req.user.username;
+        
+        if (!username || !amount || isNaN(amount) || amount <= 0) {
+            return res.status(400).json({
+                success: false,
+                error: 'Укажите пользователя и корректную сумму'
+            });
+        }
+        
+        if (!userExists(username)) {
+            return res.status(404).json({
+                success: false,
+                error: 'Пользователь не найден'
+            });
+        }
+        
+        const userCurrency = initUserCurrency(username);
+        userCurrency.balance += parseFloat(amount);
+        
+        userCurrency.transactionHistory.unshift({
+            type: 'admin_add',
+            amount: parseFloat(amount),
+            description: reason || 'Административное начисление',
+            timestamp: new Date().toISOString(),
+            admin: admin
+        });
+        
+        await saveCurrencyData();
+        
+        res.json({
+            success: true,
+            message: `Начислено ${amount} монет пользователю ${username}`,
+            user: username,
+            amount: parseFloat(amount),
+            newBalance: userCurrency.balance,
+            reason: reason || 'Административное начисление'
+        });
+        
+        console.log(`🔧 Admin ${admin} added ${amount} currency to ${username}. Reason: ${reason}`);
+        
+    } catch (error) {
+        console.error('❌ Admin add currency error:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Ошибка начисления валюты'
+        });
+    }
+});
+
+/**
+ * API: Административные функции - удаление валюты
+ */
+app.post('/api/admin/currency/remove', authenticateAdmin, async (req, res) => {
+    try {
+        const { username, amount, reason } = req.body;
+        const admin = req.user.username;
+        
+        if (!username || !amount || isNaN(amount) || amount <= 0) {
+            return res.status(400).json({
+                success: false,
+                error: 'Укажите пользователя и корректную сумму'
+            });
+        }
+        
+        if (!userExists(username)) {
+            return res.status(404).json({
+                success: false,
+                error: 'Пользователь не найден'
+            });
+        }
+        
+        const userCurrency = initUserCurrency(username);
+        if (userCurrency.balance < amount) {
+            return res.status(400).json({
+                success: false,
+                error: 'У пользователя недостаточно монет'
+            });
+        }
+        
+        userCurrency.balance -= parseFloat(amount);
+        
+        userCurrency.transactionHistory.unshift({
+            type: 'admin_remove',
+            amount: -parseFloat(amount),
+            description: reason || 'Административное списание',
+            timestamp: new Date().toISOString(),
+            admin: admin
+        });
+        
+        await saveCurrencyData();
+        
+        res.json({
+            success: true,
+            message: `Списано ${amount} монет у пользователя ${username}`,
+            user: username,
+            amount: parseFloat(amount),
+            newBalance: userCurrency.balance,
+            reason: reason || 'Административное списание'
+        });
+        
+        console.log(`🔧 Admin ${admin} removed ${amount} currency from ${username}. Reason: ${reason}`);
+        
+    } catch (error) {
+        console.error('❌ Admin remove currency error:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Ошибка списания валюты'
+        });
+    }
+});
+
+/**
+ * API: Административные функции - отправка уведомления
+ */
+app.post('/api/admin/notify', authenticateAdmin, async (req, res) => {
+    try {
+        const { title, message, type = 'info', target = 'all', targetUser = null } = req.body;
+        const admin = req.user.username;
+        
+        if (!message) {
+            return res.status(400).json({
+                success: false,
+                error: 'Сообщение обязательно'
+            });
+        }
+        
+        const notification = {
+            id: `notif_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+            title: title || 'Системное уведомление',
+            message,
+            type,
+            sender: admin,
+            target,
+            targetUser,
+            timestamp: new Date().toISOString(),
+            isSystem: true
+        };
+        
+        systemNotifications.unshift(notification);
+        
+        // Ограничиваем количество уведомлений
+        if (systemNotifications.length > 1000) {
+            systemNotifications = systemNotifications.slice(0, 500);
+        }
+        
+        // Отправляем уведомление через WebSocket
+        if (target === 'all') {
+            io.emit('system_notification', notification);
+        } else if (target === 'user' && targetUser) {
+            const targetSocketId = userSockets.get(targetUser);
+            if (targetSocketId) {
+                io.to(targetSocketId).emit('system_notification', notification);
+            }
+        }
+        
+        res.json({
+            success: true,
+            message: 'Уведомление отправлено',
+            notification
+        });
+        
+        console.log(`🔧 Admin ${admin} sent notification: ${title || message}`);
+        
+    } catch (error) {
+        console.error('❌ Admin notify error:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Ошибка отправки уведомления'
+        });
+    }
+});
+
+/**
+ * API: Административные функции - получение статистики сервера
+ */
+app.get('/api/admin/stats', authenticateAdmin, (req, res) => {
+    try {
+        const stats = {
+            users: {
+                total: users.length,
+                online: onlineUsers.size,
+                registeredToday: users.filter(user => {
+                    const regDate = new Date(user.createdAt);
+                    const today = new Date();
+                    return regDate.toDateString() === today.toDateString();
+                }).length,
+                activeToday: Array.from(onlineUsers).filter(username => {
+                    const user = findUser(username);
+                    return user && user.lastLogin && 
+                        new Date(user.lastLogin).toDateString() === new Date().toDateString();
+                }).length
+            },
+            messages: {
+                total: messages.length,
+                today: messages.filter(msg => 
+                    new Date(msg.date).toDateString() === new Date().toDateString()
+                ).length,
+                private: messages.filter(msg => msg.type === 'private').length,
+                group: messages.filter(msg => msg.type === 'group').length,
+                withFiles: messages.filter(msg => msg.fileData).length,
+                voice: messages.filter(msg => msg.messageType === 'voice').length
+            },
+            groups: {
+                total: groups.length,
+                public: groups.filter(g => g.isPublic).length,
+                private: groups.filter(g => !g.isPublic).length,
+                averageMembers: groups.length > 0 
+                    ? groups.reduce((sum, g) => sum + (g.members?.length || 0), 0) / groups.length 
+                    : 0
+            },
+            currency: {
+                totalUsers: Object.keys(currencyData).length,
+                totalBalance: Object.values(currencyData).reduce((sum, curr) => sum + curr.balance, 0),
+                averageBalance: Object.keys(currencyData).length > 0
+                    ? Object.values(currencyData).reduce((sum, curr) => sum + curr.balance, 0) / Object.keys(currencyData).length
+                    : 0,
+                dailyRewards: Object.values(currencyData).filter(curr => 
+                    curr.lastDailyReward && 
+                    new Date(curr.lastDailyReward).toDateString() === new Date().toDateString()
+                ).length
+            },
+            gifts: {
+                totalSent: Object.values(giftsData).reduce((sum, g) => sum + (g.sent?.length || 0), 0),
+                totalReceived: Object.values(giftsData).reduce((sum, g) => sum + (g.received?.length || 0), 0),
+                totalSpent: Object.values(giftsData).reduce((sum, g) => 
+                    sum + (g.sent?.reduce((s, gift) => s + gift.price, 0) || 0), 0
+                ),
+                uniqueSenders: new Set(
+                    Object.values(giftsData)
+                        .flatMap(g => g.sent?.map(gift => gift.sender) || [])
+                ).size
+            },
+            system: {
+                uptime: process.uptime(),
+                memory: process.memoryUsage(),
+                platform: process.platform,
+                nodeVersion: process.version,
+                connections: io.engine.clientsCount,
+                notifications: systemNotifications.length
+            }
+        };
+        
+        res.json({
+            success: true,
+            stats,
+            timestamp: new Date().toISOString()
+        });
+        
+    } catch (error) {
+        console.error('❌ Admin stats error:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Ошибка получения статистики'
+        });
+    }
+});
+
+/**
+ * API: Административные функции - очистка старых данных
+ */
+app.post('/api/admin/cleanup', authenticateAdmin, async (req, res) => {
+    try {
+        const { days = 30, type = 'all' } = req.body;
+        const cutoffDate = new Date();
+        cutoffDate.setDate(cutoffDate.getDate() - parseInt(days));
+        
+        let cleaned = {
+            messages: 0,
+            notifications: 0,
+            uploads: 0
+        };
+        
+        if (type === 'all' || type === 'messages') {
+            const initialCount = messages.length;
+            messages = messages.filter(msg => new Date(msg.date) > cutoffDate);
+            cleaned.messages = initialCount - messages.length;
+            await saveMessages();
+        }
+        
+        if (type === 'all' || type === 'notifications') {
+            const initialCount = systemNotifications.length;
+            systemNotifications = systemNotifications.filter(notif => 
+                new Date(notif.timestamp) > cutoffDate
+            );
+            cleaned.notifications = initialCount - systemNotifications.length;
+        }
+        
+        if (type === 'all' || type === 'uploads') {
+            const uploadsResult = await cleanupOldUploads();
+            cleaned.uploads = uploadsResult.deleted;
+        }
+        
+        res.json({
+            success: true,
+            message: `Очистка завершена за последние ${days} дней`,
+            cleaned,
+            cutoffDate: cutoffDate.toISOString()
+        });
+        
+        console.log(`🔧 Admin cleanup: ${cleaned.messages} messages, ${cleaned.notifications} notifications, ${cleaned.uploads} files`);
+        
+    } catch (error) {
+        console.error('❌ Admin cleanup error:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Ошибка очистки данных'
+        });
+    }
+});
+
+/**
+ * API: Получение уведомлений
+ */
+app.get('/api/notifications', authenticateToken, (req, res) => {
+    try {
+        const { limit = 50, unreadOnly = false } = req.query;
+        const username = req.user.username;
+        
+        let userNotifications = systemNotifications;
+        
+        if (unreadOnly === 'true') {
+            // В реальном приложении нужно хранить информацию о прочитанных уведомлениях
+            // Здесь просто возвращаем все системные уведомления
+            userNotifications = systemNotifications;
+        }
+        
+        const notifications = userNotifications
+            .slice(0, parseInt(limit))
+            .map(notif => ({
+                ...notif,
+                isMine: notif.targetUser === username || 
+                       (notif.target === 'user' && notif.targetUser === username) ||
+                       notif.target === 'all'
+            }));
+        
+        res.json({
+            success: true,
+            notifications,
+            total: userNotifications.length,
+            unreadCount: 0 // В реальном приложении нужно считать непрочитанные
+        });
+        
+    } catch (error) {
+        console.error('❌ Get notifications error:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Ошибка получения уведомлений'
+        });
+    }
+});
+
+/**
+ * API: Проверка здоровья сервера
+ */
 app.get('/health', (req, res) => {
-    res.json({ 
-        status: 'OK', 
+    const health = {
+        status: 'healthy',
         timestamp: new Date().toISOString(),
-        users: users.length,
-        messages: messages.length,
-        groups: groups.length,
-        onlineUsers: onlineUsers.size,
-        notifications: systemNotifications.length,
-        currencyUsers: Object.keys(currencyData).length,
-        giftsUsers: Object.keys(giftsData).length,
-        telegram: telegramStorage?.isInitialized ? 'connected' : 'disconnected',
-        mega: megaStorage?.isInitialized ? 'connected' : 'disconnected'
-    });
+        server: {
+            environment: isTauri ? 'tauri' : isProduction ? 'production' : 'development',
+            port: PORT,
+            uptime: process.uptime(),
+            memory: {
+                used: Math.round(process.memoryUsage().heapUsed / 1024 / 1024),
+                total: Math.round(process.memoryUsage().heapTotal / 1024 / 1024)
+            }
+        },
+        data: {
+            users: users.length,
+            messages: messages.length,
+            groups: groups.length,
+            onlineUsers: onlineUsers.size,
+            connections: io.engine.clientsCount,
+            currencyUsers: Object.keys(currencyData).length,
+            giftsUsers: Object.keys(giftsData).length
+        },
+        services: {
+            websocket: 'connected',
+            database: 'connected',
+            uploads: fsSync.existsSync(uploadsDir) ? 'available' : 'unavailable'
+        }
+    };
+    
+    res.json(health);
 });
 
-app.get('/static/default-avatar.png', (req, res) => {
-    res.sendFile(path.join(__dirname, 'frontend', 'static', 'default-avatar.png'));
+/**
+ * API: Получение информации о сервере
+ */
+app.get('/api/server/info', authenticateToken, (req, res) => {
+    try {
+        const info = {
+            name: 'Anonka Messenger',
+            version: '1.0.0',
+            environment: isTauri ? 'Tauri Desktop' : isProduction ? 'Production' : 'Development',
+            uptime: process.uptime(),
+            startedAt: new Date(Date.now() - process.uptime() * 1000).toISOString(),
+            features: {
+                privateMessages: true,
+                groupChats: true,
+                fileSharing: true,
+                voiceMessages: true,
+                videoCalls: true,
+                screenSharing: true,
+                currencySystem: true,
+                gifts: true,
+                notifications: true
+            },
+            limits: {
+                maxFileSize: '100MB',
+                maxMessageLength: 10000,
+                maxGroupMembers: 1000,
+                dailyReward: '50-150 coins',
+                avatarSize: '10MB'
+            },
+            statistics: {
+                totalUsers: users.length,
+                onlineUsers: onlineUsers.size,
+                totalMessages: messages.length,
+                totalGroups: groups.length,
+                activeCalls: activeCalls.size
+            }
+        };
+        
+        res.json({
+            success: true,
+            info
+        });
+        
+    } catch (error) {
+        console.error('❌ Get server info error:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Ошибка получения информации о сервере'
+        });
+    }
 });
 
-app.use((req, res, next) => {
-    console.log(`❌ 404 - Route not found: ${req.method} ${req.url}`);
-    res.status(404).json({ error: 'Route not found' });
-});
-
-app.use((error, req, res, next) => {
-    console.error('❌ Server error:', error);
-    res.status(500).json({ error: 'Internal server error' });
-});
-
-// WebSocket соединения
-io.on('connection', (socket) => {
-    console.log('✅ User connected:', socket.id);
-
-    socket.on('error', (error) => {
-        console.error('❌ Socket error:', error);
-    });
-
-    socket.on('disconnect', (reason) => {
-        console.log('⚠️ User disconnected:', socket.id, 'Reason:', reason);
-        if (socket.username) {
-            userSockets.delete(socket.username);
-            onlineUsers.delete(socket.username);
+/**
+ * API: Получение файла
+ */
+app.get('/uploads/:filename', async (req, res) => {
+    try {
+        const { filename } = req.params;
+        const filePath = path.join(uploadsDir, filename);
+        
+        if (!fsSync.existsSync(filePath)) {
+            return res.status(404).json({
+                success: false,
+                error: 'Файл не найден'
+            });
+        }
+        
+        // Проверяем, является ли файл изображением для создания миниатюры
+        if (req.query.size === 'thumb' && 
+            (filename.endsWith('.jpg') || filename.endsWith('.jpeg') || 
+             filename.endsWith('.png') || filename.endsWith('.gif'))) {
             
-            // Завершаем активные звонки при отключении
-            if (activeCalls.has(socket.username)) {
-                const callData = activeCalls.get(socket.username);
-                activeCalls.delete(socket.username);
+            const thumbFilename = `thumb_${filename}`;
+            const thumbPath = path.join(uploadsDir, thumbFilename);
+            
+            if (!fsSync.existsSync(thumbPath)) {
+                await createThumbnail(filePath, thumbPath, 300);
+            }
+            
+            return res.sendFile(thumbPath);
+        }
+        
+        // Определяем MIME тип
+        const mimeType = getMimeType(filename);
+        res.setHeader('Content-Type', mimeType);
+        
+        // Для изображений и PDF устанавливаем inline, для остальных - attachment
+        if (mimeType.startsWith('image/') || mimeType === 'application/pdf') {
+            res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(filename)}"`);
+        } else {
+            res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(filename)}"`);
+        }
+        
+        res.sendFile(filePath);
+        
+    } catch (error) {
+        console.error('❌ Get file error:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Ошибка получения файла'
+        });
+    }
+});
+
+// WebSocket обработчики
+io.on('connection', (socket) => {
+    console.log('🔌 New connection:', socket.id);
+    
+    // Обработчик ошибок сокета
+    socket.on('error', (error) => {
+        console.error(`❌ Socket error (${socket.id}):`, error);
+    });
+    
+    // Аутентификация пользователя
+    socket.on('authenticate', async (data) => {
+        try {
+            const { token } = data;
+            
+            if (!token) {
+                socket.emit('authentication_error', { error: 'Токен отсутствует' });
+                socket.disconnect();
+                return;
+            }
+            
+            jwt.verify(token, JWT_SECRET, (err, decoded) => {
+                if (err) {
+                    socket.emit('authentication_error', { error: 'Недействительный токен' });
+                    socket.disconnect();
+                    return;
+                }
                 
-                if (callData.participants) {
-                    callData.participants.forEach(participant => {
-                        const participantSocket = userSockets.get(participant);
-                        if (participantSocket) {
-                            io.to(participantSocket).emit('call_ended', {
-                                callId: callData.callId,
-                                reason: 'Участник покинул чат',
-                                endedBy: socket.username
-                            });
-                        }
+                const username = decoded.username;
+                const user = findUser(username);
+                
+                if (!user) {
+                    socket.emit('authentication_error', { error: 'Пользователь не найден' });
+                    socket.disconnect();
+                    return;
+                }
+                
+                // Сохраняем информацию о пользователе в сокете
+                socket.username = username;
+                socket.userId = username;
+                socket.isAdmin = user.isAdmin || false;
+                
+                // Обновляем карту подключений
+                const oldSocketId = userSockets.get(username);
+                if (oldSocketId && oldSocketId !== socket.id) {
+                    // Отключаем старое соединение
+                    const oldSocket = io.sockets.sockets.get(oldSocketId);
+                    if (oldSocket) {
+                        oldSocket.disconnect(true);
+                        console.log(`🔌 Disconnected old socket for ${username}`);
+                    }
+                }
+                
+                userSockets.set(username, socket.id);
+                onlineUsers.add(username);
+                userPresence.set(username, Date.now());
+                
+                // Обновляем статус пользователя в данных
+                user.isOnline = true;
+                user.lastLogin = new Date().toISOString();
+                saveUsers().catch(console.error);
+                
+                // Уведомляем всех о новом онлайн пользователе
+                io.emit('user_online', {
+                    username,
+                    timestamp: new Date().toISOString()
+                });
+                
+                // Отправляем информацию о текущих онлайн пользователях
+                const onlineUsersList = Array.from(onlineUsers).map(u => ({
+                    username: u,
+                    isOnline: true,
+                    lastSeen: findUser(u)?.lastLogin
+                }));
+                
+                socket.emit('authenticated', {
+                    username,
+                    isAdmin: socket.isAdmin,
+                    onlineUsers: onlineUsersList,
+                    serverTime: new Date().toISOString()
+                });
+                
+                console.log(`✅ User authenticated: ${username} (${socket.id})`);
+                
+                // Отправляем непрочитанные сообщения
+                const unreadMessages = messages.filter(msg => 
+                    (msg.type === 'private' && msg.receiver === username && !msg.read) ||
+                    (msg.type === 'group' && msg.groupId && !msg.readBy?.includes(username))
+                );
+                
+                if (unreadMessages.length > 0) {
+                    socket.emit('unread_messages', {
+                        count: unreadMessages.length,
+                        messages: unreadMessages.slice(0, 50)
                     });
+                }
+                
+                // Отправляем непрочитанные подарки
+                const userGifts = getUserGifts(username);
+                const unreadGifts = (userGifts.received || []).filter(gift => !gift.isRead);
+                if (unreadGifts.length > 0) {
+                    socket.emit('unread_gifts', {
+                        count: unreadGifts.length,
+                        gifts: unreadGifts.slice(0, 10)
+                    });
+                }
+                
+            });
+            
+        } catch (error) {
+            console.error('❌ Authentication error:', error);
+            socket.emit('authentication_error', { error: 'Ошибка аутентификации' });
+            socket.disconnect();
+        }
+    });
+    
+    // Обработка приватных сообщений
+    socket.on('private_message', async (data) => {
+        try {
+            if (!socket.username) {
+                socket.emit('error', { error: 'Требуется аутентификация' });
+                return;
+            }
+            
+            const { receiver, message, messageType = 'text', fileData = null } = data;
+            const sender = socket.username;
+            
+            if (!receiver || (!message && !fileData)) {
+                socket.emit('error', { error: 'Получатель и сообщение обязательны' });
+                return;
+            }
+            
+            if (sender === receiver) {
+                socket.emit('error', { error: 'Нельзя отправлять сообщения самому себе' });
+                return;
+            }
+            
+            if (!userExists(receiver)) {
+                socket.emit('error', { error: 'Получатель не найден' });
+                return;
+            }
+            
+            // Создаем объект сообщения
+            const messageObj = {
+                id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+                sender,
+                receiver,
+                message: message || '',
+                messageType,
+                fileData,
+                timestamp: new Date().toLocaleTimeString(),
+                date: new Date().toISOString(),
+                type: 'private',
+                read: false,
+                readAt: null
+            };
+            
+            // Добавляем сообщение
+            messages.push(messageObj);
+            await saveMessages();
+            
+            // Отправляем отправителю
+            socket.emit('private_message_sent', {
+                ...messageObj,
+                status: 'sent'
+            });
+            
+            // Отправляем получателю если онлайн
+            const receiverSocketId = userSockets.get(receiver);
+            if (receiverSocketId) {
+                io.to(receiverSocketId).emit('private_message', messageObj);
+                
+                // Обновляем статус доставки
+                const sentMessage = messages.find(msg => msg.id === messageObj.id);
+                if (sentMessage) {
+                    sentMessage.delivered = true;
+                    sentMessage.deliveredAt = new Date().toISOString();
+                    saveMessages().catch(console.error);
                 }
             }
             
-            // Останавливаем трансляцию экрана при отключении
-            if (screenShares.has(socket.username)) {
-                const screenShareData = screenShares.get(socket.username);
-                screenShares.delete(socket.username);
-                
-                // Уведомляем всех участников о завершении трансляции
-                screenShareData.participants?.forEach(participant => {
-                    const participantSocket = userSockets.get(participant);
-                    if (participantSocket) {
-                        io.to(participantSocket).emit('screen_share_ended', {
-                            sharer: socket.username,
-                            callId: screenShareData.callId
-                        });
-                    }
+            // Уведомляем об обновлении списка бесед
+            io.to(socket.id).emit('conversation_updated', {
+                with: receiver,
+                lastMessage: messageObj
+            });
+            
+            if (receiverSocketId) {
+                io.to(receiverSocketId).emit('conversation_updated', {
+                    with: sender,
+                    lastMessage: messageObj
                 });
             }
             
-            io.emit('user-status-changed', {
-                username: socket.username,
-                isOnline: false
-            });
+            console.log(`📨 Private message: ${sender} -> ${receiver}`);
             
-            console.log(`👋 User ${socket.username} disconnected`);
-        }
-    });
-
-    socket.on('gift_sent', (data) => {
-        const receiverSocketId = userSockets.get(data.receiver);
-        if (receiverSocketId) {
-            io.to(receiverSocketId).emit('gift_received', {
-                sender: data.sender,
-                gift: data.gift,
-                timestamp: data.timestamp
-            });
-        }
-        
-        socket.emit('gift_sent_success', {
-            receiver: data.receiver,
-            gift: data.gift,
-            timestamp: data.timestamp
-        });
-        
-        console.log(`🎁 Gift sent: ${data.sender} -> ${data.receiver} (${data.gift.name})`);
-    });
-
-    socket.on('user authenticated', (username) => {
-        console.log('🔐 User authenticated:', username, 'Socket ID:', socket.id);
-        userSockets.set(username, socket.id);
-        onlineUsers.add(username);
-        socket.username = username;
-        
-        io.emit('user-status-changed', {
-            username: username,
-            isOnline: true
-        });
-        
-        socket.emit('online_users', {
-            users: Array.from(onlineUsers)
-        });
-    });
-
-    socket.on('private message', (data) => {
-        try {
-            const isDuplicate = messages.some(msg => 
-                msg.type === 'private' &&
-                msg.sender === data.sender &&
-                msg.receiver === data.receiver &&
-                msg.message === data.message &&
-                new Date() - new Date(msg.date) < 1000
-            );
-
-            if (isDuplicate) {
-                console.log('⚠️ Duplicate message detected, skipping');
-                return;
-            }
-
-            const messageData = {
-                sender: data.sender,
-                receiver: data.receiver,
-                message: data.message,
-                timestamp: new Date().toLocaleTimeString(),
-                type: 'private',
-                date: new Date().toISOString(),
-                messageType: data.messageType || 'text',
-                fileData: data.fileData || null
-            };
-            
-            messages.push(messageData);
-            saveMessages();
-            
-            const receiverSocketId = userSockets.get(data.receiver);
-            if (receiverSocketId) {
-                io.to(receiverSocketId).emit('private message', messageData);
-            }
-            
-            socket.emit('private message', messageData);
-            
-            io.emit('conversations updated');
-            
-            console.log(`📨 Private message from ${data.sender} to ${data.receiver}`);
         } catch (error) {
             console.error('❌ Private message error:', error);
-            socket.emit('error', { message: 'Failed to send private message' });
+            socket.emit('error', { error: 'Ошибка отправки сообщения' });
         }
     });
-
-    socket.on('group_message', (data) => {
+    
+    // Обработка групповых сообщений
+    socket.on('group_message', async (data) => {
         try {
-            const group = groups.find(g => g.id === data.groupId);
-            if (!group || !group.members.includes(data.sender)) {
-                socket.emit('error', { message: 'Доступ запрещен' });
+            if (!socket.username) {
+                socket.emit('error', { error: 'Требуется аутентификация' });
                 return;
             }
-
-            const messageData = {
-                id: 'msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
-                sender: data.sender,
-                groupId: data.groupId,
-                message: data.message,
+            
+            const { groupId, message, messageType = 'text', fileData = null } = data;
+            const sender = socket.username;
+            
+            if (!groupId || (!message && !fileData)) {
+                socket.emit('error', { error: 'Группа и сообщение обязательны' });
+                return;
+            }
+            
+            const group = groups.find(g => g.id === groupId);
+            if (!group) {
+                socket.emit('error', { error: 'Группа не найдена' });
+                return;
+            }
+            
+            if (!group.members || !group.members.includes(sender)) {
+                socket.emit('error', { error: 'Вы не являетесь участником этой группы' });
+                return;
+            }
+            
+            if (group.settings?.adminOnlyMessages && 
+                (!group.admins || !group.admins.includes(sender))) {
+                socket.emit('error', { error: 'Только администраторы могут отправлять сообщения' });
+                return;
+            }
+            
+            if (!group.settings?.allowMessages) {
+                socket.emit('error', { error: 'Сообщения в этой группе запрещены' });
+                return;
+            }
+            
+            if (messageType === 'file' && !group.settings?.allowFiles) {
+                socket.emit('error', { error: 'Отправка файлов в этой группе запрещена' });
+                return;
+            }
+            
+            if (messageType === 'voice' && !group.settings?.allowVoice) {
+                socket.emit('error', { error: 'Голосовые сообщения в этой группе запрещены' });
+                return;
+            }
+            
+            // Создаем объект сообщения
+            const messageObj = {
+                id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+                sender,
+                groupId,
+                message: message || '',
+                messageType,
+                fileData,
                 timestamp: new Date().toLocaleTimeString(),
-                type: 'group',
                 date: new Date().toISOString(),
-                messageType: data.messageType || 'text',
-                fileData: data.fileData || null
+                type: 'group',
+                readBy: [sender]
             };
             
-            messages.push(messageData);
-            saveMessages();
-
+            // Добавляем сообщение
+            messages.push(messageObj);
+            await saveMessages();
+            
+            // Отправляем отправителю
+            socket.emit('group_message_sent', {
+                ...messageObj,
+                status: 'sent'
+            });
+            
+            // Отправляем всем участникам группы
+            group.members.forEach(member => {
+                if (member !== sender) {
+                    const memberSocketId = userSockets.get(member);
+                    if (memberSocketId) {
+                        io.to(memberSocketId).emit('group_message', messageObj);
+                    }
+                }
+            });
+            
+            // Уведомляем об обновлении группы
             group.members.forEach(member => {
                 const memberSocketId = userSockets.get(member);
                 if (memberSocketId) {
-                    io.to(memberSocketId).emit('group_message', messageData);
+                    io.to(memberSocketId).emit('group_updated', {
+                        groupId,
+                        action: 'new_message',
+                        by: sender,
+                        messageId: messageObj.id,
+                        timestamp: messageObj.date
+                    });
                 }
             });
-
-            io.emit('conversations updated');
             
-            console.log(`📨 Group message in ${group.name} from ${data.sender} to ${group.members.length} members`);
+            console.log(`📢 Group message: ${sender} -> ${group.name} (${group.members.length} members)`);
             
         } catch (error) {
             console.error('❌ Group message error:', error);
-            socket.emit('error', { message: 'Failed to send group message' });
+            socket.emit('error', { error: 'Ошибка отправки сообщения' });
         }
     });
-
-    socket.on('group_created', (data) => {
-        console.log(`👥 Group created event: ${data.group.name}`);
-        data.group.members.forEach(member => {
-            const memberSocketId = userSockets.get(member);
-            if (memberSocketId) {
-                io.to(memberSocketId).emit('group_created', data);
+    
+    // Отметка сообщений как прочитанных
+    socket.on('mark_messages_read', async (data) => {
+        try {
+            if (!socket.username) return;
+            
+            const { messageIds, conversationId, isGroup = false } = data;
+            const username = socket.username;
+            
+            if (!messageIds || !Array.isArray(messageIds)) return;
+            
+            let updatedCount = 0;
+            
+            for (const msgId of messageIds) {
+                const message = messages.find(msg => msg.id === msgId);
+                if (!message) continue;
+                
+                if (isGroup) {
+                    // Групповое сообщение
+                    if (message.type === 'group' && message.groupId === conversationId) {
+                        if (!message.readBy) message.readBy = [];
+                        if (!message.readBy.includes(username)) {
+                            message.readBy.push(username);
+                            updatedCount++;
+                        }
+                    }
+                } else {
+                    // Приватное сообщение
+                    if (message.type === 'private' && 
+                        ((message.sender === conversationId && message.receiver === username) ||
+                         (message.sender === username && message.receiver === conversationId))) {
+                        
+                        if (!message.read) {
+                            message.read = true;
+                            message.readAt = new Date().toISOString();
+                            updatedCount++;
+                            
+                            // Уведомляем отправителя о прочтении
+                            if (message.sender !== username) {
+                                const senderSocketId = userSockets.get(message.sender);
+                                if (senderSocketId) {
+                                    io.to(senderSocketId).emit('message_read', {
+                                        messageId: msgId,
+                                        reader: username,
+                                        readAt: message.readAt
+                                    });
+                                }
+                            }
+                        }
+                    }
+                }
             }
-        });
+            
+            if (updatedCount > 0) {
+                await saveMessages();
+                socket.emit('messages_marked_read', {
+                    count: updatedCount,
+                    messageIds
+                });
+            }
+            
+        } catch (error) {
+            console.error('❌ Mark messages read error:', error);
+        }
     });
-
+    
     // Инициализация звонка
     socket.on('initiate_call', (data) => {
-        console.log(`📞 ${data.caller} звонит ${data.targetUser}`);
-        
-        const targetSocketId = userSockets.get(data.targetUser);
-        if (targetSocketId) {
-            activeCalls.set(data.callId, {
-                callId: data.callId,
-                caller: data.caller,
-                targetUser: data.targetUser,
-                type: data.callType,
-                status: 'ringing',
-                startTime: new Date(),
-                participants: [data.caller, data.targetUser]
-            });
-            
-            io.to(targetSocketId).emit('incoming_call', {
-                callId: data.callId,
-                caller: data.caller,
-                callType: data.callType
-            });
-            
-            socket.emit('call_initiated', {
-                callId: data.callId,
-                targetUser: data.targetUser,
-                status: 'ringing'
-            });
-        } else {
-            socket.emit('call_rejected', {
-                callId: data.callId,
-                reason: 'Пользователь не в сети'
-            });
-        }
-    });
-
-    // Принятие звонка
-    socket.on('accept_call', (data) => {
-        console.log(`✅ ${data.acceptor} принял звонок от ${data.caller}`);
-        
-        const callData = activeCalls.get(data.callId);
-        if (callData) {
-            callData.status = 'active';
-            callData.acceptor = data.acceptor;
-            
-            const callerSocketId = userSockets.get(data.caller);
-            if (callerSocketId) {
-                io.to(callerSocketId).emit('call_accepted', {
-                    callId: data.callId,
-                    acceptor: data.acceptor
-                });
-            }
-        }
-    });
-
-    // Отклонение звонка
-    socket.on('reject_call', (data) => {
-        console.log(`❌ ${data.caller} получил отказ: ${data.reason}`);
-        
-        const callData = activeCalls.get(data.callId);
-        if (callData) {
-            callData.status = 'rejected';
-            callData.endTime = new Date();
-            callData.endReason = data.reason;
-            
-            const callerSocketId = userSockets.get(data.caller);
-            if (callerSocketId) {
-                io.to(callerSocketId).emit('call_rejected', {
-                    callId: data.callId,
-                    reason: data.reason
-                });
-            }
-            
-            activeCalls.delete(data.callId);
-        }
-    });
-
-    // Завершение звонка
-    socket.on('end_call', (data) => {
-        console.log(`📞 Звонок ${data.callId} завершен: ${data.reason}`);
-        
-        const callData = activeCalls.get(data.callId);
-        if (callData) {
-            callData.status = 'ended';
-            callData.endTime = new Date();
-            callData.endReason = data.reason;
-            
-            const callerSocketId = userSockets.get(callData.caller);
-            const targetSocketId = userSockets.get(callData.targetUser);
-            
-            if (callerSocketId) {
-                io.to(callerSocketId).emit('call_ended', {
-                    callId: data.callId,
-                    reason: data.reason,
-                    endedBy: socket.username
-                });
-            }
-            
-            if (targetSocketId) {
-                io.to(targetSocketId).emit('call_ended', {
-                    callId: data.callId,
-                    reason: data.reason,
-                    endedBy: socket.username
-                });
-            }
-            
-            // Удаляем запись о трансляции экрана, если она была
-            if (screenShares.has(socket.username)) {
-                const screenShareData = screenShares.get(socket.username);
-                if (screenShareData.callId === data.callId) {
-                    screenShares.delete(socket.username);
-                }
-            }
-            
-            activeCalls.delete(data.callId);
-        }
-    });
-
-    // WebRTC передача предложения (offer)
-    socket.on('webrtc_offer', (data) => {
-        console.log(`📤 WebRTC offer от ${socket.username} к ${data.targetUser}`);
-        
-        const targetSocketId = userSockets.get(data.targetUser);
-        if (targetSocketId) {
-            io.to(targetSocketId).emit('webrtc_offer', {
-                callId: data.callId,
-                caller: socket.username,
-                offer: data.offer
-            });
-        }
-    });
-
-    // WebRTC передача ответа (answer)
-    socket.on('webrtc_answer', (data) => {
-        console.log(`📤 WebRTC answer от ${socket.username} к ${data.targetUser}`);
-        
-        const targetSocketId = userSockets.get(data.targetUser);
-        if (targetSocketId) {
-            io.to(targetSocketId).emit('webrtc_answer', {
-                callId: data.callId,
-                answer: data.answer
-            });
-        }
-    });
-
-    // WebRTC передача ICE кандидата
-    socket.on('webrtc_ice_candidate', (data) => {
-        const targetSocketId = userSockets.get(data.targetUser);
-        if (targetSocketId) {
-            io.to(targetSocketId).emit('webrtc_ice_candidate', {
-                callId: data.callId,
-                candidate: data.candidate
-            });
-        }
-    });
-
-    // Начало трансляции экрана
-    socket.on('screen_share_started', (data) => {
-        console.log(`🖥️ ${socket.username} начал трансляцию экрана в звонке ${data.callId}`);
-        
-        // Сохраняем информацию о трансляции
-        screenShares.set(socket.username, {
-            callId: data.callId,
-            sharer: socket.username,
-            targetUser: data.targetUser,
-            startTime: new Date(),
-            participants: [socket.username, data.targetUser]
-        });
-        
-        // Получаем информацию о звонке
-        const callData = activeCalls.get(data.callId);
-        if (!callData) {
-            console.error('❌ Call not found for screen share');
-            return;
-        }
-        
-        // Определяем получателя
-        const targetUser = callData.caller === socket.username ? callData.targetUser : callData.caller;
-        
-        // Отправляем уведомление получателю
-        const targetSocketId = userSockets.get(targetUser);
-        if (targetSocketId) {
-            io.to(targetSocketId).emit('screen_share_started', {
-                callId: data.callId,
-                sharer: socket.username,
-                targetUser: targetUser
-            });
-            console.log(`📤 Уведомление о начале трансляции отправлено ${targetUser}`);
-        } else {
-            console.error(`❌ Target user ${targetUser} not found`);
-        }
-    });
-
-    // Завершение трансляции экрана
-    socket.on('screen_share_ended', (data) => {
-        console.log(`🖥️ ${socket.username} завершил трансляцию экрана в звонке ${data.callId}`);
-        
-        // Удаляем информацию о трансляции
-        if (screenShares.has(socket.username)) {
-            const screenShareData = screenShares.get(socket.username);
-            
-            // Получаем информацию о звонке
-            const callData = activeCalls.get(data.callId);
-            if (callData) {
-                // Определяем получателя
-                const targetUser = callData.caller === socket.username ? callData.targetUser : callData.caller;
-                
-                // Отправляем уведомление получателю
-                const targetSocketId = userSockets.get(targetUser);
-                if (targetSocketId) {
-                    io.to(targetSocketId).emit('screen_share_ended', {
-                        callId: data.callId,
-                        sharer: socket.username,
-                        targetUser: targetUser
-                    });
-                    console.log(`📤 Уведомление о завершении трансляции отправлено ${targetUser}`);
-                }
-            }
-            
-            screenShares.delete(socket.username);
-        }
-    });
-
-    socket.on('send_gift', async (data) => {
         try {
-            const { sender, receiver, gift, messageId } = data;
-            
-            const senderCurrency = initUserCurrency(sender);
-            if (senderCurrency.balance < gift.price) {
-                socket.emit('gift_error', {
-                    error: 'Недостаточно монет'
-                });
+            if (!socket.username) {
+                socket.emit('call_error', { error: 'Требуется аутентификация' });
                 return;
             }
             
-            senderCurrency.balance -= gift.price;
+            const { targetUser, callType = 'audio', callId } = data;
+            const caller = socket.username;
+            
+            if (!targetUser || !callId) {
+                socket.emit('call_error', { error: 'Получатель и ID звонка обязательны' });
+                return;
+            }
+            
+            if (caller === targetUser) {
+                socket.emit('call_error', { error: 'Нельзя звонить самому себе' });
+                return;
+            }
+            
+            if (!userExists(targetUser)) {
+                socket.emit('call_error', { error: 'Пользователь не найден' });
+                return;
+            }
+            
+            // Проверяем, не занят ли уже пользователь другим звонком
+            if (activeCalls.has(targetUser)) {
+                const existingCall = activeCalls.get(targetUser);
+                if (existingCall.status === 'active' || existingCall.status === 'ringing') {
+                    socket.emit('call_error', { error: 'Пользователь уже в звонке' });
+                    return;
+                }
+            }
+            
+            // Создаем запись о звонке
+            const call = {
+                callId,
+                caller,
+                targetUser,
+                callType,
+                status: 'ringing',
+                startTime: new Date().toISOString(),
+                participants: [caller],
+                iceCandidates: []
+            };
+            
+            activeCalls.set(caller, call);
+            activeCalls.set(targetUser, call);
+            
+            // Отправляем звонок получателю
+            const targetSocketId = userSockets.get(targetUser);
+            if (targetSocketId) {
+                io.to(targetSocketId).emit('incoming_call', {
+                    callId,
+                    caller,
+                    callType,
+                    timestamp: new Date().toISOString()
+                });
+                
+                socket.emit('call_initiated', {
+                    callId,
+                    targetUser,
+                    status: 'ringing'
+                });
+                
+                console.log(`📞 Call initiated: ${caller} -> ${targetUser} (${callType})`);
+            } else {
+                // Пользователь не в сети
+                activeCalls.delete(caller);
+                activeCalls.delete(targetUser);
+                socket.emit('call_error', { error: 'Пользователь не в сети' });
+            }
+            
+        } catch (error) {
+            console.error('❌ Initiate call error:', error);
+            socket.emit('call_error', { error: 'Ошибка инициализации звонка' });
+        }
+    });
+    
+    // Принятие звонка
+    socket.on('accept_call', (data) => {
+        try {
+            if (!socket.username) return;
+            
+            const { callId } = data;
+            const acceptor = socket.username;
+            
+            const call = activeCalls.get(acceptor);
+            if (!call || call.callId !== callId || call.status !== 'ringing') {
+                socket.emit('call_error', { error: 'Звонок не найден или уже принят' });
+                return;
+            }
+            
+            // Обновляем статус звонка
+            call.status = 'active';
+            call.participants.push(acceptor);
+            call.answerTime = new Date().toISOString();
+            
+            // Уведомляем звонящего
+            const callerSocketId = userSockets.get(call.caller);
+            if (callerSocketId) {
+                io.to(callerSocketId).emit('call_accepted', {
+                    callId,
+                    acceptor,
+                    timestamp: new Date().toISOString()
+                });
+            }
+            
+            console.log(`✅ Call accepted: ${acceptor} accepted call from ${call.caller}`);
+            
+        } catch (error) {
+            console.error('❌ Accept call error:', error);
+            socket.emit('call_error', { error: 'Ошибка принятия звонка' });
+        }
+    });
+    
+    // Отклонение звонка
+    socket.on('reject_call', (data) => {
+        try {
+            if (!socket.username) return;
+            
+            const { callId, reason = 'Отклонено' } = data;
+            const rejector = socket.username;
+            
+            const call = activeCalls.get(rejector);
+            if (!call || call.callId !== callId) return;
+            
+            // Обновляем статус звонка
+            call.status = 'rejected';
+            call.endTime = new Date().toISOString();
+            call.endReason = reason;
+            
+            // Уведомляем другого участника
+            const otherUser = call.caller === rejector ? call.targetUser : call.caller;
+            const otherSocketId = userSockets.get(otherUser);
+            if (otherSocketId) {
+                io.to(otherSocketId).emit('call_rejected', {
+                    callId,
+                    by: rejector,
+                    reason,
+                    timestamp: new Date().toISOString()
+                });
+            }
+            
+            // Удаляем запись о звонке
+            activeCalls.delete(call.caller);
+            activeCalls.delete(call.targetUser);
+            
+            console.log(`❌ Call rejected: ${rejector} rejected call ${callId}`);
+            
+        } catch (error) {
+            console.error('❌ Reject call error:', error);
+        }
+    });
+    
+    // Завершение звонка
+    socket.on('end_call', (data) => {
+        try {
+            if (!socket.username) return;
+            
+            const { callId, reason = 'Завершено' } = data;
+            const ender = socket.username;
+            
+            const call = activeCalls.get(ender);
+            if (!call || call.callId !== callId) return;
+            
+            // Обновляем статус звонка
+            call.status = 'ended';
+            call.endTime = new Date().toISOString();
+            call.endReason = reason;
+            call.endedBy = ender;
+            
+            // Уведомляем всех участников
+            call.participants.forEach(participant => {
+                const participantSocketId = userSockets.get(participant);
+                if (participantSocketId) {
+                    io.to(participantSocketId).emit('call_ended', {
+                        callId,
+                        by: ender,
+                        reason,
+                        duration: call.startTime ? 
+                            (new Date() - new Date(call.startTime)) / 1000 : 0,
+                        timestamp: new Date().toISOString()
+                    });
+                }
+            });
+            
+            // Удаляем запись о звонке
+            activeCalls.delete(call.caller);
+            activeCalls.delete(call.targetUser);
+            
+            // Удаляем запись о трансляции экрана если была
+            if (screenShares.has(ender)) {
+                const screenShare = screenShares.get(ender);
+                if (screenShare.callId === callId) {
+                    screenShares.delete(ender);
+                }
+            }
+            
+            console.log(`📞 Call ended: ${ender} ended call ${callId}`);
+            
+        } catch (error) {
+            console.error('❌ End call error:', error);
+        }
+    });
+    
+    // WebRTC сигналинг: отправка offer
+    socket.on('webrtc_offer', (data) => {
+        try {
+            if (!socket.username) return;
+            
+            const { callId, targetUser, offer } = data;
+            const sender = socket.username;
+            
+            const targetSocketId = userSockets.get(targetUser);
+            if (targetSocketId) {
+                io.to(targetSocketId).emit('webrtc_offer', {
+                    callId,
+                    sender,
+                    offer,
+                    timestamp: new Date().toISOString()
+                });
+            }
+            
+        } catch (error) {
+            console.error('❌ WebRTC offer error:', error);
+        }
+    });
+    
+    // WebRTC сигналинг: отправка answer
+    socket.on('webrtc_answer', (data) => {
+        try {
+            if (!socket.username) return;
+            
+            const { callId, targetUser, answer } = data;
+            const sender = socket.username;
+            
+            const targetSocketId = userSockets.get(targetUser);
+            if (targetSocketId) {
+                io.to(targetSocketId).emit('webrtc_answer', {
+                    callId,
+                    sender,
+                    answer,
+                    timestamp: new Date().toISOString()
+                });
+            }
+            
+        } catch (error) {
+            console.error('❌ WebRTC answer error:', error);
+        }
+    });
+    
+    // WebRTC сигналинг: отправка ICE candidate
+    socket.on('webrtc_ice_candidate', (data) => {
+        try {
+            if (!socket.username) return;
+            
+            const { callId, targetUser, candidate } = data;
+            const sender = socket.username;
+            
+            const targetSocketId = userSockets.get(targetUser);
+            if (targetSocketId) {
+                io.to(targetSocketId).emit('webrtc_ice_candidate', {
+                    callId,
+                    sender,
+                    candidate,
+                    timestamp: new Date().toISOString()
+                });
+            }
+            
+        } catch (error) {
+            console.error('❌ WebRTC ICE candidate error:', error);
+        }
+    });
+    
+    // Начало трансляции экрана
+    socket.on('screen_share_started', (data) => {
+        try {
+            if (!socket.username) return;
+            
+            const { callId, targetUser } = data;
+            const sharer = socket.username;
+            
+            // Сохраняем информацию о трансляции
+            screenShares.set(sharer, {
+                callId,
+                sharer,
+                targetUser,
+                startTime: new Date().toISOString(),
+                participants: [sharer]
+            });
+            
+            // Уведомляем получателя
+            const targetSocketId = userSockets.get(targetUser);
+            if (targetSocketId) {
+                io.to(targetSocketId).emit('screen_share_started', {
+                    callId,
+                    sharer,
+                    timestamp: new Date().toISOString()
+                });
+            }
+            
+            console.log(`🖥️ Screen share started: ${sharer} -> ${targetUser}`);
+            
+        } catch (error) {
+            console.error('❌ Screen share started error:', error);
+        }
+    });
+    
+    // Завершение трансляции экрана
+    socket.on('screen_share_ended', (data) => {
+        try {
+            if (!socket.username) return;
+            
+            const { callId, targetUser } = data;
+            const sharer = socket.username;
+            
+            // Удаляем информацию о трансляции
+            screenShares.delete(sharer);
+            
+            // Уведомляем получателя
+            const targetSocketId = userSockets.get(targetUser);
+            if (targetSocketId) {
+                io.to(targetSocketId).emit('screen_share_ended', {
+                    callId,
+                    sharer,
+                    timestamp: new Date().toISOString()
+                });
+            }
+            
+            console.log(`🖥️ Screen share ended: ${sharer} -> ${targetUser}`);
+            
+        } catch (error) {
+            console.error('❌ Screen share ended error:', error);
+        }
+    });
+    
+    // Отправка подарка через WebSocket
+    socket.on('send_gift', async (data) => {
+        try {
+            if (!socket.username) {
+                socket.emit('gift_error', { error: 'Требуется аутентификация' });
+                return;
+            }
+            
+            const { receiver, giftId, giftName, giftPrice, giftImage, message = '' } = data;
+            const sender = socket.username;
+            
+            // Валидация
+            if (!receiver || !giftId || !giftName || giftPrice === undefined) {
+                socket.emit('gift_error', { error: 'Необходимо указать получателя и информацию о подарке' });
+                return;
+            }
+            
+            if (sender === receiver) {
+                socket.emit('gift_error', { error: 'Нельзя отправлять подарок самому себе' });
+                return;
+            }
+            
+            if (!userExists(receiver)) {
+                socket.emit('gift_error', { error: 'Получатель не найден' });
+                return;
+            }
+            
+            // Проверка баланса
+            const senderCurrency = initUserCurrency(sender);
+            if (senderCurrency.balance < giftPrice) {
+                socket.emit('gift_error', { error: 'Недостаточно монет' });
+                return;
+            }
+            
+            // Создаем подарок
+            const gift = {
+                id: `gift_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+                giftId,
+                name: giftName,
+                price: giftPrice,
+                image: giftImage || '/static/default-gift.png',
+                sender,
+                receiver,
+                message,
+                sentAt: new Date().toISOString(),
+                isRead: false
+            };
+            
+            // Обновляем данные
+            const senderGifts = initUserGifts(sender);
+            const receiverGifts = initUserGifts(receiver);
+            
+            senderGifts.sent.unshift(gift);
+            receiverGifts.received.unshift(gift);
+            
+            senderCurrency.balance -= giftPrice;
             senderCurrency.transactionHistory.unshift({
                 type: 'gift_sent',
-                amount: -gift.price,
-                description: `Подарок для ${receiver}: ${gift.name}`,
+                amount: -giftPrice,
+                description: `Подарок для ${receiver}: ${giftName}`,
                 timestamp: new Date().toISOString()
             });
             
-            await saveCurrencyData();
-            
-            socket.to(receiver).emit('gift_received', {
-                sender,
-                gift,
-                messageId,
-                timestamp: new Date()
+            // Бонус получателю
+            const receiverBonus = Math.floor(giftPrice * 0.1);
+            const receiverCurrency = initUserCurrency(receiver);
+            receiverCurrency.balance += receiverBonus;
+            receiverCurrency.transactionHistory.unshift({
+                type: 'gift_received_bonus',
+                amount: receiverBonus,
+                description: `Бонус за подарок от ${sender}`,
+                timestamp: new Date().toISOString()
             });
             
-            socket.emit('gift_sent', {
-                receiver,
+            await Promise.all([
+                saveGiftsData(),
+                saveCurrencyData()
+            ]);
+            
+            // Уведомляем получателя
+            const receiverSocketId = userSockets.get(receiver);
+            if (receiverSocketId) {
+                io.to(receiverSocketId).emit('gift_received', {
+                    gift,
+                    bonus: receiverBonus,
+                    from: sender,
+                    timestamp: new Date().toISOString()
+                });
+            }
+            
+            // Подтверждаем отправителю
+            socket.emit('gift_sent_success', {
                 gift,
-                messageId,
-                timestamp: new Date()
+                newBalance: senderCurrency.balance,
+                timestamp: new Date().toISOString()
             });
+            
+            console.log(`🎁 Gift sent via WS: ${sender} -> ${receiver} (${giftName})`);
             
         } catch (error) {
-            console.error('Error processing gift:', error);
-            socket.emit('gift_error', {
-                error: 'Ошибка отправки подарка'
-            });
+            console.error('❌ Send gift WS error:', error);
+            socket.emit('gift_error', { error: 'Ошибка отправки подарка' });
         }
     });
-
-    socket.on('system_notification', (data) => {
-        const notificationData = {
-            id: 'notif_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
-            title: data.title || 'Системное уведомление',
-            message: data.message,
-            type: data.type || 'info',
-            sender: data.sender || 'Система',
-            timestamp: new Date().toLocaleTimeString(),
-            date: new Date().toISOString(),
-            isSystem: true
-        };
-
-        systemNotifications.push(notificationData);
-        
-        if (systemNotifications.length > 1000) {
-            systemNotifications = systemNotifications.slice(-500);
-        }
-
-        io.emit('system_notification', notificationData);
-        
-        console.log(`📢 System notification: ${notificationData.title}`);
-    });
-
-    socket.on('user_avatar_updated', (data) => {
-        io.emit('user_avatar_updated', data);
-    });
-
+    
+    // Пинг для поддержания соединения
     socket.on('ping', (cb) => {
         if (typeof cb === 'function') {
             cb('pong');
         }
-    });
-
-    socket.on('get_online_users', (cb) => {
-        if (typeof cb === 'function') {
-            cb(Array.from(onlineUsers));
+        
+        // Обновляем время последней активности
+        if (socket.username) {
+            userPresence.set(socket.username, Date.now());
         }
     });
-
-    socket.on('storage_sync_request', async (data) => {
-        try {
-            if (socket.username === 'admin') {
-                console.log('🔄 Admin requested storage sync');
-                
-                const megaResult = megaStorage ? await megaStorage.syncToMega(dataDir) : null;
-                
-                socket.emit('storage_sync_response', {
-                    success: true,
-                    mega: megaResult,
-                    message: 'Storage sync completed'
-                });
-            }
-        } catch (error) {
-            console.error('❌ Storage sync error:', error);
-            socket.emit('storage_sync_response', {
-                success: false,
-                error: error.message
+    
+    // Получение онлайн пользователей
+    socket.on('get_online_users', (cb) => {
+        if (typeof cb === 'function') {
+            const onlineUsersList = Array.from(onlineUsers).map(username => {
+                const user = findUser(username);
+                return {
+                    username,
+                    avatar: user?.avatar,
+                    isOnline: true,
+                    lastSeen: user?.lastLogin,
+                    bio: user?.bio
+                };
             });
+            
+            cb(onlineUsersList);
+        }
+    });
+    
+    // Обновление активности пользователя
+    socket.on('update_presence', () => {
+        if (socket.username) {
+            userPresence.set(socket.username, Date.now());
+        }
+    });
+    
+    // Отключение пользователя
+    socket.on('disconnect', (reason) => {
+        console.log(`🔌 Disconnected: ${socket.id} (${socket.username || 'anonymous'}) - ${reason}`);
+        
+        if (socket.username) {
+            const username = socket.username;
+            
+            // Удаляем из онлайн пользователей
+            userSockets.delete(username);
+            onlineUsers.delete(username);
+            userPresence.delete(username);
+            
+            // Обновляем статус пользователя в данных
+            const user = findUser(username);
+            if (user) {
+                user.isOnline = false;
+                saveUsers().catch(console.error);
+            }
+            
+            // Уведомляем всех о выходе пользователя
+            io.emit('user_offline', {
+                username,
+                timestamp: new Date().toISOString()
+            });
+            
+            // Завершаем активные звонки
+            if (activeCalls.has(username)) {
+                const call = activeCalls.get(username);
+                if (call) {
+                    call.status = 'ended';
+                    call.endTime = new Date().toISOString();
+                    call.endReason = 'Пользователь отключился';
+                    call.endedBy = 'system';
+                    
+                    // Уведомляем другого участника
+                    const otherUser = call.caller === username ? call.targetUser : call.caller;
+                    const otherSocketId = userSockets.get(otherUser);
+                    if (otherSocketId) {
+                        io.to(otherSocketId).emit('call_ended', {
+                            callId: call.callId,
+                            by: 'system',
+                            reason: 'Пользователь отключился',
+                            timestamp: new Date().toISOString()
+                        });
+                    }
+                    
+                    activeCalls.delete(call.caller);
+                    activeCalls.delete(call.targetUser);
+                }
+            }
+            
+            // Останавливаем трансляцию экрана
+            if (screenShares.has(username)) {
+                const screenShare = screenShares.get(username);
+                if (screenShare) {
+                    const targetSocketId = userSockets.get(screenShare.targetUser);
+                    if (targetSocketId) {
+                        io.to(targetSocketId).emit('screen_share_ended', {
+                            callId: screenShare.callId,
+                            sharer: username,
+                            reason: 'Пользователь отключился',
+                            timestamp: new Date().toISOString()
+                        });
+                    }
+                    screenShares.delete(username);
+                }
+            }
+            
+            console.log(`👋 User offline: ${username}`);
         }
     });
 });
-async function createDefaultGroups() {
-    try {
-        console.log('🔄 Checking for default groups...');
-        
-        // Проверяем, существуют ли дефолтные группы
-        const defaultGroupNames = ['Общий чат', 'Новости', 'Помощь'];
-        let groupsCreated = 0;
-        
-        for (const groupName of defaultGroupNames) {
-            const existingGroup = groups.find(g => g.name === groupName);
-            
-            if (!existingGroup) {
-                const newGroup = {
-                    id: 'group_default_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
-                    name: groupName,
-                    members: ['all'], // Специальный маркер для всех пользователей
-                    createdBy: 'system',
-                    createdAt: new Date().toISOString(),
-                    isGlobal: true,
-                    description: groupName === 'Общий чат' ? 'Основной чат для общения' :
-                                groupName === 'Новости' ? 'Новости и обновления' :
-                                'Вопросы и помощь'
-                };
-                
-                groups.push(newGroup);
-                groupsCreated++;
-                console.log(`✅ Created default group: ${groupName}`);
-            }
-        }
-        
-        if (groupsCreated > 0) {
-            await saveGroups();
-            console.log(`✅ Created ${groupsCreated} default groups`);
-        }
-        
-    } catch (error) {
-        console.error('❌ Error creating default groups:', error);
-    }
-}
+
+/**
+ * Запуск сервера
+ */
 async function startServer() {
     try {
+        // Создаем директории
         await ensureDirectories();
-        await ensureStaticFiles();
-        await ensureTemplates();
-        
-        console.log('🗑️ Cleaning up old uploads...');
-        await cleanupOldUploads();
         
         // Загружаем данные
         console.log('📂 Loading data...');
@@ -3107,17 +4447,56 @@ async function startServer() {
         await loadCurrencyData();
         await loadGiftsData();
         
-        // Запускаем автосохранение
-        console.log('⏰ Starting auto-save every 30 seconds...');
-        await startAutoSave();
+        // Создаем администратора если нет
+        if (!userExists('admin')) {
+            const adminPassword = await bcrypt.hash('admin123', 12);
+            const adminUser = {
+                username: 'admin',
+                password: adminPassword,
+                avatar: '/static/default-avatar.png',
+                createdAt: new Date().toISOString(),
+                lastLogin: null,
+                bio: 'Системный администратор',
+                isOnline: false,
+                isAdmin: true
+            };
+            users.push(adminUser);
+            await saveUsers();
+            
+            initUserCurrency('admin');
+            initUserGifts('admin');
+            await saveCurrencyData();
+            await saveGiftsData();
+            
+            console.log('✅ Created default admin user (password: admin123)');
+        }
         
-        // Простой запуск сервера
+        // Очищаем старые загрузки
+        console.log('🗑️ Cleaning up old uploads...');
+        await cleanupOldUploads();
+        
+        // Запускаем автосохранение
+        startAutoSave();
+        
+        // Запускаем проверку активности
+        startPresenceCheck();
+        
+        // Запускаем сервер
         server.listen(PORT, '0.0.0.0', () => {
-            console.log(`🚀 Server running on port ${PORT}`);
-            console.log(`📊 Health check: http://localhost:${PORT}/health`);
-            console.log(`👥 Users: ${users.length}`);
-            console.log(`💬 Messages: ${messages.length}`);
-            console.log(`👥 Groups: ${groups.length}`);
+            console.log('='.repeat(60));
+            console.log(`🚀 Anonka Messenger Server started!`);
+            console.log('='.repeat(60));
+            console.log(`🌐 Environment: ${isTauri ? 'Tauri Desktop' : isProduction ? 'Production' : 'Development'}`);
+            console.log(`🔗 URL: http://localhost:${PORT}`);
+            console.log(`🔗 Health: http://localhost:${PORT}/health`);
+            console.log(`📊 Statistics:`);
+            console.log(`   👥 Users: ${users.length}`);
+            console.log(`   💬 Messages: ${messages.length}`);
+            console.log(`   👥 Groups: ${groups.length}`);
+            console.log(`   💰 Currency users: ${Object.keys(currencyData).length}`);
+            console.log(`   🎁 Gifts data: ${Object.keys(giftsData).length}`);
+            console.log('='.repeat(60));
+            console.log(`✅ Server is ready to accept connections!`);
         });
         
     } catch (error) {
@@ -3125,75 +4504,38 @@ async function startServer() {
         process.exit(1);
     }
 }
-function scheduleDailyBackup() {
-    setInterval(async () => {
-        try {
-            console.log('⏰ Starting scheduled daily backup...');
-            
-            if (megaStorage?.isInitialized) {
-                const timestamp = new Date().toISOString().slice(0, 10);
-                const backupName = `daily-backup-${timestamp}.zip`;
-                
-                const result = await megaStorage.backupData(dataDir, backupName);
-                if (result) {
-                    console.log(`✅ Daily backup created: ${backupName}`);
-                } else {
-                    console.error('❌ Failed to create daily backup');
-                }
-            }
-        } catch (error) {
-            console.error('❌ Error in daily backup:', error.message);
-        }
-    }, 24 * 60 * 60 * 1000);
-}
 
-// Обработчик ошибок сервера
-server.on('error', (error) => {
-    if (error.code === 'EADDRINUSE') {
-        console.error(`❌ Port ${PORT} is already in use. Trying ${PORT + 1}...`);
-        PORT++;
-        setTimeout(() => {
-            server.listen(PORT, '0.0.0.0');
-        }, 1000);
-    } else {
-        console.error('❌ Server error:', error);
-    }
-});
-
+/**
+ * Обработка завершения работы
+ */
 process.on('SIGINT', async () => {
-    console.log('\n⚠️ Shutting down server...');
+    console.log('\n⚠️  Shutting down server...');
     
-    // Останавливаем автосохранение
+    // Останавливаем интервалы
     if (autoSaveInterval) {
         clearInterval(autoSaveInterval);
-        console.log('⏹️ Stopped auto-save interval');
+        console.log('⏹️  Stopped auto-save interval');
     }
     
-    if (megaSyncInterval) {
-        clearInterval(megaSyncInterval);
-        console.log('🔄 Stopping MEGA sync...');
+    if (presenceCheckInterval) {
+        clearInterval(presenceCheckInterval);
+        console.log('⏹️  Stopped presence check interval');
     }
     
-    // Выполняем финальное сохранение
-    console.log('💾 Performing final data save...');
-    await saveAllData();
-    
-    if (megaStorage) {
-        try {
-            console.log('☁️ Syncing final data to MEGA...');
-            await megaStorage.syncToMega(dataDir);
-        } catch (error) {
-            console.error('❌ Error syncing data to MEGA:', error);
-        }
-        
-        await megaStorage.close();
+    // Сохраняем данные перед выходом
+    console.log('💾 Saving data before shutdown...');
+    try {
+        await saveAllData();
+        console.log('✅ Data saved successfully');
+    } catch (error) {
+        console.error('❌ Error saving data:', error);
     }
     
-    if (telegramStorage) {
-        await telegramStorage.close();
-    }
+    // Отключаем всех пользователей
+    console.log('👋 Disconnecting all users...');
+    io.disconnectSockets(true);
     
-    console.log('👋 Server shutdown complete');
+    console.log('✅ Server shutdown complete');
     process.exit(0);
 });
 
@@ -3205,4 +4547,5 @@ process.on('unhandledRejection', (reason, promise) => {
     console.error('❌ Unhandled Rejection at:', promise, 'reason:', reason);
 });
 
+// Запуск сервера
 startServer();
