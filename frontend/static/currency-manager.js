@@ -43,53 +43,39 @@ class CurrencyManager {
         
         return 'anonymous';
     }
-async loadUserData() {
-    try {
-        console.log('🔄 Loading currency data for:', this.currentUser);
 
-        // Проверяем доступность getServerUrl
-        if (typeof window.getServerUrl !== 'function') {
-            console.error('❌ getServerUrl function is not available');
+    async loadUserData() {
+        try {
+            console.log('🔄 Loading currency data for:', this.currentUser);
+            
+            // Правильное кодирование URL
+            const encodedUsername = encodeURIComponent(this.currentUser);
+            const response = await fetch(`/api/user/${encodedUsername}/currency`);
+            
+            if (response.ok) {
+                const data = await response.json();
+                this.balance = data.balance || 0;
+                this.dailyStreak = data.dailyStreak || 0;
+                this.lastDailyReward = data.lastDailyReward;
+                this.transactionHistory = data.transactionHistory || [];
+                
+                console.log('✅ Currency data loaded from server');
+            } else if (response.status === 404) {
+                console.log('⚠️ Currency data not found on server, using defaults');
+                this.useDefaultCurrencyData();
+            } else {
+                console.log(`⚠️ Server responded with status: ${response.status}`);
+                // Загружаем локальные данные как резерв
+                await this.loadLocalData();
+            }
+            
+        } catch (error) {
+            console.error('❌ Error loading currency data from server:', error);
+            // Используем локальные данные при ошибке
             await this.loadLocalData();
-            return;
         }
-
-        const encodedUsername = encodeURIComponent(this.currentUser);
-        const serverUrl = window.getServerUrl(); // Вызываем функцию
-
-        
-        if (!serverUrl) {
-            console.error('❌ Server URL is empty');
-            await this.loadLocalData();
-            return;
-        }
-
-        const response = await fetch(`${serverUrl}/api/user/${encodedUsername}/currency`);
-
-
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}`);
-        }
-
-        const data = await response.json();
-        this.currencyData = data;
-        console.log('✅ Currency data loaded:', data);
-
-    } catch (error) {
-        console.error('❌ Error loading currency data:', error);
-        await this.loadLocalData();
     }
-}
 
-async loadLocalData() {
-    // Логика загрузки локальных данных (например, из localStorage)
-    console.log('💾 Loading local currency data...');
-    this.currencyData = {
-        coins: 100,
-        gems: 0,
-        lastUpdated: new Date().toISOString()
-    };
-}
     useDefaultCurrencyData() {
         this.balance = 100;
         this.dailyStreak = 0;
@@ -120,7 +106,32 @@ async loadLocalData() {
         }
     }
 
- 
+    async loadLocalData() {
+        try {
+            if (!this.currentUser) {
+                this.currentUser = this.getCurrentUser();
+            }
+            
+            const data = JSON.parse(localStorage.getItem(`currency_${this.currentUser}`) || '{}');
+            
+            // Используем только если данные свежие (менее 24 часов)
+            const isDataFresh = data.lastUpdated && 
+                (new Date() - new Date(data.lastUpdated)) < 24 * 60 * 60 * 1000;
+            
+            if (Object.keys(data).length > 0 && isDataFresh) {
+                this.balance = data.balance || 0;
+                this.dailyStreak = data.dailyStreak || 0;
+                this.lastDailyReward = data.lastDailyReward;
+                this.transactionHistory = data.transactionHistory || [];
+                console.log('📦 Loaded local currency data for:', this.currentUser);
+            } else {
+                console.log('⚠️ No fresh local currency data found');
+            }
+        } catch (error) {
+            console.log('⚠️ Error loading local currency data:', error);
+        }
+    }
+
     setupGiftShopInSettings() {
         this.loadGiftsToSettingsShop();
         this.setupGiftShopEventsInSettings();
