@@ -11,10 +11,10 @@ function isMobileDevice() {
            window.innerWidth <= 768;
 }
 
-// Функция для получения URL сервера
 function getServerUrl() {
     // Если у нас есть дефолтный сервер
-    if (typeof window.DEFAULT_SERVER_URL !== 'undefined') {
+    if (typeof window.DEFAULT_SERVER_URL !== 'undefined' && window.DEFAULT_SERVER_URL) {
+        console.log('🌐 Using DEFAULT_SERVER_URL:', window.DEFAULT_SERVER_URL);
         return window.DEFAULT_SERVER_URL;
     }
     
@@ -22,15 +22,21 @@ function getServerUrl() {
     if (window.location.hostname.includes('localhost') || 
         window.location.hostname.includes('127.0.0.1')) {
         // Локальная разработка
+        console.log('🌐 Using local development server');
         return '';
     } else if (typeof window.isTauri !== 'undefined' && window.isTauri) {
         // Tauri приложение
+        console.log('🌐 Using Tauri server URL');
         return 'https://my-messenger-9g2n.onrender.com';
     } else {
         // Веб-версия на вашем сайте
+        console.log('🌐 Using relative URLs for web version');
         return '';
     }
 }
+
+// Экспортируем функцию глобально
+window.getServerUrl = getServerUrl;
 
 // Экспортируем функцию глобально
 window.getServerUrl = getServerUrl;
