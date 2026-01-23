@@ -36,33 +36,35 @@ const io = socketIo(server, {
     transports: ['websocket', 'polling']
 });
 
+// Улучшенная обработка CORS
 app.use((req, res, next) => {
     const allowedOrigins = [
         "https://my-messenger-9g2n.onrender.com",
         "http://localhost:3000",
+        "http://localhost:1420", // Tauri dev
         "tauri://localhost",
-        "http://tauri.localhost",
-        /^tauri:\/\//,
-        /^http:\/\/localhost:*/,
-        /^https:\/\/localhost:*/
+        "http://tauri.localhost"
     ];
     
     const origin = req.headers.origin;
     if (allowedOrigins.includes(origin) || 
-        allowedOrigins.some(pattern => pattern instanceof RegExp && pattern.test(origin))) {
+        /^http:\/\/localhost:\d+$/.test(origin) ||
+        /^tauri:\/\//.test(origin)) {
         res.header('Access-Control-Allow-Origin', origin);
     }
     
-    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, Origin, X-Requested-With, Accept');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
+    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, Origin, X-Requested-With, Accept, X-CSRF-Token');
     res.header('Access-Control-Allow-Credentials', 'true');
+    res.header('Access-Control-Expose-Headers', 'Content-Length, Content-Range');
     
+    // Предзапросы
     if (req.method === 'OPTIONS') {
-        return res.sendStatus(200);
+        return res.status(200).end();
     }
+    
     next();
 });
-
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-this';
 let PORT = process.env.PORT || 3000;
 

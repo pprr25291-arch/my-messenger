@@ -50,24 +50,42 @@ async loadUserData() {
         // Получаем URL сервера
         const serverUrl = window.getServerUrl ? window.getServerUrl() : '';
         
-        // Правильное кодирование URL
+        // Проверяем, доступен ли сервер
+        if (!serverUrl) {
+            console.log('⚠️ No server URL, using local data');
+            await this.loadLocalData();
+            return;
+        }
+        
         const encodedUsername = encodeURIComponent(this.currentUser);
-        const response = await fetch(`${serverUrl}/api/user/${encodedUsername}/currency`);
+        const apiUrl = `${serverUrl}/api/user/${encodedUsername}/currency`;
+        console.log('🔍 Fetching from:', apiUrl);
+        
+        const response = await fetch(apiUrl, {
+            method: 'GET',
+            headers: {
+                'Accept': 'application/json',
+                'Content-Type': 'application/json'
+            }
+        });
         
         if (response.ok) {
             const data = await response.json();
+            console.log('✅ Currency data loaded from server:', data);
+            
             this.balance = data.balance || 0;
             this.dailyStreak = data.dailyStreak || 0;
             this.lastDailyReward = data.lastDailyReward;
             this.transactionHistory = data.transactionHistory || [];
             
-            console.log('✅ Currency data loaded from server');
+            // Сохраняем данные локально для кэширования
+            this.saveLocalData();
+            
         } else if (response.status === 404) {
             console.log('⚠️ Currency data not found on server, using defaults');
             this.useDefaultCurrencyData();
         } else {
             console.log(`⚠️ Server responded with status: ${response.status}`);
-            // Загружаем локальные данные как резерв
             await this.loadLocalData();
         }
         

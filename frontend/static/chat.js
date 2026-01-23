@@ -4,7 +4,248 @@ let socket = null;
 let reconnectAttempts = 0;
 const MAX_RECONNECT_ATTEMPTS = 5;
 window.DEFAULT_SERVER_URL = 'https://my-messenger-9g2n.onrender.com';
+// Добавьте эти функции в начало chat.js перед остальным кодом
 
+function initSocketForTauri() {
+    console.log('🔧 Initializing Tauri socket connection...');
+    // Tauri специфичная инициализация сокета
+    if (typeof window.__TAURI__ !== 'undefined') {
+        try {
+            const { appWindow } = require('@tauri-apps/api/window');
+            const { listen } = require('@tauri-apps/api/event');
+            
+            // Слушаем сообщения от Rust бэкенда
+            listen('socket-message', (event) => {
+                console.log('Socket message from backend:', event.payload);
+                // Обработка сообщений от сервера
+            });
+            
+            console.log('✅ Tauri socket initialized');
+        } catch (error) {
+            console.error('❌ Tauri socket initialization error:', error);
+        }
+    } else {
+        console.log('⚠️ Not in Tauri environment, using standard socket');
+        initSocket();
+    }
+}
+
+// Функция для инициализации стандартного сокета
+function initStandardSocket() {
+    if (window.socket && window.socket.connected) {
+        console.log('✅ Socket already connected');
+        return;
+    }
+    
+    try {
+        const serverUrl = window.getServerUrl ? window.getServerUrl() : '';
+        const socketUrl = serverUrl ? serverUrl.replace(/^http/, 'ws') : '';
+        
+        console.log('🔌 Connecting to socket URL:', socketUrl || 'current host');
+        
+        socket = socketUrl ? io(socketUrl, {
+            transports: ['websocket', 'polling'],
+            reconnection: true,
+            reconnectionAttempts: 5,
+            reconnectionDelay: 1000,
+            timeout: 20000
+        }) : io({
+            transports: ['websocket', 'polling'],
+            reconnection: true,
+            reconnectionAttempts: 5,
+            reconnectionDelay: 1000
+        });
+
+        window.socket = socket;
+
+        socket.on('connect', () => {
+            console.log('✅ Connected to server');
+            reconnectAttempts = 0;
+            showConnectionStatus('Подключено к серверу', 'success');
+            
+            // Аутентифицируем пользователя
+            const username = document.getElementById('username')?.textContent || window.USERNAME;
+            if (username) {
+                socket.emit('user authenticated', username);
+                console.log('🔐 User authenticated via socket:', username);
+            }
+        });
+
+        socket.on('disconnect', (reason) => {
+            console.log('🔌 Disconnected:', reason);
+            showConnectionStatus('Отключено от сервера', 'error');
+        });
+
+        socket.on('connect_error', (error) => {
+            console.error('❌ Connection error:', error);
+            reconnectAttempts++;
+            
+            if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+                showConnectionStatus('Не удалось подключиться к серверу', 'error');
+            } else {
+                showConnectionStatus(`Переподключение... (${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`, 'warning');
+            }
+        });
+
+        // Добавляем обработчики событий
+        setupSocketEventHandlers();
+
+    } catch (error) {
+        console.error('❌ Failed to initialize socket:', error);
+        showConnectionStatus('Ошибка инициализации соединения', 'error');
+    }
+}
+
+// Настройка обработчиков событий сокета
+function setupSocketEventHandlers() {
+    if (!window.socket) return;
+
+    window.socket.on('system_notification', (data) => {
+        console.log('📢 System notification:', data);
+        displayNotification(data, true);
+    });
+
+    window.socket.on('notifications_updated', () => {
+        console.log('🔄 Notifications updated');
+        loadNotifications();
+    });
+
+    window.socket.on('user_avatar_updated', (data) => {
+        console.log('🔄 User avatar updated:', data);
+        // Обновляем аватар если это текущий пользователь
+        if (window.USERNAME && data.username === window.USERNAME) {
+            updateAvatarDisplay(data.avatar);
+        }
+    });
+
+    window.socket.on('currency_balance_updated', (data) => {
+        console.log('💰 Currency balance update:', data);
+        if (window.currencyManager && data.username === window.USERNAME) {
+            window.currencyManager.updateBalance(data.balance);
+        }
+    });
+
+    window.socket.on('gift_received', (data) => {
+        console.log('🎁 Gift received:', data);
+        if (window.giftManager && data.receiver === window.USERNAME) {
+            // Обновляем инвентарь подарков
+            window.giftManager.loadUserGifts();
+            // Показываем уведомление
+            showGiftNotification(data);
+        }
+    });
+
+    window.socket.on('ping', () => {
+        window.socket.emit('pong');
+    });
+}
+
+// Вспомогательные функции
+function updateAvatarDisplay(avatarUrl) {
+    const avatarElements = document.querySelectorAll('.user-avatar-img, .avatar-preview-img, #avatarPreviewImgLarge');
+    avatarElements.forEach(el => {
+        if (el.tagName === 'IMG') {
+            el.src = avatarUrl;
+        } else {
+            el.style.backgroundImage = `url('${avatarUrl}')`;
+        }
+    });
+}
+
+function showGiftNotification(data) {
+    const notification = {
+        title: '🎁 Новый подарок!',
+        message: `${data.sender} отправил вам подарок: ${data.gift.name}`,
+        type: 'success',
+        sender: data.sender,
+        timestamp: new Date().toLocaleTimeString()
+    };
+    
+    displayNotification(notification, true);
+}
+
+// Обновите функцию getServerUrl для лучшей работы:
+function getServerUrl() {
+    // Проверяем различные источники URL сервера
+    if (typeof window.DEFAULT_SERVER_URL !== 'undefined' && window.DEFAULT_SERVER_URL) {
+        return window.DEFAULT_SERVER_URL;
+    }
+    
+    // Для Tauri
+    if (typeof window.__TAURI__ !== 'undefined') {
+        return 'https://my-messenger-9g2n.onrender.com';
+    }
+    
+    // Для локальной разработки
+    if (window.location.hostname.includes('localhost') || 
+        window.location.hostname.includes('127.0.0.1')) {
+        return `http://${window.location.hostname}:${window.location.port || 3000}`;
+    }
+    
+    // Для веб-версии
+    return window.location.origin;
+}
+
+// Экспортируем функции глобально
+window.getServerUrl = getServerUrl;
+window.initSocketForTauri = initSocketForTauri;
+window.initStandardSocket = initStandardSocket;
+
+// Обновите обработчик DOMContentLoaded в chat.js:
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('🚀 Starting application initialization...');
+    
+    // Устанавливаем URL сервера глобально
+    window.DEFAULT_SERVER_URL = getServerUrl();
+    console.log('🌐 Server URL:', window.DEFAULT_SERVER_URL);
+    
+    // Определяем окружение
+    const isTauri = typeof window.__TAURI__ !== 'undefined';
+    window.isTauri = isTauri;
+    
+    if (isTauri) {
+        console.log('🔧 Tauri environment detected');
+        // Используем Tauri специфичную инициализацию
+        initSocketForTauri();
+    } else {
+        console.log('🌐 Web environment detected');
+        // Используем стандартную инициализацию
+        initStandardSocket();
+    }
+    
+    // Инициализируем мобильный интерфейс если нужно
+    const isMobile = initMobileInterface();
+    
+    // Настраиваем навигацию
+    setupChatNavigation();
+    
+    // Инициализируем все менеджеры
+    try {
+        console.log('💰 Creating CurrencyManager instance...');
+        window.currencyManager = new CurrencyManager();
+        
+        console.log('🎁 Creating GiftManager instance...');
+        window.giftManager = new GiftManager();
+        
+        // Инициализируем другие менеджеры по мере необходимости
+        setTimeout(() => {
+            if (!window.privateChatInstance) {
+                console.log('🔄 Creating PrivateChat instance...');
+                window.privateChatInstance = new PrivateChat();
+            }
+            
+            if (!window.groupChatManager) {
+                console.log('👥 Creating GroupChatManager instance...');
+                window.groupChatManager = new GroupChatManager();
+            }
+        }, 1000);
+        
+    } catch (error) {
+        console.error('❌ Error during initialization:', error);
+    }
+    
+    console.log('✅ Application initialization complete');
+});
 // Функция для определения устройства
 function isMobileDevice() {
     return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || 
