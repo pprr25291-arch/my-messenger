@@ -38,9 +38,6 @@ function getServerUrl() {
 // Экспортируем функцию глобально
 window.getServerUrl = getServerUrl;
 
-// Экспортируем функцию глобально
-window.getServerUrl = getServerUrl;
-
 // Инициализация мобильного интерфейса
 function initMobileInterface() {
     if (!isMobileDevice()) {
