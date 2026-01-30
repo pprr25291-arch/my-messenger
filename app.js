@@ -5,7 +5,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const cookieParser = require('cookie-parser');
 const fs = require('fs').promises;
-const fsSync = require('fs'); // Добавляем синхронную версию fs
+const fsSync = require('fs');
 const path = require('path');
 const multer = require('multer');
 const sharp = require('sharp');
@@ -66,17 +66,13 @@ app.use((req, res, next) => {
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-this';
 let PORT = process.env.PORT || 3000;
 
-// Определяем путь для данных в зависимости от среды
 const getDataPath = () => {
     if (process.env.TAURI_ENV === 'production') {
-        // В Tauri приложении используем папку рядом с .exe
         const tauriPath = path.join(__dirname, '..');
         return path.join(tauriPath, 'data');
     } else if (process.env.DATA_PATH) {
-        // На сервере Render используем переменную окружения
         return process.env.DATA_PATH;
     } else {
-        // Локально для разработки
         return path.join(__dirname, 'data');
     }
 };
@@ -85,7 +81,6 @@ const dataDir = getDataPath();
 const uploadsDir = path.join(dataDir, 'uploads');
 const avatarsDir = path.join(uploadsDir, 'avatars');
 
-// Создаём папки, если их нет (используем fsSync)
 try {
     fsSync.mkdirSync(dataDir, { recursive: true });
     fsSync.mkdirSync(uploadsDir, { recursive: true });
@@ -111,121 +106,11 @@ let telegramStorage = null;
 let megaSyncInterval = null;
 let autoSaveInterval = null;
 
-// Функция для освобождения порта
-function killPort(port) {
-    return new Promise((resolve) => {
-        console.log(`🔍 Checking port ${port}...`);
-        
-        if (os.platform() === 'win32') {
-            exec(`netstat -ano | findstr :${port}`, (err, stdout) => {
-                if (err || !stdout) {
-                    console.log(`✅ Port ${port} is free`);
-                    resolve(false);
-                    return;
-                }
-                
-                const lines = stdout.trim().split('\n');
-                let killed = false;
-                
-                lines.forEach(line => {
-                    const parts = line.trim().split(/\s+/);
-                    const pid = parts[parts.length - 1];
-                    if (pid && !isNaN(pid)) {
-                        exec(`taskkill /F /PID ${pid}`, (err) => {
-                            if (!err) {
-                                console.log(`✅ Killed process ${pid} on port ${port}`);
-                                killed = true;
-                            }
-                        });
-                    }
-                });
-                
-                setTimeout(() => {
-                    resolve(killed);
-                }, 1000);
-            });
-        } else {
-            // Linux/Mac
-            exec(`lsof -ti:${port}`, (err, stdout) => {
-                if (err || !stdout) {
-                    console.log(`✅ Port ${port} is free`);
-                    resolve(false);
-                    return;
-                }
-                
-                const pids = stdout.trim().split('\n');
-                let killed = false;
-                
-                pids.forEach(pid => {
-                    if (pid && !isNaN(pid)) {
-                        exec(`kill -9 ${pid}`, (err) => {
-                            if (!err) {
-                                console.log(`✅ Killed process ${pid} on port ${port}`);
-                                killed = true;
-                            }
-                        });
-                    }
-                });
-                
-                setTimeout(() => {
-                    resolve(killed);
-                }, 1000);
-            });
-        }
-    });
-}
-
-// Функция для поиска свободного порта
-async function findFreePort(startPort, maxAttempts = 10) {
-    let port = startPort;
-    let attempts = 0;
-    
-    while (attempts < maxAttempts) {
-        try {
-            const inUse = await isPortInUse(port);
-            
-            if (!inUse) {
-                console.log(`✅ Found free port: ${port}`);
-                return port;
-            }
-            
-            console.log(`⚠️ Port ${port} is busy, trying ${port + 1}`);
-            port++;
-            attempts++;
-            
-        } catch (error) {
-            console.log(`❌ Error checking port ${port}: ${error.message}`);
-            port++;
-            attempts++;
-        }
-    }
-    
-    throw new Error(`Could not find free port after ${maxAttempts} attempts`);
-}
-
-// Функция проверки занятости порта
-function isPortInUse(port) {
-    return new Promise((resolve) => {
-        const tester = require('net').createServer()
-            .once('error', () => {
-                resolve(true);
-            })
-            .once('listening', () => {
-                tester.once('close', () => {
-                    resolve(false);
-                }).close();
-            })
-            .listen(port);
-    });
-}
-
 async function cleanupOldUploads() {
     try {
-        // Используем fs.promises.access для проверки существования директории
         try {
             await fs.access(uploadsDir);
         } catch (error) {
-            // Директория не существует
             return { deleted: 0, skipped: 0 };
         }
         
@@ -237,7 +122,6 @@ async function cleanupOldUploads() {
         let skipped = 0;
         
         for (const file of files) {
-            // Пропускаем аватары и системные файлы
             if (file.includes('avatar_') || file === '.gitkeep' || file === 'avatars') {
                 skipped++;
                 continue;
@@ -247,7 +131,6 @@ async function cleanupOldUploads() {
             try {
                 const stats = await fs.stat(filePath);
                 
-                // Удаляем файлы старше 7 дней
                 if (stats.mtimeMs < oneWeekAgo) {
                     await fs.unlink(filePath);
                     deleted++;
@@ -270,7 +153,6 @@ async function cleanupOldUploads() {
     }
 }
 
-// Функция для очистки дубликатов сообщений
 function removeDuplicateMessages(messagesArray) {
     const uniqueMessages = [];
     const seenMessages = new Set();
@@ -303,7 +185,6 @@ async function ensureDirectories() {
 
 async function cleanupUserAvatars(username) {
     try {
-        // Проверяем существование директории
         try {
             await fs.access(avatarsDir);
         } catch {
@@ -338,12 +219,10 @@ async function cleanupUserAvatars(username) {
     }
 }
 
-// Функция для сохранения всех данных
 async function saveAllData() {
     try {
         console.log('💾 Auto-saving all data...');
         
-        // Сохраняем все данные последовательно
         await saveUsers();
         await saveMessages();
         await saveGroups();
@@ -358,44 +237,38 @@ async function saveAllData() {
     }
 }
 
-// Запуск автоматического сохранения данных
 async function startAutoSave() {
     console.log('⏰ Starting auto-save every 30 seconds');
     
-    // Сохраняем сразу при старте
     await saveAllData();
     
-    // Устанавливаем интервал сохранения
     autoSaveInterval = setInterval(async () => {
         try {
             await saveAllData();
         } catch (error) {
             console.error('❌ Error in auto-save:', error.message);
         }
-    }, 30 * 1000); // 30 секунд
+    }, 30 * 1000);
     
     return autoSaveInterval;
 }
-// Проверка на Tauri окружение
+
 const isTauri = process.env.TAURI_ENV === 'production';
 
-// Функция для получения правильного URL в зависимости от окружения
 function getWebSocketUrl(req) {
     if (isTauri) {
-        // В Tauri используем локальный сервер
         return `ws://localhost:${PORT}`;
     } else {
-        // На сервере Render используем реальный хост
         const host = req.headers.host || `localhost:${PORT}`;
         return `wss://${host}`;
     }
 }
+
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 app.use(cookieParser());
 app.use('/static', express.static(path.join(__dirname, 'frontend', 'static')));
 app.use('/uploads', express.static(path.join(__dirname, 'frontend', 'uploads')));
-
 
 app.use((req, res, next) => {
     res.header('Access-Control-Allow-Origin', '*');
@@ -499,6 +372,16 @@ async function loadUsers() {
     try {
         const data = await fs.readFile(path.join(dataDir, 'users.json'), 'utf8');
         users = JSON.parse(data);
+        
+        const adminUser = users.find(u => u.username === 'admin');
+        if (adminUser) {
+            adminUser.admin = true;
+            adminUser.verified = true;
+            adminUser.verificationDate = adminUser.verificationDate || new Date().toISOString();
+            adminUser.verifiedBy = 'system';
+            await saveUsers();
+        }
+        
         console.log('✅ Users loaded:', users.length);
     } catch (error) {
         console.log('⚠️ No users found, starting with empty array');
@@ -512,14 +395,11 @@ async function loadMessages() {
         const data = await fs.readFile(path.join(dataDir, 'messages.json'), 'utf8');
         const loadedMessages = JSON.parse(data);
         
-        // Удаляем дубликаты сообщений
         messages = removeDuplicateMessages(loadedMessages);
         
         const duplicatesRemoved = loadedMessages.length - messages.length;
         if (duplicatesRemoved > 0) {
             console.log(`✅ Messages loaded: ${messages.length} (removed ${duplicatesRemoved} duplicates)`);
-            
-            // Сохраняем очищенные данные
             await saveMessages();
         } else {
             console.log('✅ Messages loaded:', messages.length);
@@ -569,11 +449,9 @@ async function saveUsers() {
         const filePath = path.join(dataDir, 'users.json');
         const usersData = JSON.stringify(users, null, 2);
         
-        // Всегда перезаписываем файл
         await fs.writeFile(filePath, usersData);
         console.log('✅ Users saved locally');
         
-        // Синхронизация с MEGA (если подключено)
         if (megaStorage?.isInitialized && !megaStorage.syncInProgress) {
             try {
                 const result = await megaStorage.uploadFile(filePath, 'users.json');
@@ -597,11 +475,9 @@ async function saveMessages() {
         const filePath = path.join(dataDir, 'messages.json');
         const messagesData = JSON.stringify(messages, null, 2);
         
-        // Всегда перезаписываем файл
         await fs.writeFile(filePath, messagesData);
         console.log('✅ Messages saved locally');
         
-        // Синхронизация с MEGA (если подключено)
         if (megaStorage?.isInitialized && !megaStorage.syncInProgress) {
             try {
                 const result = await megaStorage.uploadFile(filePath, 'messages.json');
@@ -625,11 +501,9 @@ async function saveGroups() {
         const filePath = path.join(dataDir, 'groups.json');
         const groupsData = JSON.stringify(groups, null, 2);
         
-        // Всегда перезаписываем файл
         await fs.writeFile(filePath, groupsData);
         console.log('✅ Groups saved locally');
         
-        // Синхронизация с MEGA (если подключено)
         if (megaStorage?.isInitialized && !megaStorage.syncInProgress) {
             try {
                 const result = await megaStorage.uploadFile(filePath, 'groups.json');
@@ -653,11 +527,9 @@ async function saveCurrencyData() {
         const filePath = path.join(dataDir, 'currency.json');
         const currencyDataStr = JSON.stringify(currencyData, null, 2);
         
-        // Всегда перезаписываем файл
         await fs.writeFile(filePath, currencyDataStr);
         console.log('✅ Currency data saved locally');
         
-        // Синхронизация с MEGA (если подключено)
         if (megaStorage?.isInitialized && !megaStorage.syncInProgress) {
             try {
                 const result = await megaStorage.uploadFile(filePath, 'currency.json');
@@ -681,11 +553,9 @@ async function saveGiftsData() {
         const filePath = path.join(dataDir, 'gifts.json');
         const giftsDataStr = JSON.stringify(giftsData, null, 2);
         
-        // Всегда перезаписываем файл
         await fs.writeFile(filePath, giftsDataStr);
         console.log('✅ Gifts data saved locally');
         
-        // Синхронизация с MEGA (если подключено)
         if (megaStorage?.isInitialized && !megaStorage.syncInProgress) {
             try {
                 const result = await megaStorage.uploadFile(filePath, 'gifts.json');
@@ -763,12 +633,10 @@ input, button { padding: 10px; margin: 5px 0; width: 100%; box-sizing: border-bo
         try {
             await fs.access(avatarPath);
         } catch {
-            // Используем базовый Canvas или копируем из существующих ресурсов
             const { createCanvas } = require('canvas');
             const canvas = createCanvas(200, 200);
             const ctx = canvas.getContext('2d');
             
-            // Простая аватарка
             ctx.fillStyle = '#4facfe';
             ctx.fillRect(0, 0, 200, 200);
             
@@ -791,7 +659,7 @@ async function ensureTemplates() {
         const templatesDir = path.join(__dirname, 'frontend', 'templates');
         await fs.mkdir(templatesDir, { recursive: true });
         
-        const templates = [, 'register', 'login', 'chat'];
+        const templates = ['register', 'login', 'chat'];
         
         for (const template of templates) {
             const templatePath = path.join(templatesDir, `${template}.html`);
@@ -819,7 +687,7 @@ async function ensureTemplates() {
     }
 }
 
-
+// Routes
 app.get('/register', (req, res) => {
     res.sendFile(path.join(__dirname, 'frontend', 'templates', 'register.html'));
 });
@@ -829,39 +697,64 @@ app.get('/login', (req, res) => {
 });
 
 app.get('/chat', authenticateToken, (req, res) => {
-    // Получаем пользователя из токена
     const user = req.user;
     res.render('chat', { 
         username: user.username,
         token: req.cookies.token || req.headers.authorization?.replace('Bearer ', '')
     });
 });
+
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'frontend', 'index.html'));
 });
-// Статические файлы
+
 app.use('/static', express.static(path.join(__dirname, 'frontend', 'static')));
 app.use('/uploads', express.static(path.join(__dirname, 'frontend', 'uploads')));
-
-// Также обслуживаем статические файлы из корня frontend
 app.use(express.static(path.join(__dirname, 'frontend')));
-// Также добавляем обслуживание из корня frontend/
 app.use('/style.css', express.static(path.join(__dirname, 'frontend', 'static', 'style.css')));
 app.use('/auth.js', express.static(path.join(__dirname, 'frontend', 'static', 'auth.js')));
 app.use('/chat.js', express.static(path.join(__dirname, 'frontend', 'static', 'chat.js')));
 app.use('/private-chat.js', express.static(path.join(__dirname, 'frontend', 'static', 'private-chat.js')));
 
-// Обслуживание всех статических файлов из корня frontend
-app.use(express.static(path.join(__dirname, 'frontend')));
-app.get('/static/default-avatar.png', (req, res) => {
-    res.sendFile(path.join(__dirname, 'frontend', 'static', 'default-avatar.png'));
-});
-
-// Для Socket.io
 app.get('/socket.io/socket.io.js', (req, res) => {
     res.sendFile(path.join(__dirname, 'node_modules', 'socket.io', 'client-dist', 'socket.io.js'));
 });
-// server.js - Обновите POST /api/register endpoint
+
+// ВАЖНО: Добавьте этот endpoint
+app.get('/api/verified-users', async (req, res) => {
+    try {
+        // Возвращаем всех верифицированных пользователей без аутентификации
+        const verifiedUsers = users
+            .filter(user => user.verified === true || user.username === 'admin')
+            .map(user => user.username);
+        
+        console.log(`✅ Returning ${verifiedUsers.length} verified users`);
+        res.json(verifiedUsers);
+    } catch (error) {
+        console.error('❌ Verified users error:', error);
+        res.status(500).json({ error: 'Failed to load verified users' });
+    }
+});
+
+// Также добавьте этот endpoint для аутентифицированных пользователей
+app.get('/api/verified-users/auth', authenticateToken, async (req, res) => {
+    try {
+        const verifiedUsers = users
+            .filter(user => user.verified === true || user.username === 'admin')
+            .map(user => ({
+                username: user.username,
+                verified: true,
+                verificationDate: user.verificationDate,
+                verifiedBy: user.verifiedBy
+            }));
+        
+        res.json(verifiedUsers);
+    } catch (error) {
+        console.error('❌ Verified users error:', error);
+        res.status(500).json({ error: 'Failed to load verified users' });
+    }
+});
+
 app.post('/api/register', avatarUpload.single('avatar'), async (req, res) => {
     try {
         const { username, password } = req.body;
@@ -888,7 +781,8 @@ app.post('/api/register', avatarUpload.single('avatar'), async (req, res) => {
             username, 
             password: hashedPassword,
             avatar: '/static/default-avatar.png',
-            createdAt: new Date().toISOString()
+            createdAt: new Date().toISOString(),
+            verified: false
         };
         
         if (req.file) {
@@ -909,7 +803,6 @@ app.post('/api/register', avatarUpload.single('avatar'), async (req, res) => {
         users.push(newUser);
         await saveUsers();
         
-        // Добавляем пользователя во все глобальные группы
         const globalGroups = groups.filter(group => group.isGlobal === true);
         for (const group of globalGroups) {
             if (!group.members.includes(username)) {
@@ -948,7 +841,6 @@ app.post('/api/register', avatarUpload.single('avatar'), async (req, res) => {
             sameSite: 'strict'
         });
         
-        // Отправляем информацию о добавленных группах
         const userGroups = globalGroups.map(group => ({
             id: group.id,
             name: group.name,
@@ -962,7 +854,7 @@ app.post('/api/register', avatarUpload.single('avatar'), async (req, res) => {
                 username: newUser.username,
                 avatar: newUser.avatar
             },
-            groups: userGroups, // Добавляем информацию о группах
+            groups: userGroups,
             message: `Добро пожаловать! Вы добавлены в ${globalGroups.length} групп(ы)`
         });
         
@@ -974,6 +866,7 @@ app.post('/api/register', avatarUpload.single('avatar'), async (req, res) => {
         });
     }
 });
+
 app.post('/api/login', async (req, res) => {
     try {
         const { username, password } = req.body;
@@ -1005,7 +898,6 @@ app.post('/api/login', async (req, res) => {
 
         const token = jwt.sign({ username: user.username }, JWT_SECRET, { expiresIn: '24h' });
         
-        // Устанавливаем cookie
         res.cookie('token', token, { 
             httpOnly: true, 
             maxAge: 24 * 60 * 60 * 1000,
@@ -1013,13 +905,13 @@ app.post('/api/login', async (req, res) => {
             secure: process.env.NODE_ENV === 'production'
         });
         
-        // Отправляем JSON ответ
         res.json({ 
             success: true, 
             token,
             user: {
                 username: user.username,
-                avatar: user.avatar || '/static/default-avatar.png'
+                avatar: user.avatar || '/static/default-avatar.png',
+                verified: user.verified || false
             }
         });
     } catch (error) {
@@ -1048,7 +940,8 @@ app.get('/api/user/:username', authenticateToken, (req, res) => {
         const publicUserInfo = {
             username: user.username,
             avatar: user.avatar || '/static/default-avatar.png',
-            createdAt: user.createdAt
+            createdAt: user.createdAt,
+            verified: user.verified || false
         };
         
         res.json(publicUserInfo);
@@ -1193,7 +1086,8 @@ app.get('/api/users/search', authenticateToken, (req, res) => {
             .map(({ password, ...user }) => {
                 return {
                     ...user,
-                    isOnline: onlineUsers.has(user.username)
+                    isOnline: onlineUsers.has(user.username),
+                    verified: user.verified || false
                 };
             });
         
@@ -1213,7 +1107,8 @@ app.get('/api/users/all', authenticateToken, (req, res) => {
             .map(({ password, ...user }) => {
                 return {
                     ...user,
-                    isOnline: onlineUsers.has(user.username)
+                    isOnline: onlineUsers.has(user.username),
+                    verified: user.verified || false
                 };
             });
         
@@ -1230,24 +1125,21 @@ app.post('/api/upload', authenticateToken, upload.single('file'), async (req, re
             return res.status(400).json({ error: 'Файл не загружен' });
         }
 
-        // Проверяем размер файла
         const maxSize = 50 * 1024 * 1024;
         if (req.file.size > maxSize) {
             await fs.unlink(req.file.path).catch(console.error);
             return res.status(400).json({ error: 'Файл слишком большой (макс. 50MB)' });
         }
 
-        // Проверяем, не существует ли уже такой файл
         const existingFiles = await fs.readdir(uploadsDir);
         const existingFile = existingFiles.find(f => {
-            if (f === req.file.filename) return false; // Это тот же файл
+            if (f === req.file.filename) return false;
             const stats = fsSync.statSync(path.join(uploadsDir, f));
             return stats.size === req.file.size && 
                    path.extname(f) === path.extname(req.file.originalname);
         });
         
         if (existingFile) {
-            // Если файл уже существует, используем существующий
             await fs.unlink(req.file.path).catch(console.error);
             
             const fileResponse = {
@@ -1421,6 +1313,7 @@ app.post('/api/upload-voice', authenticateToken, voiceUpload.single('file'), asy
         res.status(500).json({ error: 'Ошибка загрузки голосового сообщения: ' + error.message });
     }
 });
+
 app.get('/api/groups/new-user-groups', authenticateToken, async (req, res) => {
     try {
         const { username } = req.query;
@@ -1429,16 +1322,12 @@ app.get('/api/groups/new-user-groups', authenticateToken, async (req, res) => {
             return res.status(400).json({ error: 'Username is required' });
         }
         
-        // Для новых пользователей - возвращаем только общие/глобальные группы
-        // или пустой массив, если таких нет
         const newUserGroups = groups.filter(group => {
-            // Проверяем, является ли группа глобальной (общей для всех)
             return group.isGlobal === true || 
                    group.name === 'Общий чат' || 
                    group.name === 'Новости' ||
                    group.members?.includes('all');
         }).map(group => {
-            // Убедимся, что пользователь добавлен в группу
             if (!group.members.includes(username)) {
                 group.members.push(username);
             }
@@ -1450,11 +1339,10 @@ app.get('/api/groups/new-user-groups', authenticateToken, async (req, res) => {
                 createdBy: group.createdBy,
                 createdAt: group.createdAt,
                 isGroup: true,
-                isGlobal: true // Флаг, что это глобальная группа
+                isGlobal: true
             };
         });
         
-        // Сохраняем обновленные группы
         await saveGroups();
         
         res.json(newUserGroups);
@@ -1464,6 +1352,7 @@ app.get('/api/groups/new-user-groups', authenticateToken, async (req, res) => {
         res.status(500).json({ error: 'Failed to load new user groups' });
     }
 });
+
 app.get('/api/user/groups', authenticateToken, async (req, res) => {
     try {
         const currentUser = req.user.username;
@@ -1507,11 +1396,11 @@ app.get('/api/user/groups', authenticateToken, async (req, res) => {
         res.status(500).json({ error: 'Failed to load user groups: ' + error.message });
     }
 });
+
 app.get('/api/groups/user', authenticateToken, async (req, res) => {
     try {
         const currentUser = req.user.username;
         
-        // Фильтруем только группы, где пользователь действительно является участником
         const userGroups = groups.filter(group => {
             if (!group.members || !Array.isArray(group.members)) {
                 return false;
@@ -1534,6 +1423,7 @@ app.get('/api/groups/user', authenticateToken, async (req, res) => {
         res.status(500).json({ error: 'Failed to load user groups' });
     }
 });
+
 app.post('/api/groups/create', authenticateToken, async (req, res) => {
     try {
         const { name, members, createdBy } = req.body;
@@ -1542,7 +1432,6 @@ app.post('/api/groups/create', authenticateToken, async (req, res) => {
             return res.status(400).json({ error: 'Все поля обязательны' });
         }
 
-        // Убедитесь, что createdBy включен в members
         let allMembers = [...members];
         if (!allMembers.includes(createdBy)) {
             allMembers.push(createdBy);
@@ -1561,7 +1450,6 @@ app.post('/api/groups/create', authenticateToken, async (req, res) => {
         groups.push(group);
         await saveGroups();
 
-        // Отправляем событие создания группы всем участникам
         allMembers.forEach(member => {
             const memberSocketId = userSockets.get(member);
             if (memberSocketId) {
@@ -1632,7 +1520,6 @@ app.get('/api/groups/:groupId/messages', authenticateToken, (req, res) => {
             return res.status(404).json({ error: 'Группа не найдена' });
         }
         
-        // Проверяем, является ли пользователь членом группы
         if (!group.members || !group.members.includes(currentUser)) {
             return res.status(403).json({ 
                 error: 'Доступ запрещен. Вы не являетесь участником этой группы.',
@@ -1645,7 +1532,6 @@ app.get('/api/groups/:groupId/messages', authenticateToken, (req, res) => {
             msg.type === 'group' && msg.groupId === groupId
         );
         
-        // Убедитесь, что сообщения отсортированы по времени
         groupMessages.sort((a, b) => new Date(a.date) - new Date(b.date));
         
         res.json(groupMessages);
@@ -1737,7 +1623,6 @@ app.get('/api/user/:username/currency', authenticateToken, (req, res) => {
     try {
         const { username } = req.params;
         
-        // Проверка прав доступа
         if (req.user.username !== username && req.user.username !== 'admin') {
             return res.status(403).json({ error: 'Доступ запрещен' });
         }
@@ -1843,7 +1728,8 @@ app.get('/api/users/:username', authenticateToken, (req, res) => {
             username: user.username,
             avatar: user.avatar || '/static/default-avatar.png',
             registrationDate: user.createdAt,
-            status: onlineUsers.has(username) ? 'online' : 'offline'
+            status: onlineUsers.has(username) ? 'online' : 'offline',
+            verified: user.verified || false
         };
         
         res.json(publicUserInfo);
@@ -1885,11 +1771,11 @@ app.get('/api/user/:username/avatar', authenticateToken, async (req, res) => {
         res.redirect('/static/default-avatar.png');
     }
 });
+
 app.post('/api/currency/save', authenticateToken, async (req, res) => {
     try {
         const { username, balance, dailyStreak, lastDailyReward, transactionHistory } = req.body;
         
-        // Проверка прав доступа
         if (req.user.username !== username && req.user.username !== 'admin') {
             return res.status(403).json({ 
                 success: false,
@@ -1897,7 +1783,6 @@ app.post('/api/currency/save', authenticateToken, async (req, res) => {
             });
         }
 
-        // Инициализируем данные пользователя если их нет
         if (!currencyData[username]) {
             currencyData[username] = {
                 balance: 0,
@@ -1907,7 +1792,6 @@ app.post('/api/currency/save', authenticateToken, async (req, res) => {
             };
         }
 
-        // Обновляем данные
         currencyData[username].balance = balance !== undefined ? Number(balance) : 0;
         currencyData[username].dailyStreak = dailyStreak !== undefined ? Number(dailyStreak) : 0;
         currencyData[username].lastDailyReward = lastDailyReward;
@@ -1929,11 +1813,11 @@ app.post('/api/currency/save', authenticateToken, async (req, res) => {
         });
     }
 });
+
 app.post('/api/currency/admin/add', authenticateToken, async (req, res) => {
     try {
         const { targetUser, amount, reason } = req.body;
         
-        // Проверяем права администратора
         if (req.user.username !== 'admin') {
             return res.status(403).json({
                 success: false,
@@ -1948,7 +1832,6 @@ app.post('/api/currency/admin/add', authenticateToken, async (req, res) => {
             });
         }
 
-        // Инициализируем данные пользователя если их нет
         const userCurrency = initUserCurrency(targetUser);
         const numericAmount = Number(amount);
         
@@ -1983,11 +1866,11 @@ app.post('/api/currency/admin/add', authenticateToken, async (req, res) => {
         });
     }
 });
+
 app.post('/api/currency/admin/remove', authenticateToken, async (req, res) => {
     try {
         const { targetUser, amount, reason } = req.body;
         
-        // Проверяем права администратора
         if (req.user.username !== 'admin') {
             return res.status(403).json({
                 success: false,
@@ -2043,6 +1926,7 @@ app.post('/api/currency/admin/remove', authenticateToken, async (req, res) => {
         });
     }
 });
+
 app.post('/api/currency/add', authenticateToken, async (req, res) => {
     try {
         const { targetUser, amount, reason, admin } = req.body;
@@ -2524,6 +2408,182 @@ app.get('/static/default-avatar.png', (req, res) => {
     res.sendFile(path.join(__dirname, 'frontend', 'static', 'default-avatar.png'));
 });
 
+// Добавьте эти endpoints для верификации пользователей
+
+app.post('/api/verify-user', authenticateToken, async (req, res) => {
+    try {
+        if (req.user.username !== 'admin') {
+            return res.status(403).json({ 
+                success: false,
+                error: 'Требуются права администратора' 
+            });
+        }
+
+        const { targetUser, reason } = req.body;
+        
+        if (!targetUser) {
+            return res.status(400).json({ 
+                success: false,
+                error: 'Имя пользователя обязательно' 
+            });
+        }
+
+        const user = users.find(u => u.username === targetUser);
+        if (!user) {
+            return res.status(404).json({ 
+                success: false,
+                error: 'Пользователь не найден' 
+            });
+        }
+
+        user.verified = true;
+        user.verificationDate = new Date().toISOString();
+        user.verifiedBy = req.user.username;
+        user.verificationReason = reason || null;
+
+        await saveUsers();
+
+        if (io) {
+            io.emit('user_verification_changed', {
+                username: targetUser,
+                verified: true,
+                by: req.user.username,
+                reason: reason,
+                timestamp: new Date().toISOString()
+            });
+        }
+
+        console.log(`✅ User ${targetUser} verified by ${req.user.username}`);
+
+        res.json({
+            success: true,
+            message: `Пользователь ${targetUser} успешно верифицирован`,
+            user: {
+                username: user.username,
+                verified: user.verified,
+                verificationDate: user.verificationDate
+            }
+        });
+        
+    } catch (error) {
+        console.error('❌ Verify user error:', error);
+        res.status(500).json({ 
+            success: false,
+            error: 'Ошибка верификации пользователя' 
+        });
+    }
+});
+
+app.post('/api/unverify-user', authenticateToken, async (req, res) => {
+    try {
+        if (req.user.username !== 'admin') {
+            return res.status(403).json({ 
+                success: false,
+                error: 'Требуются права администратора' 
+            });
+        }
+
+        const { targetUser, reason } = req.body;
+        
+        if (!targetUser) {
+            return res.status(400).json({ 
+                success: false,
+                error: 'Имя пользователя обязательно' 
+            });
+        }
+
+        if (targetUser === 'admin') {
+            return res.status(400).json({ 
+                success: false,
+                error: 'Нельзя отозвать верификацию у администратора' 
+            });
+        }
+
+        const user = users.find(u => u.username === targetUser);
+        if (!user) {
+            return res.status(404).json({ 
+                success: false,
+                error: 'Пользователь не найден' 
+            });
+        }
+
+        user.verified = false;
+        user.verificationRemovedDate = new Date().toISOString();
+        user.verificationRemovedBy = req.user.username;
+        user.verificationRemovalReason = reason || null;
+
+        await saveUsers();
+
+        if (io) {
+            io.emit('user_verification_changed', {
+                username: targetUser,
+                verified: false,
+                by: req.user.username,
+                reason: reason,
+                timestamp: new Date().toISOString()
+            });
+        }
+
+        console.log(`✅ User ${targetUser} unverified by ${req.user.username}`);
+
+        res.json({
+            success: true,
+            message: `Верификация пользователя ${targetUser} отозвана`,
+            user: {
+                username: user.username,
+                verified: user.verified
+            }
+        });
+        
+    } catch (error) {
+        console.error('❌ Unverify user error:', error);
+        res.status(500).json({ 
+            success: false,
+            error: 'Ошибка отзыва верификации' 
+        });
+    }
+});
+
+app.get('/api/user/:username/verification', authenticateToken, (req, res) => {
+    try {
+        const { username } = req.params;
+        const user = users.find(u => u.username === username);
+        
+        if (!user) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+        
+        const verificationInfo = {
+            verified: user.verified || false,
+            verificationDate: user.verificationDate,
+            verifiedBy: user.verifiedBy,
+            verificationReason: user.verificationReason
+        };
+        
+        res.json(verificationInfo);
+    } catch (error) {
+        console.error('❌ User verification info error:', error);
+        res.status(500).json({ error: 'Failed to get verification info' });
+    }
+});
+
+app.get('/api/users/online', authenticateToken, (req, res) => {
+    try {
+        if (req.user.username !== 'admin') {
+            return res.status(403).json({ 
+                error: 'Доступ запрещен. Требуются права администратора.' 
+            });
+        }
+        
+        const onlineUsersArray = Array.from(onlineUsers);
+        res.json(onlineUsersArray);
+        
+    } catch (error) {
+        console.error('❌ Online users error:', error);
+        res.status(500).json({ error: 'Failed to load online users' });
+    }
+});
+
 app.use((req, res, next) => {
     console.log(`❌ 404 - Route not found: ${req.method} ${req.url}`);
     res.status(404).json({ error: 'Route not found' });
@@ -2534,12 +2594,26 @@ app.use((error, req, res, next) => {
     res.status(500).json({ error: 'Internal server error' });
 });
 
-// WebSocket соединения
+// WebSocket events
 io.on('connection', (socket) => {
     console.log('✅ User connected:', socket.id);
 
     socket.on('error', (error) => {
         console.error('❌ Socket error:', error);
+    });
+
+    socket.on('get_verified_users', (cb) => {
+        if (typeof cb === 'function') {
+            const verifiedUsers = users
+                .filter(user => user.verified === true || user.username === 'admin')
+                .map(user => user.username);
+            cb(verifiedUsers);
+        }
+    });
+
+    socket.on('user_verification_changed', (data) => {
+        console.log('🔄 User verification changed via socket:', data);
+        io.emit('user_verification_changed', data);
     });
 
     socket.on('disconnect', (reason) => {
@@ -2548,7 +2622,6 @@ io.on('connection', (socket) => {
             userSockets.delete(socket.username);
             onlineUsers.delete(socket.username);
             
-            // Завершаем активные звонки при отключении
             if (activeCalls.has(socket.username)) {
                 const callData = activeCalls.get(socket.username);
                 activeCalls.delete(socket.username);
@@ -2567,12 +2640,10 @@ io.on('connection', (socket) => {
                 }
             }
             
-            // Останавливаем трансляцию экрана при отключении
             if (screenShares.has(socket.username)) {
                 const screenShareData = screenShares.get(socket.username);
                 screenShares.delete(socket.username);
                 
-                // Уведомляем всех участников о завершении трансляции
                 screenShareData.participants?.forEach(participant => {
                     const participantSocket = userSockets.get(participant);
                     if (participantSocket) {
@@ -2828,7 +2899,6 @@ io.on('connection', (socket) => {
                 });
             }
             
-            // Удаляем запись о трансляции экрана, если она была
             if (screenShares.has(socket.username)) {
                 const screenShareData = screenShares.get(socket.username);
                 if (screenShareData.callId === data.callId) {
@@ -2882,7 +2952,6 @@ io.on('connection', (socket) => {
     socket.on('screen_share_started', (data) => {
         console.log(`🖥️ ${socket.username} начал трансляцию экрана в звонке ${data.callId}`);
         
-        // Сохраняем информацию о трансляции
         screenShares.set(socket.username, {
             callId: data.callId,
             sharer: socket.username,
@@ -2891,17 +2960,14 @@ io.on('connection', (socket) => {
             participants: [socket.username, data.targetUser]
         });
         
-        // Получаем информацию о звонке
         const callData = activeCalls.get(data.callId);
         if (!callData) {
             console.error('❌ Call not found for screen share');
             return;
         }
         
-        // Определяем получателя
         const targetUser = callData.caller === socket.username ? callData.targetUser : callData.caller;
         
-        // Отправляем уведомление получателю
         const targetSocketId = userSockets.get(targetUser);
         if (targetSocketId) {
             io.to(targetSocketId).emit('screen_share_started', {
@@ -2919,17 +2985,13 @@ io.on('connection', (socket) => {
     socket.on('screen_share_ended', (data) => {
         console.log(`🖥️ ${socket.username} завершил трансляцию экрана в звонке ${data.callId}`);
         
-        // Удаляем информацию о трансляции
         if (screenShares.has(socket.username)) {
             const screenShareData = screenShares.get(socket.username);
             
-            // Получаем информацию о звонке
             const callData = activeCalls.get(data.callId);
             if (callData) {
-                // Определяем получателя
                 const targetUser = callData.caller === socket.username ? callData.targetUser : callData.caller;
                 
-                // Отправляем уведомление получателю
                 const targetSocketId = userSockets.get(targetUser);
                 if (targetSocketId) {
                     io.to(targetSocketId).emit('screen_share_ended', {
@@ -3050,11 +3112,11 @@ io.on('connection', (socket) => {
         }
     });
 });
+
 async function createDefaultGroups() {
     try {
         console.log('🔄 Checking for default groups...');
         
-        // Проверяем, существуют ли дефолтные группы
         const defaultGroupNames = ['Общий чат', 'Новости', 'Помощь'];
         let groupsCreated = 0;
         
@@ -3065,7 +3127,7 @@ async function createDefaultGroups() {
                 const newGroup = {
                     id: 'group_default_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
                     name: groupName,
-                    members: ['all'], // Специальный маркер для всех пользователей
+                    members: ['all'],
                     createdBy: 'system',
                     createdAt: new Date().toISOString(),
                     isGlobal: true,
@@ -3089,6 +3151,7 @@ async function createDefaultGroups() {
         console.error('❌ Error creating default groups:', error);
     }
 }
+
 async function startServer() {
     try {
         await ensureDirectories();
@@ -3098,7 +3161,6 @@ async function startServer() {
         console.log('🗑️ Cleaning up old uploads...');
         await cleanupOldUploads();
         
-        // Загружаем данные
         console.log('📂 Loading data...');
         await loadUsers();
         await loadMessages();
@@ -3106,11 +3168,9 @@ async function startServer() {
         await loadCurrencyData();
         await loadGiftsData();
         
-        // Запускаем автосохранение
         console.log('⏰ Starting auto-save every 30 seconds...');
         await startAutoSave();
         
-        // Простой запуск сервера
         server.listen(PORT, '0.0.0.0', () => {
             console.log(`🚀 Server running on port ${PORT}`);
             console.log(`📊 Health check: http://localhost:${PORT}/health`);
@@ -3124,6 +3184,7 @@ async function startServer() {
         process.exit(1);
     }
 }
+
 function scheduleDailyBackup() {
     setInterval(async () => {
         try {
@@ -3146,7 +3207,6 @@ function scheduleDailyBackup() {
     }, 24 * 60 * 60 * 1000);
 }
 
-// Обработчик ошибок сервера
 server.on('error', (error) => {
     if (error.code === 'EADDRINUSE') {
         console.error(`❌ Port ${PORT} is already in use. Trying ${PORT + 1}...`);
@@ -3162,7 +3222,6 @@ server.on('error', (error) => {
 process.on('SIGINT', async () => {
     console.log('\n⚠️ Shutting down server...');
     
-    // Останавливаем автосохранение
     if (autoSaveInterval) {
         clearInterval(autoSaveInterval);
         console.log('⏹️ Stopped auto-save interval');
@@ -3173,7 +3232,6 @@ process.on('SIGINT', async () => {
         console.log('🔄 Stopping MEGA sync...');
     }
     
-    // Выполняем финальное сохранение
     console.log('💾 Performing final data save...');
     await saveAllData();
     
@@ -3204,4 +3262,4 @@ process.on('unhandledRejection', (reason, promise) => {
     console.error('❌ Unhandled Rejection at:', promise, 'reason:', reason);
 });
 
-startServer(); 
+startServer();

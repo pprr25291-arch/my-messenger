@@ -50,7 +50,7 @@ class AdminPanel {
             display: none;
         `;
 
-        adminPanel.innerHTML = `
+    adminPanel.innerHTML = `
             <div class="admin-header">
                 <h3>⚙️ Панель администратора</h3>
                 <button class="close-admin" style="background: none; border: none; font-size: 20px; cursor: pointer;">✕</button>
@@ -58,9 +58,11 @@ class AdminPanel {
             
             <div class="admin-tabs">
                 <button class="tab-btn active" data-tab="notifications">📢 Уведомления</button>
+                <button class="tab-btn" data-tab="verification">✅ Верификация</button>
                 <button class="tab-btn" data-tab="users">👥 Пользователи</button>
                 <button class="tab-btn" data-tab="system">🛠️ Система</button>
             </div>
+            
             
             <div class="tab-content">
                 <div id="notificationsTab" class="tab-pane active">

@@ -20,16 +20,23 @@ class PrivateChat {
         
         this.init();
     }
-
-    checkAdminStatus() {
-        try {
-            const currentUser = document.getElementById('username')?.textContent || window.USERNAME;
-            return currentUser === 'admin';
-        } catch (error) {
-            console.error('Error checking admin status:', error);
-            return false;
+checkAdminStatus() {
+    try {
+        const currentUser = this.getCurrentUser();
+        const isAdmin = currentUser === 'admin';
+        
+        // Если в будущем понадобится сложная логика проверки
+        if (isAdmin) {
+            // Можно добавить дополнительные проверки через API
+            console.log('👑 User is admin');
         }
+        
+        return isAdmin;
+    } catch (error) {
+        console.error('Error checking admin status:', error);
+        return false;
     }
+}
 init() {
     if (this.isInitialized) return;
     
@@ -925,84 +932,74 @@ async loadUserAvatar(username) {
         return this.getDefaultGroupAvatarUrl();
     }
     
-    if (!username || username.includes('👥') || username.includes('группа')) {
+    // ОЧИЩАЕМ username от текста "Верифицированный пользователь"
+    const cleanUsername = username.replace(/[^a-zA-Z0-9_\-]/g, '');
+    
+    if (!cleanUsername || cleanUsername.includes('👥') || cleanUsername.includes('группа')) {
         return this.getDefaultAvatarUrl();
     }
     
     // Проверяем кэш
-    if (this.avatarCache.has(username)) {
-        const cachedUrl = this.avatarCache.get(username);
+    if (this.avatarCache.has(cleanUsername)) {
+        const cachedUrl = this.avatarCache.get(cleanUsername);
         return cachedUrl;
     }
 
     try {
-        // Сначала пробуем получить аватар из данных пользователя
+        // Пробуем получить аватар из данных пользователя с clean username
         try {
-            const response = await fetch(`/api/user/${encodeURIComponent(username)}`);
+            const response = await fetch(`/api/user/${encodeURIComponent(cleanUsername)}`);
             if (response.ok) {
                 const userData = await response.json();
                 if (userData.avatar && userData.avatar !== this.getDefaultAvatarUrl()) {
-                    // Проверяем, существует ли аватар
                     const avatarExists = await this.checkImageExists(userData.avatar);
                     if (avatarExists) {
-                        this.avatarCache.set(username, userData.avatar);
+                        this.avatarCache.set(cleanUsername, userData.avatar);
                         return userData.avatar;
                     }
                 }
             }
         } catch (apiError) {
-            console.log(`📄 User API not available for ${username}:`, apiError.message);
+            console.log(`📄 User API not available for ${cleanUsername}:`, apiError.message);
         }
         
-        // Затем пробуем стандартные пути
+        // Затем пробуем стандартные пути с clean username
         const endpoints = [
-            `/uploads/avatars/avatar_${encodeURIComponent(username)}.jpg`,
-            `/uploads/avatars/avatar_${encodeURIComponent(username)}.png`,
-            `/uploads/avatars/${encodeURIComponent(username)}.jpg`,
-            `/uploads/avatars/${encodeURIComponent(username)}.png`,
-            `/api/user/${encodeURIComponent(username)}/avatar`,
-            `/api/users/${encodeURIComponent(username)}/avatar`
+            `/uploads/avatars/avatar_${encodeURIComponent(cleanUsername)}.jpg`,
+            `/uploads/avatars/avatar_${encodeURIComponent(cleanUsername)}.png`,
+            `/uploads/avatars/${encodeURIComponent(cleanUsername)}.jpg`,
+            `/uploads/avatars/${encodeURIComponent(cleanUsername)}.png`,
+            `/api/user/${encodeURIComponent(cleanUsername)}/avatar`
         ];
 
         // Для каждого endpoint пробуем загрузить
         for (const endpoint of endpoints) {
             try {
-                // Пробуем загрузить через fetch с mode 'no-cors' для кросс-доменных запросов
-                const response = await fetch(endpoint, {
-                    method: 'GET',
-                    mode: 'no-cors',
-                    cache: 'no-cache'
-                });
-                
-                // В режиме no-cors мы не можем прочитать response.ok
-                // Поэтому создаем Image для проверки
                 const imgExists = await new Promise(resolve => {
                     const img = new Image();
                     img.onload = () => resolve(true);
                     img.onerror = () => resolve(false);
                     img.src = endpoint;
-                    
-                    // Таймаут
                     setTimeout(() => resolve(false), 1000);
                 });
                 
                 if (imgExists) {
-                    this.avatarCache.set(username, endpoint);
+                    this.avatarCache.set(cleanUsername, endpoint);
                     return endpoint;
                 }
             } catch (error) {
-                console.log(`⚠️ Endpoint ${endpoint} failed for ${username}:`, error.message);
+                console.log(`⚠️ Endpoint ${endpoint} failed for ${cleanUsername}:`, error.message);
                 continue;
             }
         }
         
         // Если ничего не найдено, используем дефолтный аватар
         const defaultAvatar = this.getDefaultAvatarUrl();
-        this.avatarCache.set(username, defaultAvatar);
+        this.avatarCache.set(cleanUsername, defaultAvatar);
         return defaultAvatar;
         
     } catch (error) {
-        console.error('❌ Error loading avatar for', username, ':', error);
+        console.error('❌ Error loading avatar for', cleanUsername, ':', error);
         return this.getDefaultAvatarUrl();
     }
 }
@@ -1538,6 +1535,7 @@ createModals() {
                     <button class="admin-tab-btn active" data-tab="system" style="padding: 10px 15px; border: none; background: #007bff; color: white; border-radius: 5px; cursor: pointer; margin-bottom: 5px;">📢 Системные уведомления</button>
                     <button class="admin-tab-btn" data-tab="users" style="padding: 10px 15px; border: none; background: #6c757d; color: white; border-radius: 5px; cursor: pointer; margin-bottom: 5px;">👥 Управление пользователями</button>
                     <button class="admin-tab-btn" data-tab="currency" style="padding: 10px 15px; border: none; background: #28a745; color: white; border-radius: 5px; cursor: pointer; margin-bottom: 5px;">🪙 Управление валютой</button>
+                    <button class="admin-tab-btn" data-tab="verification" style="padding: 10px 15px; border: none; background: #ffc107; color: #212529; border-radius: 5px; cursor: pointer; margin-bottom: 5px;">✅ Управление верификацией</button>
                 </div>
                 
                 <div class="admin-tab-content">
@@ -1617,6 +1615,43 @@ createModals() {
                                 <h5 style="margin-bottom: 10px;">Балансы пользователей</h5>
                                 <div id="usersCurrencyList" class="users-list" style="max-height: 300px; overflow-y: auto; border: 1px solid #ddd; padding: 10px; border-radius: 5px;">
                                     <div class="loading">Загрузка...</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div id="tab-verification" class="admin-tab-pane" style="display: none;">
+                        <div class="verification-admin-controls">
+                            <h4 style="margin-bottom: 15px;">✅ Управление верификацией пользователей</h4>
+                            
+                            <div class="verification-form" style="margin-bottom: 20px;">
+                                <h5 style="margin-bottom: 10px;">Выдача/отзыв верификации</h5>
+                                <div class="verification-controls" style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px;">
+                                    <div class="form-group">
+                                        <label style="display: block; margin-bottom: 5px; font-weight: bold;">Пользователь:</label>
+                                        <input type="text" id="verificationTargetUser" class="form-input" placeholder="Имя пользователя" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px;">
+                                    </div>
+                                    <div class="form-group">
+                                        <label style="display: block; margin-bottom: 5px; font-weight: bold;">Действие:</label>
+                                        <div style="display: flex; gap: 10px;">
+                                            <button class="btn-success" onclick="window.verificationManager.verifyUser()" style="padding: 10px 15px; background: #28a745; color: white; border: none; border-radius: 5px; cursor: pointer; flex: 1;">✅ Верифицировать</button>
+                                            <button class="btn-danger" onclick="window.verificationManager.unverifyUser()" style="padding: 10px 15px; background: #dc3545; color: white; border: none; border-radius: 5px; cursor: pointer; flex: 1;">❌ Отозвать</button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="form-group">
+                                    <label style="display: block; margin-bottom: 5px; font-weight: bold;">Причина:</label>
+                                    <input type="text" id="verificationReason" class="form-input" placeholder="Необязательно" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px;">
+                                </div>
+                            </div>
+
+                            <div class="users-verification-list">
+                                <h5 style="margin-bottom: 10px;">Статус верификации пользователей</h5>
+                                <div class="search-filter" style="margin-bottom: 10px;">
+                                    <input type="text" id="verificationSearch" placeholder="🔍 Поиск пользователей..." style="width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 5px;">
+                                </div>
+                                <div id="usersVerificationList" class="users-list" style="max-height: 300px; overflow-y: auto; border: 1px solid #ddd; padding: 10px; border-radius: 5px;">
+                                    <div class="loading">Загрузка пользователей...</div>
                                 </div>
                             </div>
                         </div>
@@ -1785,7 +1820,10 @@ createModals() {
                         <div class="profile-avatar" style="width: 100px; height: 100px; border-radius: 50%; overflow: hidden; margin: 0 auto 15px; border: 3px solid #007bff;">
                             <img id="profileAvatarImg" src="/static/default-avatar.png" alt="" style="width: 100%; height: 100%; object-fit: cover;">
                         </div>
-                        <h4 id="profileUsername" style="margin: 0 0 5px 0; color: #333;">Загрузка...</h4>
+                        <h4 id="profileUsername" style="margin: 0 0 5px 0; color: #333;">
+                            <span id="profileUsernameText">Загрузка...</span>
+                            <span id="profileVerificationBadge" style="display: none; margin-left: 5px;"></span>
+                        </h4>
                         <div class="user-status" id="profileUserStatus" style="color: #6c757d;">Загрузка...</div>
                     </div>
                     
@@ -1809,6 +1847,10 @@ createModals() {
                                 <div class="stat-item" style="text-align: center; padding: 10px; background: #f8f9fa; border-radius: 8px;">
                                     <div style="font-size: 12px; color: #6c757d;">Баланс</div>
                                     <div id="profileBalance" style="font-weight: bold;">🪙 ...</div>
+                                </div>
+                                <div class="stat-item" style="text-align: center; padding: 10px; background: #f8f9fa; border-radius: 8px;">
+                                    <div style="font-size: 12px; color: #6c757d;">Верификация</div>
+                                    <div id="profileVerificationStatus" style="font-weight: bold;">❌ Не верифицирован</div>
                                 </div>
                             </div>
                         </div>
@@ -2090,13 +2132,14 @@ setupEventListeners() {
     // Обработчики для других элементов через делегирование
     this.setupDelegatedEventListeners();
     
-    // Отдельный обработчик для поля поиска
-    const userSearch = document.getElementById('userSearch');
-    if (userSearch) {
-        userSearch.addEventListener('input', this.debounce(() => {
+ const userSearch = document.getElementById('userSearch');
+if (userSearch) {
+    userSearch.addEventListener('input', this.debounce(() => {
+        if (this && this.searchUsers) {
             this.searchUsers();
-        }, 300));
-    }
+        }
+    }, 300));
+}
 
     // Отдельный обработчик для поля ввода сообщения (исправленный для мобильных)
     const messageInput = document.getElementById('privateMessageInput');
@@ -2367,7 +2410,7 @@ async startChat(username, isGroup = false, groupId = null) {
             groupChatContainer.style.display = 'none';
         }
         
-        // Обновляем заголовок чата
+        // Обновляем заголовок чата с галочкой верификации
         this.updateChatHeader(username);
         
         // На мобильных устройствах переключаемся на экран чата
@@ -2407,6 +2450,13 @@ async startChat(username, isGroup = false, groupId = null) {
                 container.innerHTML = '<div class="no-messages">📝 Начните общение первым!</div>';
             }
         }
+        
+        // КРИТИЧЕСКОЕ ИЗМЕНЕНИЕ: Обновляем галочки верификации
+        setTimeout(() => {
+            if (window.verificationManager) {
+                window.verificationManager.updateAllVerificationBadges();
+            }
+        }, 300);
     }
     
     // Обновляем список бесед
@@ -3507,43 +3557,60 @@ handleGiftReceived(data) {
         };
     }
 
-    async searchUsers() {
-        const query = document.getElementById('userSearch')?.value.trim();
-        const resultsContainer = document.getElementById('searchResults');
-        
-        if (!resultsContainer || !query) return;
-        
-        if (query.length === 0) {
-            resultsContainer.style.display = 'none';
-            resultsContainer.innerHTML = '';
-            return;
-        }
-        
-        if (query.length < 2) {
-            resultsContainer.innerHTML = '<div class="search-result empty">Введите минимум 2 символа</div>';
-            resultsContainer.style.display = 'block';
-            return;
-        }
-        
-        resultsContainer.innerHTML = '<div class="search-result loading">Поиск...</div>';
-        resultsContainer.style.display = 'block';
-
-        try {
-            const response = await fetch(`/api/users/search?query=${encodeURIComponent(query)}`);
-            
-            if (response.ok) {
-                const users = await response.json();
-                this.displaySearchResults(users);
-            } else {
-                throw new Error('Search failed');
-            }
-        } catch (error) {
-            resultsContainer.innerHTML = '<div class="search-result error">Ошибка поиска</div>';
-        }
-    }
-displaySearchResults(users) {
+searchUsers() {
+    const query = document.getElementById('userSearch')?.value.trim();
     const resultsContainer = document.getElementById('searchResults');
-    if (!resultsContainer) return;
+    
+    if (!resultsContainer || !query) return;
+    
+    if (query.length === 0) {
+        resultsContainer.style.display = 'none';
+        resultsContainer.innerHTML = '';
+        return;
+    }
+    
+    if (query.length < 2) {
+        resultsContainer.innerHTML = '<div class="search-result empty">Введите минимум 2 символа</div>';
+        resultsContainer.style.display = 'block';
+        return;
+    }
+    
+    resultsContainer.innerHTML = '<div class="search-result loading">Поиск...</div>';
+    resultsContainer.style.display = 'block';
+
+    try {
+        // Используем стрелочную функцию для сохранения контекста
+        fetch(`/api/users/search?query=${encodeURIComponent(query)}`)
+            .then(response => {
+                if (response.ok) {
+                    return response.json();
+                }
+                throw new Error('Search failed');
+            })
+            .then(users => {
+                this.displaySearchResults(users);
+            })
+            .catch(error => {
+                console.error('Search error:', error);
+                resultsContainer.innerHTML = '<div class="search-result error">Ошибка поиска</div>';
+            });
+    } catch (error) {
+        console.error('Search function error:', error);
+        resultsContainer.innerHTML = '<div class="search-result error">Ошибка поиска</div>';
+    }
+}
+displaySearchResults(users) {
+    // Проверяем контекст
+    if (!this) {
+        console.error('Invalid context for displaySearchResults');
+        return;
+    }
+    
+    const resultsContainer = document.getElementById('searchResults');
+    if (!resultsContainer) {
+        console.error('Search results container not found');
+        return;
+    }
     
     resultsContainer.innerHTML = '';
     
@@ -3564,6 +3631,10 @@ displaySearchResults(users) {
         const statusClass = isOnline ? 'online' : 'offline';
         const statusText = isOnline ? 'online' : 'offline';
         
+        // Проверяем верификацию пользователя
+        const isVerified = window.verificationManager?.isUserVerified(user.username) || false;
+        const verifiedClass = isVerified ? 'verified' : '';
+        
         const userElement = document.createElement('div');
         userElement.className = 'search-result';
         
@@ -3576,39 +3647,62 @@ displaySearchResults(users) {
                      data-username="${user.username}"
                      data-is-group="false">
                 <div class="search-user-details">
-                    <span class="search-username">${user.username}</span>
+                    <span class="search-username ${verifiedClass}">${user.username}</span>
                     <span class="search-user-status ${statusClass}">${statusText}</span>
                 </div>
             </div>
             <button type="button" class="start-chat-btn">Написать</button>
         `;
 
-        const chatButton = userElement.querySelector('.start-chat-btn');
-        
-        userElement.addEventListener('click', (e) => {
+        // Обработчик клика на карточку пользователя
+        const handleUserClick = (e) => {
             // Если кликнули на аватар - открываем профиль
             const avatar = e.target.closest('.search-avatar-img');
             if (avatar) {
                 e.preventDefault();
                 e.stopPropagation();
-                this.openUserProfile(user.username);
+                if (this.openUserProfile && typeof this.openUserProfile === 'function') {
+                    this.openUserProfile(user.username);
+                }
                 return;
             }
             
+            // Если кликнули на кнопку "Написать" или на карточку пользователя
             if (!e.target.classList.contains('start-chat-btn')) {
-                this.startChat(user.username);
-                resultsContainer.style.display = 'none';
+                if (this.startChat && typeof this.startChat === 'function') {
+                    this.startChat(user.username);
+                    resultsContainer.style.display = 'none';
+                }
             }
-        });
+        };
 
+        userElement.addEventListener('click', handleUserClick);
+
+        const chatButton = userElement.querySelector('.start-chat-btn');
         chatButton.addEventListener('click', (e) => {
             e.stopPropagation();
-            this.startChat(user.username);
-            resultsContainer.style.display = 'none';
+            if (this.startChat && typeof this.startChat === 'function') {
+                this.startChat(user.username);
+                resultsContainer.style.display = 'none';
+                
+                // Обновляем галочки верификации после открытия чата
+                setTimeout(() => {
+                    if (window.verificationManager) {
+                        window.verificationManager.updateAllVerificationBadges();
+                    }
+                }, 500);
+            }
         });
 
         resultsContainer.appendChild(userElement);
     });
+    
+    // Обновляем галочки верификации в результатах поиска
+    setTimeout(() => {
+        if (window.verificationManager && typeof window.verificationManager.updateSearchResultsVerification === 'function') {
+            window.verificationManager.updateSearchResultsVerification();
+        }
+    }, 200);
     
     resultsContainer.style.display = 'block';
 }
@@ -3878,19 +3972,25 @@ async showDesktopChat(username, isGroup = false, groupId = null) {
     }
 }
 
-// Новый метод для обновления заголовка чата
 updateChatHeader(username) {
     const currentChatUser = document.getElementById('currentChatUser');
     const currentUserStatus = document.getElementById('currentUserStatus');
     
-    if (currentChatUser) currentChatUser.textContent = username;
+    if (currentChatUser) {
+        // Очищаем текст от любых упоминаний о верификации
+        const cleanUsername = username.replace(/[^a-zA-Z0-9_\-]/g, '');
+        currentChatUser.textContent = cleanUsername;
+        
+        // Галочка верификации будет добавлена VerificationManager автоматически
+    }
+    
     if (currentUserStatus) {
         const isOnline = this.onlineUsers.has(username);
         currentUserStatus.textContent = isOnline ? 'online' : 'offline';
         currentUserStatus.className = `user-status ${isOnline ? 'online' : 'offline'}`;
     }
     
-    // Загружаем аватар
+    // Загружаем аватар с очищенным username
     this.loadUserAvatar(username).then(avatarUrl => {
         const userAvatar = document.querySelector('.chat-user-info .user-avatar');
         if (userAvatar) {
@@ -3909,6 +4009,13 @@ updateChatHeader(username) {
             userAvatar.innerHTML = `<img src="/static/default-avatar.png" class="user-avatar-img" alt="${username}">`;
         }
     });
+    
+    // Обновляем галочки верификации
+    setTimeout(() => {
+        if (window.verificationManager) {
+            window.verificationManager.updateAllVerificationBadges();
+        }
+    }, 100);
 }
 async loadConversations() {
     try {
@@ -5010,31 +5117,16 @@ showChatList() {
             }
         }, 3000);
     }
-
 toggleAdminPanel() {
-    try {
-        // Проверяем права администратора
-        if (!this.isAdmin) {
-            this.showNotification('Недостаточно прав для доступа к панели администратора', 'error');
-            return;
-        }
-
-        const adminPanel = document.getElementById('adminPanel');
-        if (adminPanel) {
-            const isVisible = adminPanel.style.display === 'flex';
-            adminPanel.style.display = isVisible ? 'none' : 'flex';
-            
-            if (!isVisible) {
-                this.loadOnlineUsers();
-                this.switchAdminTab('system');
-            }
-        } else {
-            console.error('❌ Admin panel not found');
-            this.showNotification('Панель администратора не найдена', 'error');
-        }
-    } catch (error) {
-        console.error('❌ Error toggling admin panel:', error);
-        this.showNotification('Ошибка открытия панели администратора', 'error');
+    // Проверяем права перед открытием
+    if (!this.checkAdminStatus()) {
+        this.showNotification('Недостаточно прав для доступа к панели администратора', 'error');
+        return;
+    }
+    
+    const adminPanel = document.getElementById('adminPanel');
+    if (adminPanel) {
+        adminPanel.style.display = adminPanel.style.display === 'flex' ? 'none' : 'flex';
     }
 }
     switchAdminTab(tabName) {
@@ -5063,16 +5155,16 @@ async loadOnlineUsers() {
     try {
         console.log('🔄 Loading online users...');
         
-        // Проверяем права администратора
         if (!this.isAdmin) {
             console.log('⚠️ User is not admin, skipping online users load');
             return;
         }
 
+        // Убираем проблемный вызов fetchCallImpl
         const response = await fetch('/api/users/online');
         
         if (response.status === 404) {
-            console.log('⚠️ Online users endpoint not found, using fallback');
+            console.log('⚠️ Online users endpoint not found');
             this.showFallbackOnlineUsers();
             return;
         }
@@ -5088,7 +5180,7 @@ async loadOnlineUsers() {
         console.error('❌ Error loading online users:', error);
         this.showFallbackOnlineUsers();
     }
-}   
+}
 
 showFallbackOnlineUsers() {
     const onlineUsersList = document.getElementById('onlineUsersList');

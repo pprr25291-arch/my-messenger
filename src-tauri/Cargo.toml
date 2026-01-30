@@ -1,12 +1,12 @@
 [package]
-name = "my-messenger"
+name = "anonka"
 version = "0.1.0"
-description = "My Messenger Desktop Application"
-authors = ["Your Name"]
+description = "Create a anonka company"
+authors = ["Anonka Company"]
 edition = "2021"
 
 [[bin]]
-name = "my-messenger"
+name = "anonka"
 path = "src/main.rs"
 
 [dependencies]

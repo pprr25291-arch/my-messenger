@@ -1,1 +1,22 @@
-[]
+[
+  {
+    "sender": "aaa",
+    "receiver": "admin",
+    "message": "l",
+    "timestamp": "07:28:17",
+    "type": "private",
+    "date": "2026-01-26T02:28:17.264Z",
+    "messageType": "text",
+    "fileData": null
+  },
+  {
+    "sender": "admin",
+    "receiver": "aaa",
+    "message": "aaa",
+    "timestamp": "09:50:45",
+    "type": "private",
+    "date": "2026-01-30T04:50:45.596Z",
+    "messageType": "text",
+    "fileData": null
+  }
+]

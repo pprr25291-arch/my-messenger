@@ -3,12 +3,36 @@
     "username": "aaa",
     "password": "$2a$10$am418mtAWWbmhUUUP/25LuAVNNft9nsg1T0nulSfqUb.PZCy5cYkW",
     "avatar": "/static/default-avatar.png",
-    "createdAt": "2026-01-22T03:58:28.160Z"
+    "createdAt": "2026-01-22T03:58:28.160Z",
+    "verified": true,
+    "verifiedBy": "admin",
+    "verifiedAt": null,
+    "canVerifyOthers": false,
+    "verificationDate": "2026-01-29T05:48:45.209Z",
+    "verificationReason": null,
+    "verificationRemovedDate": "2026-01-29T05:26:50.380Z",
+    "verificationRemovedBy": "admin",
+    "verificationRemovalReason": null
   },
   {
     "username": "admin",
     "password": "$2a$10$cfdbja8SUgCJvB/3huphHuzKVNT6JrMpVpYoOAnit6Jc6mBLRLyba",
     "avatar": "/static/default-avatar.png",
-    "createdAt": "2026-01-22T03:59:02.897Z"
+    "createdAt": "2026-01-22T03:59:02.897Z",
+    "verified": true,
+    "admin": true,
+    "verificationLevel": "admin",
+    "canVerifyOthers": true,
+    "verifiedAt": "2026-01-22T03:59:02.897Z",
+    "verifiedBy": "system",
+    "verificationDate": "2026-01-22T03:59:02.897Z",
+    "verificationHistory": [
+      {
+        "verified": true,
+        "verifiedBy": "system",
+        "reason": "Автоматическая верификация администратора",
+        "date": "2026-01-22T03:59:02.897Z"
+      }
+    ]
   }
 ]

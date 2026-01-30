@@ -1,7 +1,7 @@
 {
-  "productName": "My Messenger",
+  "productName": "Anonka",
   "version": "1.0.0",
-  "identifier": "com.my.messenger",
+  "identifier": "Anonka.Company",
   "build": {
     "frontendDist": "../frontend",
     "devUrl": "http://localhost:3000",
@@ -11,7 +11,7 @@
     "withGlobalTauri": true,
     "windows": [
       {
-        "title": "My Messenger",
+        "title": "Anonka",
         "width": 1200,
         "height": 800,
         "url": "https://my-messenger-9g2n.onrender.com",
