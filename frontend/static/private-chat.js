@@ -13,7 +13,9 @@ class PrivateChat {
         this.currentAudio = null;
         this.displayedMessageIds = new Set();
         this.avatarCache = new Map();
-        
+         this.chatMenuCreated = false;
+    this.blockedUsers = JSON.parse(localStorage.getItem('blocked_users') || '[]');
+
         if (!window.callManager) {
             window.callManager = new CallManager();
         }
@@ -93,7 +95,7 @@ init() {
         this.createFallbackUI();
     }
 }
-// В методе createUI() класса PrivateChat замените блок message-input-area:
+
 createUI() {
     const privateChatContainer = document.getElementById('privateChat');
     if (!privateChatContainer) {
@@ -2276,83 +2278,84 @@ setupEmojiPickerListeners() {
         }
     });
 }
- sendPrivateMessage() {
-        const messageInput = document.getElementById('privateMessageInput');
-        const message = messageInput?.value.trim();
-        
-        if (!message || message === '') {
-            if (!isMobileDevice()) {
-            }
-            return;
-        }
-        
-        // Очищаем поле ввода сразу
-        messageInput.value = '';
-        
-        const currentUsername = this.getCurrentUser();
-        
-        // Проверяем, не отправляем ли мы сообщение самому себе
-        if (currentUsername === this.currentChat) {
-            this.showNotification('Нельзя отправить сообщение самому себе', 'error');
-            return;
-        }
-        
-        // Создаем уникальный ID для сообщения
-        const messageId = 'msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-        
-        // Создаем объект сообщения
-        const messageData = {
-            sender: currentUsername,
-            receiver: this.currentChat,
-            message: message,
-            messageType: 'text',
-            timestamp: new Date().toLocaleTimeString(),
-            date: new Date().toISOString(),
-            id: messageId
-        };
-        
-        // Проверяем, не отправляли ли мы уже это сообщение
-        if (this.displayedMessageIds.has(messageId)) {
-            console.log('⚠️ Message already sent, skipping:', messageId);
-            return;
-        }
-        
-        this.displayedMessageIds.add(messageId);
-        
-        // Отправляем через сокет
-        if (window.socket) {
-            console.log('📤 Sending private message:', messageData);
-            window.socket.emit('private message', messageData);
-        }
-        
-        // Локально отображаем сообщение сразу
-        this.displayMessage(messageData, true);
-        
-        // Скрываем эмодзи-пикер если открыт
-        const emojiPicker = document.getElementById('emojiPicker');
-        if (emojiPicker) {
-            emojiPicker.style.display = 'none';
-        }
-        
-        // На мобильных устройствах обновляем состояние кнопки
-        if (isMobileDevice()) {
-            const sendButton = document.querySelector('.send-button');
-            if (sendButton) {
-                sendButton.disabled = true;
-                sendButton.style.opacity = '0.5';
-                sendButton.style.cursor = 'not-allowed';
-            }
-            
-            // Скрываем клавиатуру
-            setTimeout(() => {
-                if (messageInput) {
-                    messageInput.blur();
-                }
-            }, 100);
-        }
-        
-        console.log('✅ Message sent successfully');
+sendPrivateMessage() {
+    const messageInput = document.getElementById('privateMessageInput');
+    const message = messageInput?.value.trim();
+    
+    if (!message || message === '') {
+        return;
     }
+    
+    // Проверяем, не заблокирован ли пользователь
+    if (this.isUserBlocked(this.currentChat)) {
+        this.showNotification('Вы заблокировали этого пользователя. Разблокируйте его, чтобы отправлять сообщения.', 'error');
+        return;
+    }
+    
+    const currentUsername = this.getCurrentUser();
+    
+    // Проверяем, не отправляем ли мы сообщение самому себе
+    if (currentUsername === this.currentChat) {
+        this.showNotification('Нельзя отправить сообщение самому себе', 'error');
+        return;
+    }
+    
+    // Создаем уникальный ID для сообщения
+    const messageId = 'msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+    
+    // Создаем объект сообщения
+    const messageData = {
+        sender: currentUsername,
+        receiver: this.currentChat,
+        message: message,
+        messageType: 'text',
+        timestamp: new Date().toLocaleTimeString(),
+        date: new Date().toISOString(),
+        id: messageId
+    };
+    
+    // Проверяем, не отправляли ли мы уже это сообщение
+    if (this.displayedMessageIds.has(messageId)) {
+        console.log('⚠️ Message already sent, skipping:', messageId);
+        return;
+    }
+    
+    this.displayedMessageIds.add(messageId);
+    
+    // Отправляем через сокет
+    if (window.socket) {
+        console.log('📤 Sending private message:', messageData);
+        window.socket.emit('private message', messageData);
+    }
+    
+    // Локально отображаем сообщение сразу
+    this.displayMessage(messageData, true);
+    
+    // Скрываем эмодзи-пикер если открыт
+    const emojiPicker = document.getElementById('emojiPicker');
+    if (emojiPicker) {
+        emojiPicker.style.display = 'none';
+    }
+    
+    // На мобильных устройствах обновляем состояние кнопки
+    if (isMobileDevice()) {
+        const sendButton = document.querySelector('.send-button');
+        if (sendButton) {
+            sendButton.disabled = true;
+            sendButton.style.opacity = '0.5';
+            sendButton.style.cursor = 'not-allowed';
+        }
+        
+        // Скрываем клавиатуру
+        setTimeout(() => {
+            if (messageInput) {
+                messageInput.blur();
+            }
+        }, 100);
+    }
+    
+    console.log('✅ Message sent successfully');
+}
 openVoiceRecorder() {
     if (!window.voiceMessageManager) {
         console.log('🎤 Creating VoiceMessageManager instance...');
@@ -2380,6 +2383,15 @@ getCurrentChatUser() {
 }
 async startChat(username, isGroup = false, groupId = null) {
     console.log('💬 Starting chat:', { username, isGroup, groupId });
+    
+    // Проверяем, не заблокирован ли пользователь
+    const isBlocked = this.isUserBlocked(username);
+    if (isBlocked && !isGroup) {
+        if (!confirm(`Пользователь ${username} заблокирован.\n\nХотите разблокировать для начала общения?`)) {
+            return;
+        }
+        await this.unblockUser();
+    }
     
     if (isGroup) {
         const group = {
@@ -2410,8 +2422,16 @@ async startChat(username, isGroup = false, groupId = null) {
             groupChatContainer.style.display = 'none';
         }
         
-        // Обновляем заголовок чата с галочкой верификации
+        // Обновляем заголовок чата
         this.updateChatHeader(username);
+        
+        // Создаем контекстное меню
+        this.createChatContextMenu();
+        
+        // Проверяем и показываем статус блокировки
+        if (isBlocked) {
+            this.updateBlockStatus(true);
+        }
         
         // На мобильных устройствах переключаемся на экран чата
         if (isMobileDevice()) {
@@ -2450,13 +2470,6 @@ async startChat(username, isGroup = false, groupId = null) {
                 container.innerHTML = '<div class="no-messages">📝 Начните общение первым!</div>';
             }
         }
-        
-        // КРИТИЧЕСКОЕ ИЗМЕНЕНИЕ: Обновляем галочки верификации
-        setTimeout(() => {
-            if (window.verificationManager) {
-                window.verificationManager.updateAllVerificationBadges();
-            }
-        }, 300);
     }
     
     // Обновляем список бесед
@@ -2919,7 +2932,25 @@ setupAdminPanelTabs() {
         console.log('🎁 Gift received:', data);
         this.handleGiftReceived(data);
     });
+window.socket.on('chat_history_cleared', (data) => {
+    console.log('🧹 Chat history cleared by:', data.clearedBy);
+    if (data.clearedBy === this.currentChat) {
+        // Если очистил собеседник, обновляем чат
+        const messagesContainer = document.getElementById('privateMessages');
+        if (messagesContainer) {
+            messagesContainer.innerHTML = '<div class="no-messages">🧹 Пользователь очистил историю чата</div>';
+        }
+        this.displayedMessageIds.clear();
+    }
+});
 
+window.socket.on('chat_history_cleared_success', (data) => {
+    console.log('✅ Chat history cleared successfully:', data.targetUser);
+    // Можете показать дополнительное уведомление
+    if (data.targetUser === this.currentChat) {
+        this.showNotification(`История чата с ${data.targetUser} очищена (${data.clearedMessages} сообщений)`, 'success');
+    }
+});
     // Обработчик отправки подарка
     window.socket.on('gift_sent', (data) => {
         console.log('🎁 Gift sent confirmation:', data);
@@ -3376,7 +3407,265 @@ handleGiftReceived(data) {
             .user-status.offline {
                 color: #dc3545;
             }
+                    /* Стили для меню действий чата */
+            .chat-menu-btn {
+                background: none;
+                border: none;
+                color: #6c757d;
+                font-size: 24px;
+                cursor: pointer;
+                padding: 8px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                min-width: 40px;
+                height: 40px;
+                border-radius: 50%;
+                transition: all 0.3s ease;
+            }
             
+            .chat-menu-btn:hover {
+                background: #f8f9fa;
+                color: #007bff;
+                transform: scale(1.1);
+            }
+            
+            .chat-context-menu {
+                display: none;
+                position: absolute;
+                top: 70px;
+                right: 20px;
+                background: white;
+                border: 1px solid #ddd;
+                border-radius: 8px;
+                box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+                z-index: 1000;
+                min-width: 200px;
+                overflow: hidden;
+                animation: fadeIn 0.2s ease;
+            }
+            
+            .menu-header {
+                padding: 12px 15px;
+                background: #f8f9fa;
+                border-bottom: 1px solid #eee;
+                font-weight: bold;
+                color: #333;
+            }
+            
+            .menu-items {
+                list-style: none;
+                margin: 0;
+                padding: 0;
+            }
+            
+            .menu-item {
+                padding: 12px 15px;
+                cursor: pointer;
+                transition: background 0.3s ease;
+                border-bottom: 1px solid #f0f0f0;
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                font-size: 14px;
+            }
+            
+            .menu-item:hover {
+                background: #f8f9fa;
+            }
+            
+            .menu-item:last-child {
+                border-bottom: none;
+            }
+            
+            .menu-item.danger {
+                color: #dc3545;
+            }
+            
+            .menu-item.danger:hover {
+                background: #f8d7da;
+            }
+            
+            .menu-item.warning {
+                color: #ffc107;
+            }
+            
+            .menu-item.warning:hover {
+                background: #fff3cd;
+            }
+            
+            @keyframes fadeIn {
+                from { opacity: 0; transform: translateY(-10px); }
+                to { opacity: 1; transform: translateY(0); }
+            }
+            
+            /* Стили для предупреждения о блокировке */
+            .block-warning {
+                padding: 15px;
+                margin: 10px;
+                background: #fff3cd;
+                border: 1px solid #ffeaa7;
+                border-radius: 8px;
+                text-align: center;
+                color: #856404;
+                font-size: 14px;
+            }
+            
+            .block-warning button {
+                background: #28a745;
+                color: white;
+                border: none;
+                padding: 5px 10px;
+                border-radius: 4px;
+                margin-top: 5px;
+                cursor: pointer;
+                font-size: 12px;
+            }
+            
+            /* Стили для заблокированных пользователей в списке */
+            .conversation-item.blocked {
+                opacity: 0.6;
+                position: relative;
+            }
+            
+            .conversation-item.blocked::after {
+                content: "🚫";
+                position: absolute;
+                right: 10px;
+                top: 50%;
+                transform: translateY(-50%);
+                font-size: 16px;
+            }
+            
+            /* Дополнительные стили для мобильных */
+            @media (max-width: 768px) {
+                .chat-context-menu {
+                    position: fixed;
+                    top: auto;
+                    bottom: 0;
+                    left: 0;
+                    right: 0;
+                    width: 100%;
+                    border-radius: 15px 15px 0 0;
+                    max-width: 100%;
+                }
+                
+                .menu-item {
+                    padding: 16px 20px;
+                    font-size: 16px;
+                }
+            }
+              /* Стили для кнопки меню */
+            .chat-menu-btn {
+                background: none !important;
+                border: none !important;
+                color: #6c757d !important;
+                font-size: 24px !important;
+                cursor: pointer !important;
+                padding: 8px !important;
+                display: flex !important;
+                align-items: center !important;
+                justify-content: center !important;
+                min-width: 40px !important;
+                height: 40px !important;
+                border-radius: 50% !important;
+                transition: all 0.3s ease !important;
+            }
+            
+            .chat-menu-btn:hover {
+                background: #f8f9fa !important;
+                color: #007bff !important;
+                transform: scale(1.1) !important;
+            }
+            
+            /* Стили для контекстного меню */
+            .chat-context-menu {
+                display: none;
+                position: absolute;
+                top: 70px;
+                right: 20px;
+                background: white;
+                border: 1px solid #ddd;
+                border-radius: 8px;
+                box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+                z-index: 1000;
+                min-width: 200px;
+                overflow: hidden;
+                animation: fadeIn 0.2s ease;
+            }
+            
+            .menu-header {
+                padding: 12px 15px;
+                background: #f8f9fa;
+                border-bottom: 1px solid #eee;
+                font-weight: bold;
+                color: #333;
+            }
+            
+            .menu-items {
+                list-style: none;
+                margin: 0;
+                padding: 0;
+            }
+            
+            .menu-item {
+                padding: 12px 15px;
+                cursor: pointer;
+                transition: background 0.3s ease;
+                border-bottom: 1px solid #f0f0f0;
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                font-size: 14px;
+            }
+            
+            .menu-item:hover {
+                background: #f8f9fa;
+            }
+            
+            .menu-item:last-child {
+                border-bottom: none;
+            }
+            
+            .menu-item.danger {
+                color: #dc3545;
+            }
+            
+            .menu-item.danger:hover {
+                background: #f8d7da;
+            }
+            
+            .menu-item.warning {
+                color: #ffc107;
+            }
+            
+            .menu-item.warning:hover {
+                background: #fff3cd;
+            }
+            
+            @keyframes fadeIn {
+                from { opacity: 0; transform: translateY(-10px); }
+                to { opacity: 1; transform: translateY(0); }
+            }
+            
+            /* Дополнительные стили для мобильных */
+            @media (max-width: 768px) {
+                .chat-context-menu {
+                    position: fixed;
+                    top: auto;
+                    bottom: 0;
+                    left: 0;
+                    right: 0;
+                    width: 100%;
+                    border-radius: 15px 15px 0 0;
+                    max-width: 100%;
+                }
+                
+                .menu-item {
+                    padding: 16px 20px;
+                    font-size: 16px;
+                }
+            }
             /* Стили для кнопок звонков */
             .chat-call-buttons {
                 display: flex;
@@ -4074,6 +4363,8 @@ async displayConversations() {
                 try {
                     if (!conversation.isGroup) {
                         conversation.avatarUrl = await this.loadUserAvatarSafe(conversation.username);
+                        // Проверяем блокировку
+                        conversation.isBlocked = this.isUserBlocked(conversation.username);
                     }
                     return conversation;
                 } catch (error) {
@@ -5674,7 +5965,696 @@ openGiftForUser(username) {
             }
         }
     }
+createChatContextMenu() {
+    const chatTopBar = document.querySelector('.chat-top-bar');
+    if (!chatTopBar || this.chatMenuCreated) return;
+    
+    // Создаем кнопку меню (три точки)
+    const menuButton = document.createElement('button');
+    menuButton.className = 'chat-menu-btn';
+    menuButton.innerHTML = '⋮';
+    menuButton.title = 'Действия с чатом';
+    menuButton.style.cssText = `
+        background: none !important;
+        border: none !important;
+        color: #6c757d !important;
+        font-size: 24px !important;
+        cursor: pointer !important;
+        padding: 8px !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        min-width: 40px !important;
+        height: 40px !important;
+        border-radius: 50% !important;
+        transition: all 0.3s ease !important;
+        margin-left: 10px;
+    `;
+    
+    // Создаем контекстное меню
+    const contextMenu = document.createElement('div');
+    contextMenu.className = 'chat-context-menu';
+    contextMenu.style.cssText = `
+        display: none;
+        position: absolute;
+        top: 60px;
+        right: 10px;
+        background: white;
+        border: 1px solid #ddd;
+        border-radius: 10px;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+        z-index: 1000;
+        min-width: 180px;
+        max-width: 250px;
+        overflow: hidden;
+        animation: fadeIn 0.2s ease;
+    `;
+    
+    // Для мобильных - адаптируем стили
+    if (isMobileDevice()) {
+        contextMenu.style.cssText += `
+            position: fixed;
+            top: auto;
+            bottom: 80px; /* Над навигацией */
+            right: 10px;
+            left: 10px;
+            width: auto;
+            max-width: 280px;
+            margin: 0 auto;
+            border-radius: 12px;
+        `;
+    }
+    
+    const isBlocked = this.isUserBlocked(this.currentChat);
+    
+    contextMenu.innerHTML = `
+        <div class="menu-header" style="
+            padding: 12px 15px;
+            background: #f8f9fa;
+            border-bottom: 1px solid #eee;
+            font-weight: bold;
+            color: #333;
+            font-size: 14px;
+        ">
+            ${this.currentChat}
+        </div>
+        <ul class="menu-items" style="list-style: none; margin: 0; padding: 0;">
+            <li class="menu-item" data-action="view-profile" style="
+                padding: 12px 15px;
+                cursor: pointer;
+                transition: background 0.3s ease;
+                border-bottom: 1px solid #f0f0f0;
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                font-size: 14px;
+            ">
+                <span style="color: #007bff;">👤</span>
+                <span>Профиль пользователя</span>
+            </li>
+            <li class="menu-item" data-action="clear-chat" style="
+                padding: 12px 15px;
+                cursor: pointer;
+                transition: background 0.3s ease;
+                border-bottom: 1px solid #f0f0f0;
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                font-size: 14px;
+            ">
+                <span style="color: #6c757d;">🧹</span>
+                <span>Очистить историю</span>
+            </li>
+            <li class="menu-item ${isBlocked ? 'warning' : 'danger'}" data-action="${isBlocked ? 'unblock-user' : 'block-user'}" style="
+                padding: 12px 15px;
+                cursor: pointer;
+                transition: background 0.3s ease;
+                border-bottom: 1px solid #f0f0f0;
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                font-size: 14px;
+            ">
+                <span style="color: ${isBlocked ? '#ffc107' : '#dc3545'};">${isBlocked ? '🔓' : '🚫'}</span>
+                <span>${isBlocked ? 'Разблокировать' : 'Заблокировать'}</span>
+            </li>
+            <li class="menu-item danger" data-action="delete-chat" style="
+                padding: 12px 15px;
+                cursor: pointer;
+                transition: background 0.3s ease;
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                font-size: 14px;
+            ">
+                <span style="color: #dc3545;">🗑️</span>
+                <span>Удалить чат</span>
+            </li>
+        </ul>
+    `;
+    
+    // Добавляем элементы в DOM
+    chatTopBar.appendChild(menuButton);
+    document.body.appendChild(contextMenu);
+    
+    // Обработчики событий для меню
+    let menuVisible = false;
+    
+    // Показать/скрыть меню
+    menuButton.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        
+        // Если меню уже отображается, скрываем его
+        if (menuVisible) {
+            contextMenu.style.display = 'none';
+            menuVisible = false;
+            return;
+        }
+        
+        // Обновляем статус блокировки
+        const isBlocked = this.isUserBlocked(this.currentChat);
+        const blockItem = contextMenu.querySelector('[data-action*="block"]');
+        if (blockItem) {
+            if (isBlocked) {
+                blockItem.setAttribute('data-action', 'unblock-user');
+                blockItem.innerHTML = `
+                    <span style="color: #ffc107;">🔓</span>
+                    <span>Разблокировать</span>
+                `;
+                blockItem.className = 'menu-item warning';
+            } else {
+                blockItem.setAttribute('data-action', 'block-user');
+                blockItem.innerHTML = `
+                    <span style="color: #dc3545;">🚫</span>
+                    <span>Заблокировать</span>
+                `;
+                blockItem.className = 'menu-item danger';
+            }
+        }
+        
+        // Позиционируем меню
+        if (isMobileDevice()) {
+            // Для мобильных - фиксированное позиционирование над навигацией
+            contextMenu.style.bottom = '80px';
+            contextMenu.style.top = 'auto';
+            contextMenu.style.left = '10px';
+            contextMenu.style.right = '10px';
+            contextMenu.style.margin = '0 auto';
+        } else {
+            // Для десктопа - абсолютное позиционирование
+            const rect = menuButton.getBoundingClientRect();
+            contextMenu.style.top = `${rect.bottom + window.scrollY + 5}px`;
+            contextMenu.style.right = `${window.innerWidth - rect.right - 10}px`;
+        }
+        
+        contextMenu.style.display = 'block';
+        menuVisible = true;
+        
+        // Добавляем анимацию появления
+        contextMenu.style.opacity = '0';
+        contextMenu.style.transform = 'translateY(-10px)';
+        
+        setTimeout(() => {
+            contextMenu.style.transition = 'all 0.2s ease';
+            contextMenu.style.opacity = '1';
+            contextMenu.style.transform = 'translateY(0)';
+        }, 10);
+    });
+    
+    // Обработчики для пунктов меню
+    contextMenu.querySelectorAll('.menu-item').forEach(item => {
+        item.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const action = item.getAttribute('data-action');
+            this.handleChatAction(action);
+            
+            // Закрываем меню с анимацией
+            contextMenu.style.opacity = '0';
+            contextMenu.style.transform = 'translateY(-10px)';
+            setTimeout(() => {
+                contextMenu.style.display = 'none';
+                menuVisible = false;
+            }, 200);
+        });
+        
+        // Эффекты при наведении (только для десктопа)
+        if (!isMobileDevice()) {
+            item.addEventListener('mouseenter', () => {
+                item.style.background = item.classList.contains('danger') ? '#f8d7da' : 
+                                       item.classList.contains('warning') ? '#fff3cd' : '#f8f9fa';
+            });
+            item.addEventListener('mouseleave', () => {
+                item.style.background = '';
+            });
+        }
+        
+        // Для мобильных - эффект при нажатии
+        if (isMobileDevice()) {
+            item.addEventListener('touchstart', () => {
+                item.style.background = item.classList.contains('danger') ? '#f8d7da' : 
+                                       item.classList.contains('warning') ? '#fff3cd' : '#f8f9fa';
+            });
+            item.addEventListener('touchend', () => {
+                setTimeout(() => {
+                    item.style.background = '';
+                }, 200);
+            });
+        }
+    });
+    
+    // Закрытие меню при клике вне его
+    document.addEventListener('click', (e) => {
+        if (menuVisible && 
+            !contextMenu.contains(e.target) && 
+            !menuButton.contains(e.target)) {
+            
+            contextMenu.style.opacity = '0';
+            contextMenu.style.transform = 'translateY(-10px)';
+            
+            setTimeout(() => {
+                contextMenu.style.display = 'none';
+                menuVisible = false;
+            }, 200);
+        }
+    });
+    
+    // Закрытие меню при нажатии Esc
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && menuVisible) {
+            contextMenu.style.opacity = '0';
+            contextMenu.style.transform = 'translateY(-10px)';
+            
+            setTimeout(() => {
+                contextMenu.style.display = 'none';
+                menuVisible = false;
+            }, 200);
+        }
+    });
+    
+    // Для мобильных - закрытие при прокрутке
+    if (isMobileDevice()) {
+        window.addEventListener('scroll', () => {
+            if (menuVisible) {
+                contextMenu.style.opacity = '0';
+                contextMenu.style.transform = 'translateY(-10px)';
+                
+                setTimeout(() => {
+                    contextMenu.style.display = 'none';
+                    menuVisible = false;
+                }, 200);
+            }
+        });
+    }
+    
+    this.chatMenuCreated = true;
+}
+// Обработчик действий меню
+handleChatAction(action) {
+    if (!this.currentChat) {
+        this.showNotification('Выберите чат для выполнения действия', 'error');
+        return;
+    }
+    
+    switch(action) {
+        case 'delete-chat':
+            this.deleteChat();
+            break;
+        case 'block-user':
+            this.blockUser();
+            break;
+        case 'unblock-user':
+            this.unblockUser();
+            break;
+        case 'view-profile':
+            this.openUserProfile(this.currentChat);
+            break;
+        case 'clear-chat':
+            this.clearChat();
+            break;
+        default:
+            console.log('Unknown action:', action);
+    }
+}
 
+// Метод для проверки, заблокирован ли пользователь
+isUserBlocked(username) {
+    const blockedUsers = JSON.parse(localStorage.getItem('blocked_users') || '[]');
+    const currentUser = this.getCurrentUser();
+    return blockedUsers.some(block => 
+        (block.blocker === currentUser && block.blocked === username) ||
+        (block.blocker === username && block.blocked === currentUser)
+    );
+}
+
+// Метод для блокировки пользователя
+async blockUser() {
+    if (!this.currentChat) return;
+    
+    const confirmed = confirm(`Вы уверены, что хотите заблокировать пользователя ${this.currentChat}?\n\nПосле блокировки:\n• Вы не сможете отправлять сообщения друг другу\n• Вы не увидите сообщения друг от друга\n• Блокировку можно отменить в любое время`);
+    
+    if (!confirmed) return;
+    
+    try {
+        const currentUser = this.getCurrentUser();
+        const blockedUsers = JSON.parse(localStorage.getItem('blocked_users') || '[]');
+        
+        // Проверяем, не заблокирован ли уже пользователь
+        const alreadyBlocked = blockedUsers.some(block => 
+            block.blocker === currentUser && block.blocked === this.currentChat
+        );
+        
+        if (alreadyBlocked) {
+            this.showNotification('Пользователь уже заблокирован', 'warning');
+            return;
+        }
+        
+        // Добавляем блокировку
+        blockedUsers.push({
+            blocker: currentUser,
+            blocked: this.currentChat,
+            timestamp: new Date().toISOString(),
+            reason: 'Пользовательская блокировка'
+        });
+        
+        localStorage.setItem('blocked_users', JSON.stringify(blockedUsers));
+        
+        // Отправляем уведомление через сокет (если доступно)
+        if (window.socket) {
+            window.socket.emit('user_blocked', {
+                blocker: currentUser,
+                blocked: this.currentChat,
+                timestamp: new Date().toISOString()
+            });
+        }
+        
+        // Обновляем интерфейс
+        this.updateBlockStatus(true);
+        
+        this.showNotification(`Пользователь ${this.currentChat} заблокирован`, 'success');
+        
+        // Если мы в чате с заблокированным пользователем, закрываем чат
+        if (this.currentChat === this.currentChat) {
+            this.closeCurrentChat();
+        }
+        
+        // Обновляем список бесед
+        this.loadConversations();
+        
+    } catch (error) {
+        console.error('❌ Error blocking user:', error);
+        this.showNotification('Ошибка при блокировке пользователя', 'error');
+    }
+}
+
+// Метод для разблокировки пользователя
+async unblockUser() {
+    if (!this.currentChat) return;
+    
+    const confirmed = confirm(`Вы уверены, что хотите разблокировать пользователя ${this.currentChat}?\n\nПосле разблокировки:\n• Вы сможете отправлять сообщения друг другу\n• Вы увидите все сообщения\n• Блокировку можно восстановить в любое время`);
+    
+    if (!confirmed) return;
+    
+    try {
+        const currentUser = this.getCurrentUser();
+        let blockedUsers = JSON.parse(localStorage.getItem('blocked_users') || '[]');
+        
+        // Удаляем блокировку
+        const initialLength = blockedUsers.length;
+        blockedUsers = blockedUsers.filter(block => 
+            !(block.blocker === currentUser && block.blocked === this.currentChat)
+        );
+        
+        if (blockedUsers.length === initialLength) {
+            this.showNotification('Пользователь не был заблокирован', 'warning');
+            return;
+        }
+        
+        localStorage.setItem('blocked_users', JSON.stringify(blockedUsers));
+        
+        // Отправляем уведомление через сокет
+        if (window.socket) {
+            window.socket.emit('user_unblocked', {
+                blocker: currentUser,
+                blocked: this.currentChat,
+                timestamp: new Date().toISOString()
+            });
+        }
+        
+        // Обновляем интерфейс
+        this.updateBlockStatus(false);
+        
+        this.showNotification(`Пользователь ${this.currentChat} разблокирован`, 'success');
+        
+        // Обновляем список бесед
+        this.loadConversations();
+        
+    } catch (error) {
+        console.error('❌ Error unblocking user:', error);
+        this.showNotification('Ошибка при разблокировке пользователя', 'error');
+    }
+}
+
+// Метод для обновления статуса блокировки в интерфейсе
+updateBlockStatus(isBlocked) {
+    // Обновляем кнопку в меню
+    const blockButton = document.querySelector('[data-action*="block"]');
+    if (blockButton) {
+        if (isBlocked) {
+            blockButton.setAttribute('data-action', 'unblock-user');
+            blockButton.innerHTML = `
+                <span style="color: #ffc107;">🔓</span>
+                <span>Разблокировать</span>
+            `;
+            blockButton.className = 'menu-item warning';
+        } else {
+            blockButton.setAttribute('data-action', 'block-user');
+            blockButton.innerHTML = `
+                <span style="color: #dc3545;">🚫</span>
+                <span>Заблокировать</span>
+            `;
+            blockButton.className = 'menu-item danger';
+        }
+    }
+    
+    // Показываем предупреждение в чате, если пользователь заблокирован
+    const messagesContainer = document.getElementById('privateMessages');
+    if (messagesContainer) {
+        const existingWarning = messagesContainer.querySelector('.block-warning');
+        if (existingWarning) {
+            existingWarning.remove();
+        }
+        
+        if (isBlocked) {
+            const warning = document.createElement('div');
+            warning.className = 'block-warning';
+            warning.style.cssText = `
+                padding: 15px;
+                margin: 10px;
+                background: #fff3cd;
+                border: 1px solid #ffeaa7;
+                border-radius: 8px;
+                text-align: center;
+                color: #856404;
+                font-size: 14px;
+            `;
+            warning.innerHTML = `
+                <strong>⚠️ Пользователь заблокирован</strong>
+                <p style="margin: 5px 0 0 0; font-size: 12px;">
+                    Вы не можете отправлять сообщения этому пользователю.
+                    <br>
+                    <button onclick="window.privateChatInstance.unblockUser()" style="
+                        background: #28a745;
+                        color: white;
+                        border: none;
+                        padding: 5px 10px;
+                        border-radius: 4px;
+                        margin-top: 5px;
+                        cursor: pointer;
+                        font-size: 12px;
+                    ">
+                        Разблокировать
+                    </button>
+                </p>
+            `;
+            messagesContainer.prepend(warning);
+        }
+    }
+}
+async deleteChat() {
+    if (!this.currentChat) return;
+    
+    const confirmed = confirm(`Вы уверены, что хотите удалить весь чат с пользователем ${this.currentChat}?\n\nПосле удаления:\n• Вся история сообщений будет удалена\n• Чат исчезнет из списка диалогов\n• Действие нельзя отменить`);
+    
+    if (!confirmed) return;
+    
+    try {
+        const currentUser = this.getCurrentUser();
+        
+        console.log(`🗑️ Deleting chat with ${this.currentChat}...`);
+        
+        const response = await fetch('/api/messages/delete-chat', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${localStorage.getItem('token') || ''}`
+            },
+            body: JSON.stringify({
+                username: this.currentChat,
+                currentUser: currentUser
+            })
+        });
+        
+        if (response.ok) {
+            const result = await response.json();
+            
+            // Оповещаем через сокет
+            if (window.socket) {
+                window.socket.emit('chat_deleted_by_user', {
+                    deletedBy: currentUser,
+                    targetUser: this.currentChat,
+                    timestamp: new Date().toISOString()
+                });
+            }
+            
+            // Удаляем локальные сообщения
+            this.deleteLocalChatMessages(this.currentChat);
+            
+            // Закрываем текущий чат
+            this.closeCurrentChat();
+            
+            // Обновляем список бесед
+            this.loadConversations();
+            
+            this.showNotification(result.message || `Чат с пользователем ${this.currentChat} удален`, 'success');
+            
+        } else {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.error || `HTTP ${response.status}`);
+        }
+        
+    } catch (error) {
+        console.error('❌ Error deleting chat:', error);
+        
+        // Локальное удаление как запасной вариант
+        if (confirm('Не удалось удалить чат на сервере. Удалить локально?')) {
+            try {
+                this.deleteLocalChatMessages(this.currentChat);
+                this.closeCurrentChat();
+                this.loadConversations();
+                this.showNotification('Чат удален локально', 'info');
+            } catch (localError) {
+                console.error('❌ Error deleting local chat:', localError);
+                this.showNotification('Ошибка удаления чата', 'error');
+            }
+        }
+    }
+}
+deleteLocalChatMessages(username) {
+    try {
+        const currentUser = this.getCurrentUser();
+        
+        // Получаем сообщения из localStorage
+        const storedMessages = JSON.parse(localStorage.getItem('messages') || '[]');
+        
+        // Фильтруем сообщения
+        const filteredMessages = storedMessages.filter(msg => 
+            !(msg.type === 'private' && 
+              ((msg.sender === currentUser && msg.receiver === username) ||
+               (msg.sender === username && msg.receiver === currentUser)))
+        );
+        
+        // Сохраняем обновленные сообщения
+        localStorage.setItem('messages', JSON.stringify(filteredMessages));
+        
+        // Очищаем отображенные сообщения
+        const messagesContainer = document.getElementById('privateMessages');
+        if (messagesContainer) {
+            messagesContainer.innerHTML = '<div class="no-messages">🗑️ Чат удален</div>';
+        }
+        
+        // Обновляем список сообщений в памяти
+        if (window.messages && Array.isArray(window.messages)) {
+            window.messages = filteredMessages;
+        }
+        
+        // Очищаем отображаемые ID сообщений
+        this.displayedMessageIds.clear();
+        
+        console.log(`🗑️ Chat with ${username} deleted locally (${storedMessages.length - filteredMessages.length} messages)`);
+        
+        return storedMessages.length - filteredMessages.length; // Возвращаем количество удаленных сообщений
+        
+    } catch (error) {
+        console.error('❌ Error deleting local chat:', error);
+        throw error;
+    }
+}
+async clearChat() {
+    if (!this.currentChat) return;
+    
+    const confirmed = confirm(`Вы уверены, что хотите очистить историю чата с пользователем ${this.currentChat}?\n\nПосле очистки:\n• Все сообщения будут удалены\n• Чат останется в списке диалогов\n• Действие нельзя отменить`);
+    
+    if (!confirmed) return;
+    
+    try {
+        const currentUser = this.getCurrentUser();
+        
+        // ОЧИЩАЕМ username от лишних символов и пробелов
+        const cleanUsername = this.currentChat.replace(/[^a-zA-Z0-9_\-]/g, '').trim();
+        
+        // Проверяем, что username не пустой после очистки
+        if (!cleanUsername) {
+            throw new Error('Некорректное имя пользователя');
+        }
+        
+        console.log(`🧹 Clearing chat with ${cleanUsername}`);
+        
+        // ИСПРАВЛЕНИЕ: Используем правильный endpoint
+        const response = await fetch(`/api/messages/clear-chat`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                username: cleanUsername,
+                currentUser: currentUser
+            })
+        });
+        
+        if (response.ok) {
+            const result = await response.json();
+            
+            // Очищаем локальные сообщения
+            this.clearLocalChatMessages(this.currentChat);
+            
+            // Обновляем отображение
+            const messagesContainer = document.getElementById('privateMessages');
+            if (messagesContainer) {
+                messagesContainer.innerHTML = '<div class="no-messages">🧹 История чата очищена</div>';
+            }
+            
+            this.showNotification(result.message || `История чата с ${this.currentChat} очищена`, 'success');
+            
+            // Обновляем список бесед
+            this.loadConversations();
+            
+        } else {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.error || 'Server error');
+        }
+        
+    } catch (error) {
+        console.error('❌ Error clearing chat:', error);
+        
+        // Локальная очистка как запасной вариант
+        this.clearLocalChatMessages(this.currentChat);
+        
+        const messagesContainer = document.getElementById('privateMessages');
+        if (messagesContainer) {
+            messagesContainer.innerHTML = '<div class="no-messages">🧹 История чата очищена локально</div>';
+        }
+        
+        this.showNotification('История чата очищена локально', 'info');
+    }
+}
+clearLocalChatMessages(username) {
+    try {
+        // Очищаем отображаемые сообщения
+        const messagesContainer = document.getElementById('privateMessages');
+        if (messagesContainer) {
+            messagesContainer.innerHTML = '<div class="no-messages">🧹 История чата очищена</div>';
+        }
+        
+        // Очищаем кэш отображенных сообщений
+        this.displayedMessageIds.clear();
+        
+        console.log(`🧹 Chat history with ${username} cleared locally`);
+        
+    } catch (error) {
+        console.error('❌ Error clearing local chat:', error);
+    }
+}
 getCurrentUser() {
     // Пробуем разные источники для определения пользователя
     const username = 
@@ -5684,8 +6664,19 @@ getCurrentUser() {
         sessionStorage.getItem('currentUsername') || 
         'anonymous';
     
-    console.log('👤 Current user determined as:', username);
-    return username;
+    // Очищаем от лишних символов и пробелов
+    const cleanUsername = username.replace(/[^a-zA-Z0-9_\-]/g, '').trim();
+    
+    console.log('👤 Current user determined as:', cleanUsername);
+    return cleanUsername;
+}
+getMessages() {
+    try {
+        return JSON.parse(localStorage.getItem('messages') || '[]');
+    } catch (error) {
+        console.error('❌ Error getting messages from localStorage:', error);
+        return [];
+    }
 }
 }
 

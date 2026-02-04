@@ -2593,7 +2593,288 @@ app.use((error, req, res, next) => {
     console.error('❌ Server error:', error);
     res.status(500).json({ error: 'Internal server error' });
 });
+app.delete('/api/messages/delete-chat/:username', authenticateToken, async (req, res) => {
+    try {
+        const { username } = req.params;
+        const currentUser = req.user.username;
+        
+        // Удаляем сообщения из базы
+        const initialCount = messages.length;
+        messages = messages.filter(msg => 
+            !(msg.type === 'private' && 
+              ((msg.sender === currentUser && msg.receiver === username) ||
+               (msg.sender === username && msg.receiver === currentUser)))
+        );
+        
+        await saveMessages();
+        
+        // Отправляем уведомление через сокет
+        const targetSocketId = userSockets.get(username);
+        if (targetSocketId) {
+            io.to(targetSocketId).emit('chat_deleted', {
+                deletedBy: currentUser,
+                timestamp: new Date().toISOString()
+            });
+        }
+        
+        res.json({
+            success: true,
+            message: `Чат с пользователем ${username} удален`,
+            deletedMessages: initialCount - messages.length
+        });
+        
+    } catch (error) {
+        console.error('❌ Delete chat error:', error);
+        res.status(500).json({ error: 'Ошибка удаления чата' });
+    }
+});
 
+// Очистка истории чата
+app.post('/api/messages/clear-chat/:username', authenticateToken, async (req, res) => {
+    try {
+        const { username } = req.params;
+        const currentUser = req.user.username;
+        
+        // Считаем сообщения до очистки
+        const initialCount = messages.filter(msg => 
+            msg.type === 'private' && 
+            ((msg.sender === currentUser && msg.receiver === username) ||
+             (msg.sender === username && msg.receiver === currentUser))
+        ).length;
+        
+        // Удаляем сообщения
+        messages = messages.filter(msg => 
+            !(msg.type === 'private' && 
+              ((msg.sender === currentUser && msg.receiver === username) ||
+               (msg.sender === username && msg.receiver === currentUser)))
+        );
+        
+        await saveMessages();
+        
+        res.json({
+            success: true,
+            message: `История чата с ${username} очищена`,
+            clearedMessages: initialCount
+        });
+        
+    } catch (error) {
+        console.error('❌ Clear chat error:', error);
+        res.status(500).json({ error: 'Ошибка очистки истории чата' });
+    }
+});
+
+// Проверка блокировки пользователя
+app.get('/api/block/check/:username', authenticateToken, (req, res) => {
+    try {
+        const { username } = req.params;
+        const currentUser = req.user.username;
+        
+        // Здесь можно добавить логику проверки блокировок на сервере
+        // Пока возвращаем false для совместимости
+        res.json({
+            blocked: false,
+            canSendMessage: true
+        });
+        
+    } catch (error) {
+        console.error('❌ Block check error:', error);
+        res.status(500).json({ error: 'Ошибка проверки блокировки' });
+    }
+});
+
+// Блокировка пользователя
+app.post('/api/block/:username', authenticateToken, async (req, res) => {
+    try {
+        const { username } = req.params;
+        const { reason } = req.body;
+        const currentUser = req.user.username;
+        
+        // Здесь можно добавить логику блокировки на сервере
+        // Пока возвращаем успех для совместимости
+        
+        res.json({
+            success: true,
+            message: `Пользователь ${username} заблокирован`,
+            blocker: currentUser,
+            blocked: username,
+            reason: reason || 'Пользовательская блокировка',
+            timestamp: new Date().toISOString()
+        });
+        
+    } catch (error) {
+        console.error('❌ Block user error:', error);
+        res.status(500).json({ error: 'Ошибка блокировки пользователя' });
+    }
+});
+
+// Разблокировка пользователя
+app.post('/api/unblock/:username', authenticateToken, async (req, res) => {
+    try {
+        const { username } = req.params;
+        const currentUser = req.user.username;
+        
+        // Здесь можно добавить логику разблокировки на сервере
+        // Пока возвращаем успех для совместимости
+        
+        res.json({
+            success: true,
+            message: `Пользователь ${username} разблокирован`,
+            unblocker: currentUser,
+            unblocked: username,
+            timestamp: new Date().toISOString()
+        });
+        
+    } catch (error) {
+        console.error('❌ Unblock user error:', error);
+        res.status(500).json({ error: 'Ошибка разблокировки пользователя' });
+    }
+});
+app.post('/api/messages/clear-chat', authenticateToken, async (req, res) => {
+    try {
+        const { username } = req.body;
+        const currentUser = req.user.username;
+        
+        if (!username) {
+            return res.status(400).json({
+                success: false,
+                error: 'Имя пользователя обязательно'
+            });
+        }
+        
+        // Считаем сообщения до очистки
+        const initialCount = messages.filter(msg => 
+            msg.type === 'private' && 
+            ((msg.sender === currentUser && msg.receiver === username) ||
+             (msg.sender === username && msg.receiver === currentUser))
+        ).length;
+        
+        // Удаляем сообщения
+        messages = messages.filter(msg => 
+            !(msg.type === 'private' && 
+              ((msg.sender === currentUser && msg.receiver === username) ||
+               (msg.sender === username && msg.receiver === currentUser)))
+        );
+        
+        await saveMessages();
+        
+        // Уведомляем через сокет
+        if (io) {
+            const targetSocketId = userSockets.get(username);
+            if (targetSocketId) {
+                io.to(targetSocketId).emit('chat_history_cleared', {
+                    clearedBy: currentUser,
+                    timestamp: new Date().toISOString()
+                });
+            }
+            
+            // Отправляем уведомление инициатору
+            const senderSocketId = userSockets.get(currentUser);
+            if (senderSocketId) {
+                io.to(senderSocketId).emit('chat_history_cleared_success', {
+                    targetUser: username,
+                    clearedMessages: initialCount
+                });
+            }
+        }
+        
+        res.json({
+            success: true,
+            message: `История чата с ${username} очищена`,
+            clearedMessages: initialCount
+        });
+        
+    } catch (error) {
+        console.error('❌ Clear chat error:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Ошибка очистки истории чата'
+        });
+    }
+});
+// Удаление чата с пользователем
+app.post('/api/messages/delete-chat', authenticateToken, async (req, res) => {
+    try {
+        const { username } = req.body; // Имя пользователя, с которым нужно удалить чат
+        const currentUser = req.user.username;
+        
+        if (!username) {
+            return res.status(400).json({ 
+                success: false,
+                error: 'Имя пользователя обязательно' 
+            });
+        }
+
+        // Проверяем, что пользователь не пытается удалить чат с самим собой
+        if (username === currentUser) {
+            return res.status(400).json({ 
+                success: false,
+                error: 'Нельзя удалить чат с самим собой' 
+            });
+        }
+
+        // Проверяем, существует ли пользователь
+        const targetUser = users.find(u => u.username === username);
+        if (!targetUser) {
+            return res.status(404).json({ 
+                success: false,
+                error: 'Пользователь не найден' 
+            });
+        }
+
+        // Считаем количество сообщений до удаления
+        const messagesBeforeDelete = messages.length;
+        
+        // Удаляем все приватные сообщения между этими пользователями
+        const initialCount = messages.length;
+        messages = messages.filter(msg => 
+            !(msg.type === 'private' && 
+              ((msg.sender === currentUser && msg.receiver === username) ||
+               (msg.sender === username && msg.receiver === currentUser)))
+        );
+        
+        const deletedCount = messagesBeforeDelete - messages.length;
+        
+        // Сохраняем изменения
+        await saveMessages();
+        
+        // Отправляем уведомление через сокет (если целевой пользователь онлайн)
+        if (io) {
+            const targetSocketId = userSockets.get(username);
+            if (targetSocketId) {
+                io.to(targetSocketId).emit('chat_deleted', {
+                    deletedBy: currentUser,
+                    timestamp: new Date().toISOString(),
+                    chatDeleted: true
+                });
+            }
+            
+            // Уведомляем инициатора об успешном удалении
+            const senderSocketId = userSockets.get(currentUser);
+            if (senderSocketId) {
+                io.to(senderSocketId).emit('chat_delete_success', {
+                    targetUser: username,
+                    deletedMessages: deletedCount,
+                    message: `Чат с пользователем ${username} удален`
+                });
+            }
+        }
+
+        res.json({
+            success: true,
+            message: `Чат с пользователем ${username} удален`,
+            deletedMessages: deletedCount,
+            targetUser: username,
+            timestamp: new Date().toISOString()
+        });
+        
+    } catch (error) {
+        console.error('❌ Delete chat error:', error);
+        res.status(500).json({ 
+            success: false,
+            error: 'Ошибка удаления чата: ' + error.message 
+        });
+    }
+});
 // WebSocket events
 io.on('connection', (socket) => {
     console.log('✅ User connected:', socket.id);
@@ -2615,7 +2896,41 @@ io.on('connection', (socket) => {
         console.log('🔄 User verification changed via socket:', data);
         io.emit('user_verification_changed', data);
     });
+socket.on('user_blocked', (data) => {
+    console.log(`🚫 User blocked: ${data.blocker} blocked ${data.blocked}`);
+    
+    // Уведомляем заблокированного пользователя
+    const blockedSocketId = userSockets.get(data.blocked);
+    if (blockedSocketId) {
+        io.to(blockedSocketId).emit('you_were_blocked', {
+            blocker: data.blocker,
+            timestamp: data.timestamp
+        });
+    }
+});
 
+socket.on('user_unblocked', (data) => {
+    console.log(`🔓 User unblocked: ${data.unblocker} unblocked ${data.unblocked}`);
+    
+    // Уведомляем разблокированного пользователя
+    const unblockedSocketId = userSockets.get(data.unblocked);
+    if (unblockedSocketId) {
+        io.to(unblockedSocketId).emit('you_were_unblocked', {
+            unblocker: data.unblocker,
+            timestamp: data.timestamp
+        });
+    }
+});
+
+socket.on('chat_deleted', (data) => {
+    console.log(`🗑️ Chat deleted by ${data.deletedBy}`);
+    
+    // Уведомляем пользователя, чей чат был удален
+    socket.emit('chat_was_deleted', {
+        deletedBy: data.deletedBy,
+        timestamp: data.timestamp
+    });
+});
     socket.on('disconnect', (reason) => {
         console.log('⚠️ User disconnected:', socket.id, 'Reason:', reason);
         if (socket.username) {
@@ -2682,7 +2997,24 @@ io.on('connection', (socket) => {
         
         console.log(`🎁 Gift sent: ${data.sender} -> ${data.receiver} (${data.gift.name})`);
     });
+socket.on('chat_deleted_by_user', (data) => {
+    console.log(`🗑️ Chat deleted: ${data.deletedBy} deleted chat with ${data.targetUser}`);
+    
+    // Уведомляем пользователя, чей чат был удален
+    const targetSocketId = userSockets.get(data.targetUser);
+    if (targetSocketId) {
+        io.to(targetSocketId).emit('chat_was_deleted', {
+            deletedBy: data.deletedBy,
+            timestamp: data.timestamp
+        });
+    }
+});
 
+socket.on('chat_delete_success', (data) => {
+    console.log(`✅ Chat deletion successful for ${data.targetUser}`);
+    // Эхо для инициатора удаления
+    socket.emit('chat_delete_success', data);
+});
     socket.on('user authenticated', (username) => {
         console.log('🔐 User authenticated:', username, 'Socket ID:', socket.id);
         userSockets.set(username, socket.id);
