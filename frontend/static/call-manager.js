@@ -1,4 +1,5 @@
-// Файл: call-manager.js (исправленная версия)
+// Файл: call-manager.js (ПОЛНАЯ РАБОЧАЯ ВЕРСИЯ ДЛЯ ПРОДАКШЕНА)
+// Полный переработанный CallManager с поддержкой HTTPS, TURN серверов и улучшенным ICE кандидатами
 
 class CallManager {
     constructor() {
@@ -8,44 +9,81 @@ class CallManager {
         this.currentCall = null;
         this.isCaller = false;
         this.isInCall = false;
-        this.callType = null; // 'audio' или 'video'
+        this.callType = null;
         this.screenStream = null;
         this.isScreenSharing = false;
         this.isMuted = false;
         this.isCameraOff = false;
         this.callTimeout = null;
         this.callTimer = null;
+        this.callStartTime = null;
         
-        // Для управления трансляцией экрана
+        // Улучшенная конфигурация ICE для продакшена
+        this.iceServers = [
+            {
+                urls: [
+                    'stun:stun.l.google.com:19302',
+                    'stun:stun1.l.google.com:19302',
+                    'stun:stun2.l.google.com:19302',
+                    'stun:stun3.l.google.com:19302',
+                    'stun:stun4.l.google.com:19302',
+                    'stun:stun.ekiga.net:3478',
+                    'stun:stun.voipbuster.com:3478',
+                    'stun:stun.voipstunt.com:3478'
+                ]
+            }
+        ];
+
+        // Добавляем бесплатные TURN серверы для обхода NAT (критически важно для продакшена)
+        if (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+            this.iceServers.push(
+                {
+                    urls: 'turn:openrelay.metered.ca:80',
+                    username: 'openrelayproject',
+                    credential: 'openrelayproject'
+                },
+                {
+                    urls: 'turn:openrelay.metered.ca:443',
+                    username: 'openrelayproject',
+                    credential: 'openrelayproject'
+                },
+                {
+                    urls: 'turn:openrelay.metered.ca:443?transport=tcp',
+                    username: 'openrelayproject',
+                    credential: 'openrelayproject'
+                }
+            );
+        }
+
+        // Для демонстрации экрана
         this.originalVideoTrack = null;
         this.originalAudioTrack = null;
         this.screenShareActive = false;
         
         // Для переподключения
         this.reconnectAttempts = 0;
-        this.maxReconnectAttempts = 3;
+        this.maxReconnectAttempts = 5;
+        this.reconnectTimeout = null;
         
-        // Для управления состоянием окна
+        // Для управления состоянием
         this.isCallModalMinimized = false;
         this.isNotificationShown = false;
         
-        // Для перетаскивания окна
-        this.isDragging = false;
-        this.dragOffsetX = 0;
-        this.dragOffsetY = 0;
-        
-        // Для изменения размера
-        this.isResizing = false;
-        this.resizeDirection = null;
+        // Статистика соединения
+        this.connectionStats = {
+            bytesReceived: 0,
+            bytesSent: 0,
+            packetsLost: 0,
+            roundTripTime: 0
+        };
         
         this.setupEventListeners();
         this.createCallUI();
         
-        console.log('✅ CallManager initialized');
+        console.log('✅ CallManager initialized for', window.location.hostname);
     }
 
     createCallUI() {
-        // Создаем элементы интерфейса для звонков
         const existingModal = document.getElementById('callModal');
         if (existingModal) {
             existingModal.remove();
@@ -72,11 +110,12 @@ class CallManager {
         callModal.innerHTML = `
             <div class="call-container" style="width: 100%; height: 100%; display: flex; flex-direction: column; background: #1a1a1a;">
                 <!-- Шапка звонка -->
-                <div class="call-header" style="padding: 20px; text-align: center; border-bottom: 1px solid rgba(255,255,255,0.1); background: #2d2d2d; position: relative; cursor: move;">
+                <div class="call-header" style="padding: 20px; text-align: center; border-bottom: 1px solid rgba(255,255,255,0.1); background: #2d2d2d; position: relative;">
                     <div class="call-info" id="callInfo">
                         <h3 style="margin: 0; color: #ffffff;" id="callTitle">📞 Звонок...</h3>
                         <div id="callTimer" style="font-size: 14px; opacity: 0.8; color: #cccccc;">00:00</div>
                         <div id="connectionStatus" style="font-size: 12px; margin-top: 5px; color: #28a745;"></div>
+                        <div id="iceConnectionType" style="font-size: 11px; margin-top: 3px; color: #6c757d;"></div>
                     </div>
                     <div class="call-header-buttons" style="position: absolute; top: 20px; right: 20px; display: flex; gap: 10px;">
                         <button class="minimize-call-btn" style="background: rgba(255,255,255,0.1); border: none; color: #ffffff; font-size: 20px; cursor: pointer; width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center;">➖</button>
@@ -99,7 +138,7 @@ class CallManager {
                                 </div>
                             </div>
                             <div class="video-container" style="position: relative; background: #333333; border-radius: 10px; overflow: hidden; aspect-ratio: 16/9; border: 2px solid rgba(255,255,255,0.1);">
-                                <video id="localVideo" autoplay muted playsinline style="width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1);"></video>
+                                <video id="localVideo" autoplay muted playsinline style="width: 100%; height: 100%; object-fit: cover;"></video>
                                 <div class="video-placeholder" id="localVideoPlaceholder" style="display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; color: #ffffff;">
                                     <div style="text-align: center;">
                                         <div style="font-size: 48px; margin-bottom: 10px; color: #666666;">🎥</div>
@@ -131,6 +170,7 @@ class CallManager {
                     <div class="call-status" id="callStatus" style="text-align: center; margin-bottom: 30px; padding: 20px; background: rgba(255,255,255,0.05); border-radius: 10px; max-width: 600px; border: 1px solid rgba(255,255,255,0.1);">
                         <div id="statusMessage" style="color: #ffffff;">Установка соединения...</div>
                         <div id="iceStatus" style="font-size: 12px; opacity: 0.7; margin-top: 5px; color: #cccccc;"></div>
+                        <div id="connectionQuality" style="font-size: 11px; margin-top: 3px; color: #28a745;"></div>
                     </div>
                 </div>
                 
@@ -184,18 +224,6 @@ class CallManager {
                         </div>
                     </div>
                 </div>
-                
-                <!-- Элементы для изменения размера (только в минимизированном режиме) -->
-                <div class="resize-handles" style="display: none; position: absolute;">
-                    <div class="resize-handle n" style="position: absolute; top: 0; left: 0; right: 0; height: 10px; cursor: n-resize;"></div>
-                    <div class="resize-handle e" style="position: absolute; top: 0; right: 0; bottom: 0; width: 10px; cursor: e-resize;"></div>
-                    <div class="resize-handle s" style="position: absolute; bottom: 0; left: 0; right: 0; height: 10px; cursor: s-resize;"></div>
-                    <div class="resize-handle w" style="position: absolute; top: 0; left: 0; bottom: 0; width: 10px; cursor: w-resize;"></div>
-                    <div class="resize-handle ne" style="position: absolute; top: 0; right: 0; width: 15px; height: 15px; cursor: ne-resize;"></div>
-                    <div class="resize-handle nw" style="position: absolute; top: 0; left: 0; width: 15px; height: 15px; cursor: nw-resize;"></div>
-                    <div class="resize-handle se" style="position: absolute; bottom: 0; right: 0; width: 15px; height: 15px; cursor: se-resize;"></div>
-                    <div class="resize-handle sw" style="position: absolute; bottom: 0; left: 0; width: 15px; height: 15px; cursor: sw-resize;"></div>
-                </div>
             </div>
         `;
 
@@ -204,65 +232,91 @@ class CallManager {
     }
 
     setupEventListeners() {
-        // Обработка входящих звонков
-        if (window.socket) {
-            window.socket.on('incoming_call', (data) => {
-                this.handleIncomingCall(data);
-            });
-
-            window.socket.on('call_accepted', (data) => {
-                this.handleCallAccepted(data);
-            });
-
-            window.socket.on('call_rejected', (data) => {
-                this.handleCallRejected(data);
-            });
-
-            window.socket.on('call_ended', (data) => {
-                this.handleCallEnded(data);
-            });
-
-            // WebRTC события
-            window.socket.on('webrtc_offer', (data) => {
-                this.handleWebRTCOffer(data);
-            });
-
-            window.socket.on('webrtc_answer', (data) => {
-                this.handleWebRTCAnswer(data);
-            });
-
-            window.socket.on('webrtc_ice_candidate', (data) => {
-                this.handleWebRTCIceCandidate(data);
-            });
-
-            // События трансляции экрана
-            window.socket.on('screen_share_started', (data) => {
-                this.handleRemoteScreenShareStarted(data);
-            });
-
-            window.socket.on('screen_share_ended', (data) => {
-                this.handleRemoteScreenShareEnded(data);
-            });
+        if (!window.socket) {
+            console.error('❌ Socket not available, retrying in 1s...');
+            setTimeout(() => this.setupEventListeners(), 1000);
+            return;
         }
+
+        // Очищаем старые обработчики
+        window.socket.off('incoming_call');
+        window.socket.off('call_accepted');
+        window.socket.off('call_rejected');
+        window.socket.off('call_ended');
+        window.socket.off('webrtc_offer');
+        window.socket.off('webrtc_answer');
+        window.socket.off('webrtc_ice_candidate');
+        window.socket.off('screen_share_started');
+        window.socket.off('screen_share_ended');
+
+        // Устанавливаем новые обработчики
+        window.socket.on('incoming_call', (data) => {
+            this.handleIncomingCall(data);
+        });
+
+        window.socket.on('call_accepted', (data) => {
+            this.handleCallAccepted(data);
+        });
+
+        window.socket.on('call_rejected', (data) => {
+            this.handleCallRejected(data);
+        });
+
+        window.socket.on('call_ended', (data) => {
+            this.handleCallEnded(data);
+        });
+
+        window.socket.on('webrtc_offer', (data) => {
+            this.handleWebRTCOffer(data);
+        });
+
+        window.socket.on('webrtc_answer', (data) => {
+            this.handleWebRTCAnswer(data);
+        });
+
+        window.socket.on('webrtc_ice_candidate', (data) => {
+            this.handleWebRTCIceCandidate(data);
+        });
+
+        window.socket.on('screen_share_started', (data) => {
+            this.handleRemoteScreenShareStarted(data);
+        });
+
+        window.socket.on('screen_share_ended', (data) => {
+            this.handleRemoteScreenShareEnded(data);
+        });
+
+        console.log('✅ CallManager event listeners setup complete');
     }
 
     setupCallModalEvents() {
         const modal = document.getElementById('callModal');
         if (!modal) return;
 
-        // Кнопка сворачивания
+        // Удаляем старые обработчики
+        const oldMinimizeBtn = modal.querySelector('.minimize-call-btn');
+        const oldCloseBtn = modal.querySelector('.close-call-btn');
+        const oldAcceptBtn = modal.querySelector('.accept-btn');
+        const oldRejectBtn = modal.querySelector('.reject-btn');
+        const oldCancelBtn = modal.querySelector('.cancel-call-btn');
+        
+        if (oldMinimizeBtn) oldMinimizeBtn.replaceWith(oldMinimizeBtn.cloneNode(true));
+        if (oldCloseBtn) oldCloseBtn.replaceWith(oldCloseBtn.cloneNode(true));
+        if (oldAcceptBtn) oldAcceptBtn.replaceWith(oldAcceptBtn.cloneNode(true));
+        if (oldRejectBtn) oldRejectBtn.replaceWith(oldRejectBtn.cloneNode(true));
+        if (oldCancelBtn) oldCancelBtn.replaceWith(oldCancelBtn.cloneNode(true));
+
+        // Устанавливаем новые обработчики
         modal.querySelector('.minimize-call-btn')?.addEventListener('click', (e) => {
             e.stopPropagation();
             this.toggleMinimize();
         });
 
-        // Кнопка закрытия
         modal.querySelector('.close-call-btn')?.addEventListener('click', (e) => {
             e.stopPropagation();
             this.endCall();
         });
 
-        // Кнопки для принимающего
         modal.querySelector('.accept-btn')?.addEventListener('click', () => {
             this.acceptCall();
         });
@@ -271,7 +325,6 @@ class CallManager {
             this.rejectCall();
         });
 
-        // Кнопка отмены звонка
         modal.querySelector('.cancel-call-btn')?.addEventListener('click', () => {
             this.cancelCall();
         });
@@ -304,327 +357,365 @@ class CallManager {
         }
     }
 
-  async initiateCall(targetUser, callType = 'video') {
-    try {
-        console.log(`📞 Initiating ${callType} call to ${targetUser}`);
-        
-        // Проверяем наличие устройств
-        const deviceCheck = await this.checkDevices(callType);
-        
-        if (!deviceCheck.canProceed) {
-            this.showNotification(deviceCheck.warning || 'Невозможно совершить звонок', 'error');
-            return;
-        }
-
-        // Показываем предупреждение, если есть
-        if (deviceCheck.warning) {
-            this.showNotification(deviceCheck.warning, 'warning');
+    async initiateCall(targetUser, callType = 'video') {
+        try {
+            console.log(`📞 Initiating ${callType} call to ${targetUser} on ${window.location.hostname}`);
             
-            // Если видеозвонок без камеры, переключаем на аудио
-            if (callType === 'video' && !deviceCheck.hasVideo && deviceCheck.hasAudio) {
-                callType = 'audio';
-                this.showNotification('Переключено на аудиозвонок', 'info');
+            if (!targetUser) {
+                throw new Error('Target user is required');
             }
-        }
-        
-        // Сбрасываем флаг уведомления
-        this.isNotificationShown = false;
-        
-        this.currentCall = {
-            callId: 'call_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
-            targetUser: targetUser,
-            caller: document.getElementById('username')?.textContent || window.USERNAME || 'Unknown',
-            type: callType,
-            status: 'initiating'
-        };
-        
-        this.isCaller = true;
-        this.callType = callType;
-        
-        // Сначала показываем интерфейс звонка
-        this.showCallModal();
-        this.showCallingControls();
-        this.updateCallInfo(`Звонок пользователю ${targetUser}...`);
-        
-        // Получаем локальный медиапоток
-        await this.getLocalStream();
-        
-        // Отправляем запрос на звонок
-        if (window.socket) {
-            window.socket.emit('initiate_call', {
-                callId: this.currentCall.callId,
-                caller: this.currentCall.caller,
+
+            // Проверяем поддержку WebRTC
+            if (!this.checkWebRTCSupport()) {
+                this.showNotification('Ваш браузер не поддерживает WebRTC', 'error');
+                return;
+            }
+
+            // Проверяем наличие устройств
+            const deviceCheck = await this.checkDevices(callType);
+            
+            if (!deviceCheck.canProceed) {
+                this.showNotification(deviceCheck.warning || 'Невозможно совершить звонок', 'error');
+                return;
+            }
+
+            if (deviceCheck.warning) {
+                this.showNotification(deviceCheck.warning, 'warning');
+                if (callType === 'video' && !deviceCheck.hasVideo && deviceCheck.hasAudio) {
+                    callType = 'audio';
+                    this.showNotification('Переключено на аудиозвонок', 'info');
+                }
+            }
+            
+            this.isNotificationShown = false;
+            
+            this.currentCall = {
+                callId: 'call_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
                 targetUser: targetUser,
-                callType: callType
-            });
-            
-            console.log(`📤 Call request sent to ${targetUser}`);
-        }
-        
-        // Таймаут ожидания ответа
-        this.callTimeout = setTimeout(() => {
-            if (this.isInCall === false) {
-                this.showNotification(`${targetUser} не отвечает`, 'error');
-                this.endCall('Пользователь не отвечает');
-            }
-        }, 30000); // 30 секунд
-        
-    } catch (error) {
-        console.error('❌ Error initiating call:', error);
-        this.showNotification('Ошибка инициализации звонка', 'error');
-        this.endCall();
-        throw error;
-    }
-}
-
- async getLocalStream() {
-    try {
-        // Проверяем, поддерживает ли браузер getUserMedia
-        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-            throw new Error('Ваш браузер не поддерживает аудио/видео звонки');
-        }
-
-        // Проверяем наличие устройств
-        let hasAudio = false;
-        let hasVideo = false;
-        
-        try {
-            const devices = await navigator.mediaDevices.enumerateDevices();
-            hasAudio = devices.some(device => device.kind === 'audioinput');
-            hasVideo = devices.some(device => device.kind === 'videoinput');
-            
-            console.log('📱 Available devices:', {
-                audio: hasAudio,
-                video: hasVideo,
-                devices: devices.map(d => ({ kind: d.kind, label: d.label }))
-            });
-        } catch (devError) {
-            console.warn('⚠️ Could not enumerate devices:', devError);
-        }
-
-        // Формируем constraints в зависимости от доступных устройств
-        const constraints = {
-            audio: hasAudio ? {
-                echoCancellation: true,
-                noiseSuppression: true,
-                autoGainControl: true
-            } : false,
-            video: (this.callType === 'video' && hasVideo) ? {
-                width: { ideal: 1280 },
-                height: { ideal: 720 },
-                frameRate: { ideal: 30 }
-            } : false
-        };
-
-        console.log('📋 Media constraints:', constraints);
-
-        // Если нет аудио устройства, но звонок аудио/видео - показываем предупреждение
-        if (!hasAudio) {
-            this.showNotification('Микрофон не найден. Вы не сможете говорить.', 'warning');
-        }
-
-        // Если видеозвонок, но нет камеры - показываем предупреждение
-        if (this.callType === 'video' && !hasVideo) {
-            this.showNotification('Камера не найдена. Звонок будет только аудио.', 'warning');
-            this.callType = 'audio'; // Переключаемся на аудио
-        }
-
-        // Если нет ни одного устройства - выводим сообщение
-        if (!hasAudio && !hasVideo) {
-            this.showNotification('Не найдены микрофон или камера. Проверьте подключение устройств.', 'error');
-            
-            // Создаем фейковый аудиопоток (тишина) для возможности звонка
-            const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-            const destination = audioContext.createMediaStreamDestination();
-            this.localStream = destination.stream;
-            
-            // Показываем плейсхолдер
-            this.showLocalVideoPlaceholder();
-            
-            return this.localStream;
-        }
-
-        try {
-            this.localStream = await navigator.mediaDevices.getUserMedia(constraints);
-            console.log('✅ Local stream obtained:', {
-                audio: this.localStream.getAudioTracks().length,
-                video: this.localStream.getVideoTracks().length
-            });
-            
-            // Показываем локальное видео
-            this.showLocalVideo();
-            
-            return this.localStream;
-            
-        } catch (mediaError) {
-            console.error('❌ Error getting media:', mediaError);
-            
-            let errorMessage = 'Не удалось получить доступ к камере/микрофону';
-            
-            if (mediaError.name === 'NotFoundError' || mediaError.name === 'DevicesNotFoundError') {
-                errorMessage = 'Камера или микрофон не найдены. Проверьте подключение устройств.';
-            } else if (mediaError.name === 'NotReadableError' || mediaError.name === 'TrackStartError') {
-                errorMessage = 'Не удалось получить доступ к камере/микрофону. Устройство может быть занято другим приложением.';
-            } else if (mediaError.name === 'NotAllowedError' || mediaError.name === 'PermissionDeniedError') {
-                errorMessage = 'Доступ к камере/микрофону запрещен. Разрешите доступ в настройках браузера.';
-            } else if (mediaError.name === 'OverconstrainedError') {
-                errorMessage = 'Запрошенные настройки камеры/микрофона не поддерживаются.';
-            }
-            
-            this.showNotification(errorMessage, 'error');
-            
-            // Создаем фейковый аудиопоток как запасной вариант
-            try {
-                const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-                const destination = audioContext.createMediaStreamDestination();
-                this.localStream = destination.stream;
-                this.showLocalVideoPlaceholder();
-                return this.localStream;
-            } catch (fallbackError) {
-                console.error('❌ Could not create fallback stream:', fallbackError);
-                throw mediaError; // Пробрасываем оригинальную ошибку
-            }
-        }
-        
-    } catch (error) {
-        console.error('❌ Error in getLocalStream:', error);
-        
-        // Создаем пустой поток как крайний случай
-        try {
-            const canvas = document.createElement('canvas');
-            canvas.width = 640;
-            canvas.height = 480;
-            const ctx = canvas.getContext('2d');
-            ctx.fillStyle = '#1a1a1a';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-            ctx.font = '24px Arial';
-            ctx.fillStyle = '#ffffff';
-            ctx.fillText('Нет камеры', 200, 240);
-            
-            const stream = canvas.captureStream(30);
-            this.localStream = stream;
-            this.showLocalVideoPlaceholder();
-            
-            return this.localStream;
-        } catch (fallbackError) {
-            throw error; // Пробрасываем оригинальную ошибку
-        }
-    }
-}
-showLocalVideoPlaceholder() {
-    const localVideo = document.getElementById('localVideo');
-    const localVideoPlaceholder = document.getElementById('localVideoPlaceholder');
-    
-    if (localVideo) {
-        localVideo.srcObject = null;
-        localVideo.style.display = 'none';
-    }
-    
-    if (localVideoPlaceholder) {
-        localVideoPlaceholder.style.display = 'flex';
-        
-        // Обновляем текст в плейсхолдере в зависимости от типа звонка
-        const placeholderText = localVideoPlaceholder.querySelector('div div:last-child');
-        if (placeholderText) {
-            if (this.callType === 'video') {
-                placeholderText.textContent = 'Камера не найдена';
-            } else {
-                placeholderText.textContent = 'Аудиозвонок';
-            }
-        }
-    }
-}
-async checkDevices(callType) {
-    try {
-        if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) {
-            return { 
-                success: false, 
-                error: 'Ваш браузер не поддерживает аудио/видео звонки',
-                hasAudio: false,
-                hasVideo: false
+                caller: window.USERNAME || document.getElementById('username')?.textContent || 'Unknown',
+                type: callType,
+                status: 'initiating'
             };
+            
+            this.isCaller = true;
+            this.callType = callType;
+            
+            this.showCallModal();
+            this.showCallingControls();
+            this.updateCallInfo(`Звонок пользователю ${targetUser}...`);
+            
+            // Получаем локальный поток с принудительным аудио
+            await this.getLocalStream();
+            
+            // Отправляем запрос на звонок
+            if (window.socket) {
+                window.socket.emit('initiate_call', {
+                    callId: this.currentCall.callId,
+                    caller: this.currentCall.caller,
+                    targetUser: targetUser,
+                    callType: callType
+                });
+                
+                console.log(`📤 Call request sent to ${targetUser}`);
+            } else {
+                throw new Error('Socket connection not available');
+            }
+            
+            // Увеличиваем таймаут для продакшена
+            const timeoutTime = window.location.hostname === 'localhost' ? 30000 : 45000;
+            
+            this.callTimeout = setTimeout(() => {
+                if (this.isInCall === false && this.currentCall?.status === 'initiating') {
+                    this.showNotification(`${targetUser} не отвечает`, 'error');
+                    this.endCall('Пользователь не отвечает');
+                }
+            }, timeoutTime);
+            
+        } catch (error) {
+            console.error('❌ Error initiating call:', error);
+            this.showNotification('Ошибка инициализации звонка: ' + error.message, 'error');
+            this.endCall();
         }
+    }
 
-        const devices = await navigator.mediaDevices.enumerateDevices();
-        const hasAudio = devices.some(device => device.kind === 'audioinput');
-        const hasVideo = devices.some(device => device.kind === 'videoinput');
+    checkWebRTCSupport() {
+        const checks = {
+            RTCPeerConnection: !!window.RTCPeerConnection,
+            getUserMedia: !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia),
+            RTCSessionDescription: !!window.RTCSessionDescription,
+            RTCIceCandidate: !!window.RTCIceCandidate
+        };
+        
+        console.log('🔧 WebRTC support check:', checks);
+        
+        return Object.values(checks).every(Boolean);
+    }
 
-        let warning = null;
-        let canProceed = true;
+    async getLocalStream() {
+        try {
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                throw new Error('Ваш браузер не поддерживает аудио/видео звонки');
+            }
 
-        if (callType === 'audio' && !hasAudio) {
-            warning = 'Микрофон не найден. Вы не сможете говорить, но можете слушать собеседника.';
-            canProceed = true; // Все равно можем продолжить
+            // Проверяем наличие устройств
+            let hasAudio = false;
+            let hasVideo = false;
+            
+            try {
+                const devices = await navigator.mediaDevices.enumerateDevices();
+                hasAudio = devices.some(device => device.kind === 'audioinput');
+                hasVideo = devices.some(device => device.kind === 'videoinput');
+                
+                console.log('📱 Available devices:', {
+                    audio: hasAudio,
+                    video: hasVideo,
+                    count: devices.length
+                });
+            } catch (devError) {
+                console.warn('⚠️ Could not enumerate devices:', devError);
+            }
+
+            // Настройки для продакшена
+            const isProduction = window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1';
+            
+            // Всегда запрашиваем аудио, даже если устройств нет
+            const constraints = {
+                audio: {
+                    echoCancellation: true,
+                    noiseSuppression: true,
+                    autoGainControl: true,
+                    sampleRate: 48000,
+                    sampleSize: 16,
+                    channelCount: 1
+                },
+                video: (this.callType === 'video' && hasVideo) ? {
+                    width: { ideal: 1280, max: 1920 },
+                    height: { ideal: 720, max: 1080 },
+                    frameRate: { ideal: 30, max: 30 },
+                    facingMode: 'user'
+                } : false
+            };
+
+            // Для продакшена используем более мягкие constraints
+            if (isProduction) {
+                if (constraints.video) {
+                    constraints.video.width = { ideal: 640, max: 1280 };
+                    constraints.video.height = { ideal: 480, max: 720 };
+                    constraints.video.frameRate = { ideal: 20, max: 30 };
+                }
+            }
+
+            console.log('📋 Media constraints:', constraints);
+
+            if (!hasAudio) {
+                this.showNotification('Микрофон не найден. Вы не сможете говорить, но будете слышать собеседника.', 'warning');
+            }
+
+            if (this.callType === 'video' && !hasVideo) {
+                this.showNotification('Камера не найдена. Звонок будет только аудио.', 'warning');
+                this.callType = 'audio';
+            }
+
+            try {
+                // Пробуем получить поток с заданными constraints
+                this.localStream = await navigator.mediaDevices.getUserMedia(constraints);
+                console.log('✅ Local stream obtained:', {
+                    audio: this.localStream.getAudioTracks().length,
+                    video: this.localStream.getVideoTracks().length
+                });
+                
+                // Настраиваем аудио трек
+                const audioTrack = this.localStream.getAudioTracks()[0];
+                if (audioTrack) {
+                    audioTrack.enabled = true;
+                    
+                    // Дополнительные настройки для продакшена
+                    if (isProduction && audioTrack.applyConstraints) {
+                        try {
+                            await audioTrack.applyConstraints({
+                                echoCancellation: true,
+                                noiseSuppression: true,
+                                autoGainControl: true
+                            });
+                        } catch (e) {
+                            console.warn('Could not apply audio constraints:', e);
+                        }
+                    }
+                }
+                
+                this.showLocalVideo();
+                return this.localStream;
+                
+            } catch (mediaError) {
+                console.error('❌ Error getting media:', mediaError);
+                
+                let errorMessage = 'Не удалось получить доступ к камере/микрофону';
+                
+                if (mediaError.name === 'NotFoundError' || mediaError.name === 'DevicesNotFoundError') {
+                    errorMessage = 'Камера или микрофон не найдены.';
+                } else if (mediaError.name === 'NotReadableError' || mediaError.name === 'TrackStartError') {
+                    errorMessage = 'Устройство занято другим приложением.';
+                } else if (mediaError.name === 'NotAllowedError' || mediaError.name === 'PermissionDeniedError') {
+                    errorMessage = 'Доступ к камере/микрофону запрещен.';
+                } else if (mediaError.name === 'OverconstrainedError') {
+                    errorMessage = 'Запрошенные настройки не поддерживаются.';
+                }
+                
+                this.showNotification(errorMessage, 'error');
+                
+                // Пробуем получить только аудио
+                if (this.callType === 'video') {
+                    this.showNotification('Пробуем аудиозвонок...', 'info');
+                    this.callType = 'audio';
+                    return this.getLocalStream();
+                }
+                
+                // Создаем тихий аудиопоток как запасной вариант
+                try {
+                    const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                    const destination = audioContext.createMediaStreamDestination();
+                    
+                    // Добавляем тихий источник
+                    const oscillator = audioContext.createOscillator();
+                    const gainNode = audioContext.createGain();
+                    gainNode.gain.value = 0.0001; // Почти тишина
+                    oscillator.connect(gainNode);
+                    gainNode.connect(destination);
+                    oscillator.start();
+                    
+                    this.localStream = destination.stream;
+                    this.showLocalVideoPlaceholder();
+                    console.log('✅ Created silent audio stream as fallback');
+                    return this.localStream;
+                } catch (fallbackError) {
+                    console.error('❌ Could not create fallback stream:', fallbackError);
+                    throw mediaError;
+                }
+            }
+            
+        } catch (error) {
+            console.error('❌ Fatal error in getLocalStream:', error);
+            this.showNotification('Критическая ошибка доступа к медиа', 'error');
+            throw error;
         }
+    }
 
-        if (callType === 'video') {
-            if (!hasVideo && !hasAudio) {
-                warning = 'Камера и микрофон не найдены. Звонок невозможен.';
-                canProceed = false;
-            } else if (!hasVideo) {
-                warning = 'Камера не найдена. Звонок будет только аудио.';
-                canProceed = true;
-            } else if (!hasAudio) {
+    async checkDevices(callType) {
+        try {
+            if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) {
+                return { 
+                    success: false, 
+                    error: 'Ваш браузер не поддерживает аудио/видео звонки',
+                    hasAudio: false,
+                    hasVideo: false,
+                    canProceed: false
+                };
+            }
+
+            const devices = await navigator.mediaDevices.enumerateDevices();
+            const hasAudio = devices.some(device => device.kind === 'audioinput');
+            const hasVideo = devices.some(device => device.kind === 'videoinput');
+
+            let warning = null;
+            let canProceed = true;
+
+            if (callType === 'audio' && !hasAudio) {
                 warning = 'Микрофон не найден. Вы не сможете говорить.';
                 canProceed = true;
             }
+
+            if (callType === 'video') {
+                if (!hasVideo && !hasAudio) {
+                    warning = 'Камера и микрофон не найдены.';
+                    canProceed = false;
+                } else if (!hasVideo) {
+                    warning = 'Камера не найдена.';
+                    canProceed = true;
+                } else if (!hasAudio) {
+                    warning = 'Микрофон не найден.';
+                    canProceed = true;
+                }
+            }
+
+            return {
+                success: true,
+                hasAudio,
+                hasVideo,
+                warning,
+                canProceed
+            };
+
+        } catch (error) {
+            console.error('❌ Error checking devices:', error);
+            return {
+                success: false,
+                error: error.message,
+                hasAudio: false,
+                hasVideo: false,
+                canProceed: false
+            };
         }
-
-        return {
-            success: true,
-            hasAudio,
-            hasVideo,
-            warning,
-            canProceed,
-            devices: devices.map(d => ({ 
-                kind: d.kind, 
-                label: d.label || 'Без названия',
-                deviceId: d.deviceId 
-            }))
-        };
-
-    } catch (error) {
-        console.error('❌ Error checking devices:', error);
-        return {
-            success: false,
-            error: error.message,
-            hasAudio: false,
-            hasVideo: false,
-            canProceed: false
-        };
     }
-}
-showLocalVideo() {
-    const localVideo = document.getElementById('localVideo');
-    const localVideoPlaceholder = document.getElementById('localVideoPlaceholder');
-    
-    if (localVideo && this.localStream) {
-        localVideo.srcObject = this.localStream;
-        localVideo.style.display = 'block';
-        if (localVideoPlaceholder) {
-            localVideoPlaceholder.style.display = 'none';
+
+    showLocalVideo() {
+        const localVideo = document.getElementById('localVideo');
+        const localVideoPlaceholder = document.getElementById('localVideoPlaceholder');
+        
+        if (localVideo && this.localStream) {
+            localVideo.srcObject = this.localStream;
+            localVideo.style.display = 'block';
+            
+            // Не зеркалируем видео при трансляции экрана
+            if (!this.isScreenSharing) {
+                localVideo.style.transform = 'scaleX(-1)';
+            } else {
+                localVideo.style.transform = 'none';
+            }
+            
+            if (localVideoPlaceholder) {
+                localVideoPlaceholder.style.display = 'none';
+            }
+            
+            localVideo.play().catch(e => console.warn('Video play failed:', e));
+        }
+    }
+
+    showLocalVideoPlaceholder() {
+        const localVideo = document.getElementById('localVideo');
+        const localVideoPlaceholder = document.getElementById('localVideoPlaceholder');
+        
+        if (localVideo) {
+            localVideo.srcObject = null;
+            localVideo.style.display = 'none';
         }
         
-        // Убедимся, что видео воспроизводится
-        localVideo.play().catch(e => console.warn('Video play failed:', e));
+        if (localVideoPlaceholder) {
+            localVideoPlaceholder.style.display = 'flex';
+            
+            const placeholderText = localVideoPlaceholder.querySelector('div div:last-child');
+            if (placeholderText) {
+                if (this.callType === 'video') {
+                    placeholderText.textContent = 'Камера не найдена';
+                } else {
+                    placeholderText.textContent = 'Аудиозвонок';
+                }
+            }
+        }
     }
-}
+
     handleIncomingCall(data) {
         console.log('📞 Incoming call received:', data);
         
-        // Проверяем, не заняты ли мы уже в звонке
         if (this.isInCall) {
             this.rejectIncomingCall(data, 'Занят другим звонком');
             return;
         }
         
-        // Проверяем, не показывается ли уже уведомление
         if (this.isNotificationShown) {
             console.log('⚠️ Notification already shown, ignoring duplicate call');
             return;
         }
         
-        // Проверяем, не открыт ли уже звонок
         const callModal = document.getElementById('callModal');
         if (callModal && callModal.style.display !== 'none') {
             console.log('⚠️ Call modal already open, ignoring duplicate call');
@@ -634,27 +725,24 @@ showLocalVideo() {
         this.currentCall = {
             callId: data.callId,
             caller: data.caller,
-            targetUser: document.getElementById('username')?.textContent || window.USERNAME || 'User',
+            targetUser: window.USERNAME || document.getElementById('username')?.textContent || 'User',
             type: data.callType,
             status: 'incoming'
         };
         
         this.isCaller = false;
         this.callType = data.callType;
-        this.isNotificationShown = true; // Устанавливаем флаг, что уведомление показано
+        this.isNotificationShown = true;
         
-        // Показываем уведомление о входящем звонке
         this.showIncomingCallNotification(data);
     }
 
     showIncomingCallNotification(data) {
-        // Сначала удаляем старое уведомление, если оно есть
         const existingNotification = document.getElementById('incomingCallNotification');
         if (existingNotification) {
             existingNotification.remove();
         }
         
-        // Проверяем, не открыт ли уже звонок
         const callModal = document.getElementById('callModal');
         if (callModal && callModal.style.display !== 'none') {
             console.log('⚠️ Call modal already open, not showing notification');
@@ -699,46 +787,43 @@ showLocalVideo() {
 
         document.body.appendChild(notification);
 
-        // Обработчики кнопок
         notification.querySelector('.accept-incoming-btn').addEventListener('click', () => {
             notification.remove();
-            this.isNotificationShown = false; // Сбрасываем флаг
+            this.isNotificationShown = false;
             this.acceptCall();
         });
 
         notification.querySelector('.reject-incoming-btn').addEventListener('click', () => {
             notification.remove();
-            this.isNotificationShown = false; // Сбрасываем флаг
+            this.isNotificationShown = false;
             this.rejectCall();
         });
 
-        // Автоматическое отклонение через 30 секунд
+        // Увеличиваем таймаут для продакшена
+        const timeoutTime = window.location.hostname === 'localhost' ? 30000 : 45000;
+        
         setTimeout(() => {
             if (document.body.contains(notification)) {
                 notification.remove();
-                this.isNotificationShown = false; // Сбрасываем флаг
+                this.isNotificationShown = false;
                 this.rejectCall();
             }
-        }, 30000);
+        }, timeoutTime);
     }
 
     async acceptCall() {
         try {
             console.log('✅ Accepting call...');
             
-            // Получаем локальный поток
             await this.getLocalStream();
             
-            // Показываем интерфейс звонка
             this.showCallModal();
             this.showActiveCallControls();
             this.updateCallInfo(`Разговор с ${this.currentCall.caller}`);
             
-            // Устанавливаем статус звонка
             this.currentCall.status = 'active';
             this.isInCall = true;
             
-            // Отправляем подтверждение звонка
             if (window.socket) {
                 window.socket.emit('accept_call', {
                     callId: this.currentCall.callId,
@@ -749,10 +834,8 @@ showLocalVideo() {
                 console.log('📤 Call acceptance sent');
             }
             
-            // Инициализируем WebRTC соединение
             await this.initiateWebRTC();
             
-            // Запускаем таймер звонка
             this.startCallTimer();
             
         } catch (error) {
@@ -765,7 +848,6 @@ showLocalVideo() {
     rejectCall(reason = 'Отклонен пользователем') {
         console.log('❌ Rejecting call...');
         
-        // Сбрасываем флаг уведомления
         this.isNotificationShown = false;
         
         if (window.socket && this.currentCall) {
@@ -809,6 +891,7 @@ showLocalVideo() {
         
         if (this.callTimeout) {
             clearTimeout(this.callTimeout);
+            this.callTimeout = null;
         }
         
         this.currentCall.status = 'active';
@@ -817,10 +900,8 @@ showLocalVideo() {
         this.showActiveCallControls();
         this.updateCallInfo(`Разговор с ${data.acceptor}`);
         
-        // Инициализируем WebRTC соединение
         await this.initiateWebRTC();
         
-        // Запускаем таймер звонка
         this.startCallTimer();
     }
 
@@ -829,6 +910,7 @@ showLocalVideo() {
         
         if (this.callTimeout) {
             clearTimeout(this.callTimeout);
+            this.callTimeout = null;
         }
         
         this.showNotification(data.reason, 'error');
@@ -852,7 +934,8 @@ showLocalVideo() {
         if (window.socket && this.currentCall) {
             window.socket.emit('end_call', {
                 callId: this.currentCall.callId,
-                reason: reason
+                reason: reason,
+                endedBy: window.USERNAME || document.getElementById('username')?.textContent
             });
         }
         
@@ -864,140 +947,34 @@ showLocalVideo() {
         try {
             console.log('🔗 Initializing WebRTC connection...');
             
-            // Создаем RTCPeerConnection с улучшенной конфигурацией
+            if (!this.currentCall) {
+                throw new Error('No active call');
+            }
+
+            // Закрываем старое соединение если есть
+            if (this.peerConnection) {
+                this.peerConnection.close();
+                this.peerConnection = null;
+            }
+            
             const configuration = {
-                iceServers: [
-                    { 
-                        urls: [
-                            'stun:stun.l.google.com:19302',
-                            'stun:stun1.l.google.com:19302',
-                            'stun:stun2.l.google.com:19302',
-                            'stun:stun3.l.google.com:19302',
-                            'stun:stun4.l.google.com:19302'
-                        ]
-                    },
-                    // Резервные STUN серверы
-                    { urls: 'stun:stun.voipbuster.com:3478' },
-                    { urls: 'stun:stun.voipstunt.com:3478' },
-                    { urls: 'stun:stun.ekiga.net:3478' }
-                ],
+                iceServers: this.iceServers,
                 iceCandidatePoolSize: 10,
                 iceTransportPolicy: 'all',
                 bundlePolicy: 'max-bundle',
                 rtcpMuxPolicy: 'require',
                 sdpSemantics: 'unified-plan'
             };
-            
+
+            // Дополнительные настройки для продакшена
+            if (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+                configuration.iceTransportPolicy = 'relay'; // Принудительно используем TURN
+                configuration.iceCandidatePoolSize = 20;
+            }
+
             this.peerConnection = new RTCPeerConnection(configuration);
             
-            // Добавляем обработчики событий WebRTC
-            this.peerConnection.onicecandidate = (event) => {
-                if (event.candidate && window.socket) {
-                    console.log('📤 ICE candidate:', event.candidate);
-                    window.socket.emit('webrtc_ice_candidate', {
-                        callId: this.currentCall.callId,
-                        targetUser: this.isCaller ? this.currentCall.targetUser : this.currentCall.caller,
-                        candidate: event.candidate
-                    });
-                } else if (!event.candidate) {
-                    console.log('✅ All ICE candidates sent');
-                }
-            };
-            
-            this.peerConnection.ontrack = (event) => {
-                console.log('✅ Remote track received:', event.track.kind);
-                this.remoteStream = event.streams[0];
-                
-                // Показываем удаленное видео
-                const remoteVideo = document.getElementById('remoteVideo');
-                const remoteVideoPlaceholder = document.getElementById('remoteVideoPlaceholder');
-                const remotePlaceholderText = document.getElementById('remotePlaceholderText');
-                
-                if (remoteVideo) {
-                    remoteVideo.srcObject = this.remoteStream;
-                    remoteVideo.style.display = 'block';
-                    if (remoteVideoPlaceholder) {
-                        remoteVideoPlaceholder.style.display = 'none';
-                    }
-                    
-                    // Обработка аудио событий
-                    remoteVideo.onloadedmetadata = () => {
-                        console.log('✅ Remote video metadata loaded');
-                        remoteVideo.play().catch(e => console.warn('Remote video play failed:', e));
-                    };
-                }
-                
-                this.updateStatus('Соединение установлено');
-                this.updateICEStatus('Соединение активно');
-            };
-            
-            this.peerConnection.oniceconnectionstatechange = () => {
-                const state = this.peerConnection.iceConnectionState;
-                console.log('ICE connection state:', state);
-                
-                switch(state) {
-                    case 'checking':
-                        this.updateStatus('Установка соединения...');
-                        this.updateICEStatus('Поиск оптимального соединения...');
-                        break;
-                    case 'connected':
-                        this.updateStatus('Соединение установлено ✓');
-                        this.updateICEStatus('Соединение активно');
-                        this.reconnectAttempts = 0;
-                        this.showActiveCallControls();
-                        break;
-                    case 'completed':
-                        this.updateStatus('Соединение установлено ✓');
-                        this.updateICEStatus('Соединение активно');
-                        break;
-                    case 'disconnected':
-                        this.updateStatus('Соединение прервано...');
-                        this.updateICEStatus('Попытка переподключения...');
-                        console.warn('⚠️ WebRTC disconnected');
-                        // Показываем кнопку переподключения
-                        this.showReconnectControls();
-                        
-                        // Автоматическая попытка переподключения
-                        setTimeout(() => {
-                            if (this.peerConnection && this.peerConnection.iceConnectionState === 'disconnected') {
-                                console.log('🔄 Attempting automatic reconnect...');
-                                this.reconnectCall();
-                            }
-                        }, 3000);
-                        break;
-                    case 'failed':
-                        this.updateStatus('Ошибка соединения');
-                        this.updateICEStatus('Не удалось установить соединение');
-                        console.error('❌ WebRTC connection failed');
-                        this.showReconnectControls();
-                        break;
-                    case 'closed':
-                        this.updateStatus('Соединение закрыто');
-                        this.updateICEStatus('');
-                        break;
-                }
-            };
-            
-            this.peerConnection.onicegatheringstatechange = () => {
-                console.log('ICE gathering state:', this.peerConnection.iceGatheringState);
-            };
-            
-            // Улучшенная обработка ошибок ICE кандидатов
-            this.peerConnection.onicecandidateerror = (error) => {
-                // Игнорируем стандартные ошибки STUN серверов
-                if (error.errorCode === 701 || error.errorCode === 0) {
-                    console.debug('ICE candidate error (ignored):', error);
-                    return;
-                }
-                
-                if (error.errorCode) {
-                    console.warn(`ICE Error ${error.errorCode}: ${error.errorText || error.message}`);
-                } else {
-                    console.warn('ICE candidate error:', error);
-                }
-                
-                this.updateICEStatus(`Сетевая ошибка (код: ${error.errorCode || 'unknown'})`);
-            };
+            this.setupPeerConnectionEvents();
             
             // Добавляем локальные треки
             if (this.localStream) {
@@ -1005,14 +982,20 @@ showLocalVideo() {
                     console.log(`➕ Adding local track: ${track.kind}`);
                     this.peerConnection.addTrack(track, this.localStream);
                 });
+            } else {
+                console.warn('⚠️ No local stream available');
             }
-            
-            // Создаем и отправляем предложение (offer) если мы звонящий
+
+            // Создаем и отправляем предложение если мы звонящий
             if (this.isCaller) {
-                const offer = await this.peerConnection.createOffer({
+                console.log('📤 Creating offer...');
+                
+                const offerOptions = {
                     offerToReceiveAudio: true,
                     offerToReceiveVideo: this.callType === 'video'
-                });
+                };
+
+                const offer = await this.peerConnection.createOffer(offerOptions);
                 await this.peerConnection.setLocalDescription(offer);
                 
                 if (window.socket) {
@@ -1028,8 +1011,175 @@ showLocalVideo() {
             
         } catch (error) {
             console.error('❌ WebRTC initialization error:', error);
-            this.showNotification('Ошибка установки соединения', 'error');
-            this.endCall();
+            this.showNotification('Ошибка установки соединения: ' + error.message, 'error');
+            
+            // Пробуем переподключиться
+            setTimeout(() => {
+                if (this.isInCall) {
+                    this.reconnectCall();
+                }
+            }, 2000);
+        }
+    }
+
+    setupPeerConnectionEvents() {
+        if (!this.peerConnection) return;
+
+        this.peerConnection.onicecandidate = (event) => {
+            if (event.candidate && window.socket) {
+                // Фильтруем кандидаты для продакшена
+                if (window.location.hostname !== 'localhost' && 
+                    window.location.hostname !== '127.0.0.1' &&
+                    event.candidate.candidate.includes('typ relay')) {
+                    console.log('📤 Sending TURN candidate');
+                }
+                
+                window.socket.emit('webrtc_ice_candidate', {
+                    callId: this.currentCall.callId,
+                    targetUser: this.isCaller ? this.currentCall.targetUser : this.currentCall.caller,
+                    candidate: event.candidate
+                });
+            }
+        };
+
+        this.peerConnection.ontrack = (event) => {
+            console.log('✅ Remote track received:', event.track.kind);
+            this.remoteStream = event.streams[0];
+            
+            this.showRemoteVideo();
+            
+            this.updateStatus('Соединение установлено');
+        };
+
+        this.peerConnection.oniceconnectionstatechange = () => {
+            const state = this.peerConnection.iceConnectionState;
+            console.log('ICE connection state:', state);
+            
+            this.updateICEConnectionType();
+            
+            switch(state) {
+                case 'checking':
+                    this.updateStatus('Установка соединения...');
+                    this.updateICEStatus('Поиск оптимального маршрута...');
+                    break;
+                case 'connected':
+                case 'completed':
+                    this.updateStatus('Соединение установлено ✓');
+                    this.updateICEStatus('Соединение активно');
+                    this.reconnectAttempts = 0;
+                    this.showActiveCallControls();
+                    break;
+                case 'disconnected':
+                    this.updateStatus('Соединение прервано...');
+                    this.updateICEStatus('Попытка переподключения...');
+                    this.showReconnectControls();
+                    
+                    // Автоматическая попытка переподключения
+                    if (!this.reconnectTimeout) {
+                        this.reconnectTimeout = setTimeout(() => {
+                            if (this.peerConnection?.iceConnectionState === 'disconnected') {
+                                console.log('🔄 Attempting automatic reconnect...');
+                                this.reconnectCall();
+                            }
+                            this.reconnectTimeout = null;
+                        }, 3000);
+                    }
+                    break;
+                case 'failed':
+                    this.updateStatus('Ошибка соединения');
+                    this.updateICEStatus('Не удалось установить соединение');
+                    console.error('❌ WebRTC connection failed');
+                    this.showReconnectControls();
+                    break;
+                case 'closed':
+                    this.updateStatus('Соединение закрыто');
+                    this.updateICEStatus('');
+                    break;
+            }
+        };
+
+        this.peerConnection.onicegatheringstatechange = () => {
+            console.log('ICE gathering state:', this.peerConnection.iceGatheringState);
+        };
+
+        this.peerConnection.onicecandidateerror = (error) => {
+            if (error.errorCode === 701 || error.errorCode === 0) {
+                console.debug('ICE candidate error (ignored):', error.errorText);
+                return;
+            }
+            
+            console.warn('ICE candidate error:', {
+                code: error.errorCode,
+                text: error.errorText,
+                url: error.url
+            });
+            
+            this.updateICEStatus(`Сетевая ошибка (${error.errorCode})`);
+        };
+    }
+
+    updateICEConnectionType() {
+        const iceConnectionType = document.getElementById('iceConnectionType');
+        if (!iceConnectionType) return;
+        
+        if (!this.peerConnection) return;
+        
+        try {
+            const candidatePairs = this.peerConnection.getStats()
+                .then(stats => {
+                    stats.forEach(report => {
+                        if (report.type === 'candidate-pair' && report.state === 'succeeded') {
+                            const localCandidate = stats.get(report.localCandidateId);
+                            const remoteCandidate = stats.get(report.remoteCandidateId);
+                            
+                            if (localCandidate && remoteCandidate) {
+                                let type = 'unknown';
+                                let icon = '🔌';
+                                
+                                if (localCandidate.candidateType === 'relay' || remoteCandidate.candidateType === 'relay') {
+                                    type = 'TURN (релейный)';
+                                    icon = '🔄';
+                                } else if (localCandidate.candidateType === 'srflx' || remoteCandidate.candidateType === 'srflx') {
+                                    type = 'STUN (публичный)';
+                                    icon = '🌐';
+                                } else {
+                                    type = 'Host (локальный)';
+                                    icon = '💻';
+                                }
+                                
+                                iceConnectionType.innerHTML = `${icon} ${type}`;
+                                iceConnectionType.style.color = '#6c757d';
+                            }
+                        }
+                    });
+                })
+                .catch(e => console.warn('Could not get connection type:', e));
+        } catch (e) {
+            console.warn('Error updating connection type:', e);
+        }
+    }
+
+    showRemoteVideo() {
+        const remoteVideo = document.getElementById('remoteVideo');
+        const remoteVideoPlaceholder = document.getElementById('remoteVideoPlaceholder');
+        const remotePlaceholderText = document.getElementById('remotePlaceholderText');
+        
+        if (remoteVideo && this.remoteStream) {
+            remoteVideo.srcObject = this.remoteStream;
+            remoteVideo.style.display = 'block';
+            
+            if (remoteVideoPlaceholder) {
+                remoteVideoPlaceholder.style.display = 'none';
+            }
+            
+            remoteVideo.play().catch(e => console.warn('Remote video play failed:', e));
+            
+            // Обновляем статус
+            const remoteStatus = document.getElementById('remoteStatus');
+            if (remoteStatus) {
+                remoteStatus.textContent = 'онлайн';
+                remoteStatus.style.color = '#28a745';
+            }
         }
     }
 
@@ -1043,7 +1193,6 @@ showLocalVideo() {
             
             await this.peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer));
             
-            // Создаем ответ (answer)
             const answer = await this.peerConnection.createAnswer();
             await this.peerConnection.setLocalDescription(answer);
             
@@ -1068,6 +1217,7 @@ showLocalVideo() {
             
             if (this.peerConnection) {
                 await this.peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
+                console.log('✅ Remote description set');
             }
             
         } catch (error) {
@@ -1081,10 +1231,16 @@ showLocalVideo() {
             
             if (this.peerConnection && data.candidate) {
                 await this.peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
+                console.log('✅ ICE candidate added');
             }
             
         } catch (error) {
             console.error('❌ Error handling ICE candidate:', error);
+            
+            if (error.name === 'InvalidStateError') {
+                console.log('⏳ Connection not ready, retrying...');
+                setTimeout(() => this.handleWebRTCIceCandidate(data), 500);
+            }
         }
     }
 
@@ -1110,621 +1266,15 @@ showLocalVideo() {
             // Создаем новое соединение
             await this.initiateWebRTC();
             
-            // Если мы звонящий, отправляем новый offer
-            if (this.isCaller) {
-                const offer = await this.peerConnection.createOffer({
-                    offerToReceiveAudio: true,
-                    offerToReceiveVideo: this.callType === 'video'
-                });
-                await this.peerConnection.setLocalDescription(offer);
-                
-                if (window.socket) {
-                    window.socket.emit('webrtc_offer', {
-                        callId: this.currentCall.callId,
-                        targetUser: this.currentCall.targetUser,
-                        offer: offer
-                    });
-                }
-            }
-            
         } catch (error) {
             console.error('❌ Reconnect error:', error);
-            setTimeout(() => this.reconnectCall(), 2000);
-        }
-    }
-
-    // Функции для сворачивания/разворачивания окна
-    toggleMinimize() {
-        const modal = document.getElementById('callModal');
-        const callContent = document.getElementById('callContent');
-        const callControls = document.getElementById('callControls');
-        
-        if (!modal || !callContent || !callControls) return;
-        
-        if (this.isCallModalMinimized) {
-            // Разворачиваем
-            this.restoreCallModal();
-        } else {
-            // Сворачиваем
-            this.minimizeCallModal();
-        }
-    }
-
-    minimizeCallModal() {
-        const modal = document.getElementById('callModal');
-        const callContent = document.getElementById('callContent');
-        const callControls = document.getElementById('callControls');
-        
-        if (!modal) return;
-        
-        // Сворачиваем
-        modal.style.width = '350px';
-        modal.style.height = '200px';
-        modal.style.minHeight = '200px';
-        modal.style.maxHeight = '200px';
-        modal.style.top = '100px';
-        modal.style.right = '30px';
-        modal.style.left = 'auto';
-        modal.style.borderRadius = '15px';
-        modal.style.overflow = 'hidden';
-        modal.style.boxShadow = '0 10px 30px rgba(0,0,0,0.5)';
-        modal.style.cursor = 'move';
-        modal.style.resize = 'none';
-        
-        // Скрываем основное содержимое
-        if (callContent) callContent.style.display = 'none';
-        if (callControls) callControls.style.display = 'none';
-        
-        // Показываем только заголовок с информацией
-        this.updateMinimizedView();
-        
-        this.isCallModalMinimized = true;
-        
-        // Обновляем кнопку
-        const minimizeBtn = modal.querySelector('.minimize-call-btn');
-        if (minimizeBtn) {
-            minimizeBtn.textContent = '➕';
-            minimizeBtn.title = 'Развернуть';
-        }
-        
-        // Включаем возможность перетаскивания
-        this.enableDragging();
-        
-        // Включаем возможность изменения размера
-        this.enableResizing();
-        
-        // Добавляем возможность развернуть по двойному клику на заголовок
-        const callHeader = modal.querySelector('.call-header');
-        if (callHeader) {
-            callHeader.style.cursor = 'pointer';
-            callHeader.addEventListener('dblclick', () => {
-                this.restoreCallModal();
-            });
-        }
-    }
-
-    restoreCallModal() {
-        const modal = document.getElementById('callModal');
-        const callContent = document.getElementById('callContent');
-        const callControls = document.getElementById('callControls');
-        
-        if (!modal) return;
-        
-        // Разворачиваем
-        modal.style.width = '100%';
-        modal.style.height = '100%';
-        modal.style.minHeight = '';
-        modal.style.maxHeight = '';
-        modal.style.top = '0';
-        modal.style.right = 'auto';
-        modal.style.left = '0';
-        modal.style.borderRadius = '0';
-        modal.style.overflow = '';
-        modal.style.boxShadow = 'none';
-        modal.style.cursor = '';
-        modal.style.resize = '';
-        
-        // Восстанавливаем все содержимое
-        if (callContent) callContent.style.display = 'flex';
-        if (callControls) {
-            // ВОССТАНАВЛИВАЕМ ПАНЕЛЬ УПРАВЛЕНИЯ В ЗАВИСИМОСТИ ОТ СОСТОЯНИЯ
-            callControls.style.display = 'flex';
             
-            // Определяем, какие кнопки показывать
-            if (this.isInCall) {
-                this.showActiveCallControls();
-            } else if (this.currentCall?.status === 'incoming') {
-                this.showIncomingControls();
-            } else if (this.currentCall?.status === 'calling') {
-                this.showCallingControls();
-            } else if (this.peerConnection?.iceConnectionState === 'disconnected' || 
-                      this.peerConnection?.iceConnectionState === 'failed') {
-                this.showReconnectControls();
-            }
-        }
-        
-        // Восстанавливаем оригинальную структуру заголовка
-        const callHeader = modal.querySelector('.call-header');
-        if (callHeader) {
-            // Сохраняем текущие данные перед заменой
-            const currentCallTitle = document.getElementById('callTitle')?.textContent || '📞 Звонок...';
-            const currentCallTimer = document.getElementById('callTimer')?.textContent || '00:00';
-            const currentConnectionStatus = document.getElementById('connectionStatus')?.textContent || '';
-            
-            callHeader.innerHTML = `
-                <div class="call-info" id="callInfo">
-                    <h3 style="margin: 0; color: #ffffff;" id="callTitle">${currentCallTitle}</h3>
-                    <div id="callTimer" style="font-size: 14px; opacity: 0.8; color: #cccccc;">${currentCallTimer}</div>
-                    <div id="connectionStatus" style="font-size: 12px; margin-top: 5px; color: #28a745;">${currentConnectionStatus}</div>
-                </div>
-                <div class="call-header-buttons" style="position: absolute; top: 20px; right: 20px; display: flex; gap: 10px;">
-                    <button class="minimize-call-btn" style="background: rgba(255,255,255,0.1); border: none; color: #ffffff; font-size: 20px; cursor: pointer; width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center;">➖</button>
-                    <button class="close-call-btn" style="background: rgba(255,255,255,0.1); border: none; color: #ffffff; font-size: 20px; cursor: pointer; width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center;">✕</button>
-                </div>
-            `;
-            
-            // Перепривязываем события
-            this.setupCallModalEvents();
-        }
-        
-        this.isCallModalMinimized = false;
-        
-        // Отключаем перетаскивание и изменение размера
-        this.disableDragging();
-        this.disableResizing();
-        
-        // Скрываем элементы изменения размера
-        const resizeHandles = modal.querySelector('.resize-handles');
-        if (resizeHandles) {
-            resizeHandles.style.display = 'none';
+            const delay = Math.min(1000 * this.reconnectAttempts, 5000);
+            setTimeout(() => this.reconnectCall(), delay);
         }
     }
 
-    updateCallInfoBasedOnStatus() {
-        if (!this.currentCall) return;
-        
-        if (this.currentCall.status === 'incoming') {
-            this.updateCallInfo(`Входящий звонок от ${this.currentCall.caller}`);
-        } else if (this.currentCall.status === 'calling') {
-            this.updateCallInfo(`Звонок ${this.currentCall.targetUser}`);
-        } else if (this.currentCall.status === 'active') {
-            const otherUser = this.isCaller ? 
-                this.currentCall.targetUser : 
-                this.currentCall.caller;
-            this.updateCallInfo(`Разговор с ${otherUser}`);
-        }
-    }
-
-    updateMinimizedView() {
-        const modal = document.getElementById('callModal');
-        if (!modal || !this.currentCall) return;
-        
-        // Определяем, что показывать в свернутом виде
-        let title = '';
-        let status = '';
-        let icon = '📞';
-        
-        if (this.currentCall.status === 'incoming') {
-            title = `Входящий от ${this.currentCall.caller}`;
-            status = 'Ожидание ответа...';
-            icon = '📥';
-        } else if (this.currentCall.status === 'calling') {
-            title = `Звонок ${this.currentCall.targetUser}`;
-            status = 'Ожидание ответа...';
-            icon = '📤';
-        } else if (this.currentCall.status === 'active') {
-            title = this.isCaller ? 
-                `Разговор с ${this.currentCall.targetUser}` : 
-                `Разговор с ${this.currentCall.caller}`;
-            
-            const timer = document.getElementById('callTimer')?.textContent || '00:00';
-            status = `Длительность: ${timer}`;
-            icon = '🎙️';
-        }
-        
-        // Обновляем заголовок
-        const callHeader = modal.querySelector('.call-header');
-        if (callHeader) {
-            callHeader.innerHTML = `
-                <div class="call-info" id="callInfo" style="width: 100%; padding: 15px; display: flex; align-items: center; gap: 10px;">
-                    <div style="font-size: 24px; flex-shrink: 0;">${icon}</div>
-                    <div style="flex: 1; overflow: hidden;">
-                        <div style="font-weight: bold; color: #ffffff; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${title}">${title}</div>
-                        <div style="font-size: 12px; opacity: 0.8; color: #cccccc; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${status}</div>
-                        <div style="font-size: 10px; color: #28a745; margin-top: 2px;" id="miniConnectionStatus">${document.getElementById('connectionStatus')?.textContent || ''}</div>
-                    </div>
-                    <div class="mini-controls" style="display: flex; gap: 5px; flex-shrink: 0;">
-                        <button class="mini-action-btn" data-action="mute" style="background: rgba(255,255,255,0.1); border: none; color: #ffffff; font-size: 16px; cursor: pointer; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center;">
-                            ${this.isMuted ? '🎤❌' : '🎤'}
-                        </button>
-                        ${this.callType === 'video' ? `
-                            <button class="mini-action-btn" data-action="camera" style="background: rgba(255,255,255,0.1); border: none; color: #ffffff; font-size: 16px; cursor: pointer; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center;">
-                                ${this.isCameraOff ? '📹❌' : '📹'}
-                            </button>
-                        ` : ''}
-                        <button class="mini-end-btn" style="background: rgba(220,53,69,0.8); border: none; color: #ffffff; font-size: 16px; cursor: pointer; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center;">
-                            📞
-                        </button>
-                    </div>
-                </div>
-                <div class="call-header-buttons" style="position: absolute; top: 5px; right: 5px; display: flex; gap: 5px;">
-                    <button class="minimize-call-btn" style="background: rgba(255,255,255,0.1); border: none; color: #ffffff; font-size: 16px; cursor: pointer; width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; padding: 0;">➕</button>
-                    <button class="close-call-btn" style="background: rgba(255,255,255,0.1); border: none; color: #ffffff; font-size: 16px; cursor: pointer; width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; padding: 0;">✕</button>
-                </div>
-            `;
-            
-            // Добавляем обработчики для мини-кнопок
-            this.setupMiniControls();
-        }
-    }
-
-    setupMiniControls() {
-        const modal = document.getElementById('callModal');
-        if (!modal) return;
-        
-        // Кнопка микрофона
-        const muteBtn = modal.querySelector('.mini-action-btn[data-action="mute"]');
-        if (muteBtn) {
-            muteBtn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                this.toggleMute();
-                // Обновляем иконку
-                muteBtn.innerHTML = this.isMuted ? '🎤❌' : '🎤';
-            });
-        }
-        
-        // Кнопка камеры
-        const cameraBtn = modal.querySelector('.mini-action-btn[data-action="camera"]');
-        if (cameraBtn) {
-            cameraBtn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                if (this.callType === 'video') {
-                    this.toggleCamera();
-                    // Обновляем иконку
-                    cameraBtn.innerHTML = this.isCameraOff ? '📹❌' : '📹';
-                }
-            });
-        }
-        
-        // Кнопка завершения звонка
-        const endBtn = modal.querySelector('.mini-end-btn');
-        if (endBtn) {
-            endBtn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                this.endCall();
-            });
-        }
-        
-        // Обновляем кнопки сворачивания/закрытия
-        const minimizeBtn = modal.querySelector('.minimize-call-btn');
-        if (minimizeBtn) {
-            minimizeBtn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                this.toggleMinimize();
-            });
-        }
-        
-        const closeBtn = modal.querySelector('.close-call-btn');
-        if (closeBtn) {
-            closeBtn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                this.endCall();
-            });
-        }
-    }
-
-    // Функции для перетаскивания окна
-    enableDragging() {
-        const modal = document.getElementById('callModal');
-        if (!modal) return;
-        
-        const header = modal.querySelector('.call-header');
-        if (!header) return;
-        
-        header.style.cursor = 'move';
-        
-        header.addEventListener('mousedown', this.startDrag.bind(this));
-        document.addEventListener('mousemove', this.drag.bind(this));
-        document.addEventListener('mouseup', this.stopDrag.bind(this));
-        
-        // Для сенсорных устройств
-        header.addEventListener('touchstart', this.startDragTouch.bind(this));
-        document.addEventListener('touchmove', this.dragTouch.bind(this));
-        document.addEventListener('touchend', this.stopDrag.bind(this));
-    }
-
-    disableDragging() {
-        const modal = document.getElementById('callModal');
-        if (!modal) return;
-        
-        const header = modal.querySelector('.call-header');
-        if (!header) return;
-        
-        header.style.cursor = '';
-        
-        header.removeEventListener('mousedown', this.startDrag.bind(this));
-        document.removeEventListener('mousemove', this.drag.bind(this));
-        document.removeEventListener('mouseup', this.stopDrag.bind(this));
-        
-        header.removeEventListener('touchstart', this.startDragTouch.bind(this));
-        document.removeEventListener('touchmove', this.dragTouch.bind(this));
-        document.removeEventListener('touchend', this.stopDrag.bind(this));
-    }
-
-    startDrag(e) {
-        e.preventDefault();
-        const modal = document.getElementById('callModal');
-        if (!modal) return;
-        
-        this.isDragging = true;
-        const rect = modal.getBoundingClientRect();
-        this.dragOffsetX = e.clientX - rect.left;
-        this.dragOffsetY = e.clientY - rect.top;
-        
-        modal.style.transition = 'none';
-    }
-
-    startDragTouch(e) {
-        e.preventDefault();
-        const modal = document.getElementById('callModal');
-        if (!modal || !e.touches[0]) return;
-        
-        this.isDragging = true;
-        const touch = e.touches[0];
-        const rect = modal.getBoundingClientRect();
-        this.dragOffsetX = touch.clientX - rect.left;
-        this.dragOffsetY = touch.clientY - rect.top;
-        
-        modal.style.transition = 'none';
-    }
-
-    drag(e) {
-        if (!this.isDragging) return;
-        
-        const modal = document.getElementById('callModal');
-        if (!modal) return;
-        
-        const x = e.clientX - this.dragOffsetX;
-        const y = e.clientY - this.dragOffsetY;
-        
-        // Ограничиваем позицию в пределах окна
-        const maxX = window.innerWidth - modal.offsetWidth;
-        const maxY = window.innerHeight - modal.offsetHeight;
-        
-        modal.style.left = Math.min(Math.max(0, x), maxX) + 'px';
-        modal.style.top = Math.min(Math.max(0, y), maxY) + 'px';
-        modal.style.right = 'auto';
-    }
-
-    dragTouch(e) {
-        if (!this.isDragging || !e.touches[0]) return;
-        
-        const modal = document.getElementById('callModal');
-        if (!modal) return;
-        
-        const touch = e.touches[0];
-        const x = touch.clientX - this.dragOffsetX;
-        const y = touch.clientY - this.dragOffsetY;
-        
-        // Ограничиваем позицию в пределах окна
-        const maxX = window.innerWidth - modal.offsetWidth;
-        const maxY = window.innerHeight - modal.offsetHeight;
-        
-        modal.style.left = Math.min(Math.max(0, x), maxX) + 'px';
-        modal.style.top = Math.min(Math.max(0, y), maxY) + 'px';
-        modal.style.right = 'auto';
-    }
-
-    stopDrag() {
-        this.isDragging = false;
-        const modal = document.getElementById('callModal');
-        if (modal) {
-            modal.style.transition = 'all 0.3s ease';
-        }
-    }
-
-    // Функции для изменения размера окна
-    enableResizing() {
-        const modal = document.getElementById('callModal');
-        if (!modal) return;
-        
-        // Создаем и показываем элементы для изменения размера
-        const resizeHandles = modal.querySelector('.resize-handles');
-        if (resizeHandles) {
-            resizeHandles.style.display = 'block';
-            
-            // Добавляем обработчики для всех сторон
-            const handles = resizeHandles.querySelectorAll('.resize-handle');
-            handles.forEach(handle => {
-                handle.addEventListener('mousedown', (e) => this.startResize(e, handle.className));
-                // Для сенсорных устройств
-                handle.addEventListener('touchstart', (e) => this.startResizeTouch(e, handle.className));
-            });
-        }
-        
-        document.addEventListener('mousemove', this.resize.bind(this));
-        document.addEventListener('mouseup', this.stopResize.bind(this));
-        document.addEventListener('touchmove', this.resizeTouch.bind(this));
-        document.addEventListener('touchend', this.stopResize.bind(this));
-    }
-
-    disableResizing() {
-        const modal = document.getElementById('callModal');
-        if (!modal) return;
-        
-        const resizeHandles = modal.querySelector('.resize-handles');
-        if (resizeHandles) {
-            resizeHandles.style.display = 'none';
-            const handles = resizeHandles.querySelectorAll('.resize-handle');
-            handles.forEach(handle => {
-                handle.removeEventListener('mousedown', this.startResize);
-                handle.removeEventListener('touchstart', this.startResizeTouch);
-            });
-        }
-        
-        document.removeEventListener('mousemove', this.resize.bind(this));
-        document.removeEventListener('mouseup', this.stopResize.bind(this));
-        document.removeEventListener('touchmove', this.resizeTouch.bind(this));
-        document.removeEventListener('touchend', this.stopResize.bind(this));
-    }
-
-    startResize(e, direction) {
-        e.preventDefault();
-        e.stopPropagation();
-        
-        this.isResizing = true;
-        this.resizeDirection = direction;
-        
-        const modal = document.getElementById('callModal');
-        if (modal) {
-            modal.style.transition = 'none';
-        }
-        
-        // Сохраняем начальные размеры и позицию
-        this.startX = e.clientX;
-        this.startY = e.clientY;
-        this.startWidth = modal.offsetWidth;
-        this.startHeight = modal.offsetHeight;
-        this.startLeft = parseInt(modal.style.left) || modal.offsetLeft;
-        this.startTop = parseInt(modal.style.top) || modal.offsetTop;
-    }
-
-    startResizeTouch(e, direction) {
-        e.preventDefault();
-        e.stopPropagation();
-        
-        if (!e.touches[0]) return;
-        
-        this.isResizing = true;
-        this.resizeDirection = direction;
-        
-        const modal = document.getElementById('callModal');
-        if (modal) {
-            modal.style.transition = 'none';
-        }
-        
-        const touch = e.touches[0];
-        // Сохраняем начальные размеры и позицию
-        this.startX = touch.clientX;
-        this.startY = touch.clientY;
-        this.startWidth = modal.offsetWidth;
-        this.startHeight = modal.offsetHeight;
-        this.startLeft = parseInt(modal.style.left) || modal.offsetLeft;
-        this.startTop = parseInt(modal.style.top) || modal.offsetTop;
-    }
-
-    resize(e) {
-        if (!this.isResizing) return;
-        
-        const modal = document.getElementById('callModal');
-        if (!modal) return;
-        
-        const dx = e.clientX - this.startX;
-        const dy = e.clientY - this.startY;
-        
-        let newWidth = this.startWidth;
-        let newHeight = this.startHeight;
-        let newLeft = this.startLeft;
-        let newTop = this.startTop;
-        
-        // Минимальные размеры
-        const minWidth = 200;
-        const minHeight = 120;
-        
-        // Изменяем размер в зависимости от направления
-        if (this.resizeDirection.includes('e')) {
-            newWidth = Math.max(minWidth, this.startWidth + dx);
-        }
-        if (this.resizeDirection.includes('w')) {
-            const widthChange = Math.max(minWidth - this.startWidth, -dx);
-            newWidth = this.startWidth - widthChange;
-            newLeft = this.startLeft + widthChange;
-        }
-        if (this.resizeDirection.includes('s')) {
-            newHeight = Math.max(minHeight, this.startHeight + dy);
-        }
-        if (this.resizeDirection.includes('n')) {
-            const heightChange = Math.max(minHeight - this.startHeight, -dy);
-            newHeight = this.startHeight - heightChange;
-            newTop = this.startTop + heightChange;
-        }
-        
-        // Максимальные размеры (80% от окна)
-        const maxWidth = window.innerWidth * 0.8;
-        const maxHeight = window.innerHeight * 0.8;
-        
-        newWidth = Math.min(newWidth, maxWidth);
-        newHeight = Math.min(newHeight, maxHeight);
-        
-        // Применяем изменения
-        modal.style.width = newWidth + 'px';
-        modal.style.height = newHeight + 'px';
-        modal.style.left = newLeft + 'px';
-        modal.style.top = newTop + 'px';
-        modal.style.right = 'auto';
-    }
-
-    resizeTouch(e) {
-        if (!this.isResizing || !e.touches[0]) return;
-        
-        const modal = document.getElementById('callModal');
-        if (!modal) return;
-        
-        const touch = e.touches[0];
-        const dx = touch.clientX - this.startX;
-        const dy = touch.clientY - this.startY;
-        
-        let newWidth = this.startWidth;
-        let newHeight = this.startHeight;
-        let newLeft = this.startLeft;
-        let newTop = this.startTop;
-        
-        // Минимальные размеры
-        const minWidth = 200;
-        const minHeight = 120;
-        
-        // Изменяем размер в зависимости от направления
-        if (this.resizeDirection.includes('e')) {
-            newWidth = Math.max(minWidth, this.startWidth + dx);
-        }
-        if (this.resizeDirection.includes('w')) {
-            const widthChange = Math.max(minWidth - this.startWidth, -dx);
-            newWidth = this.startWidth - widthChange;
-            newLeft = this.startLeft + widthChange;
-        }
-        if (this.resizeDirection.includes('s')) {
-            newHeight = Math.max(minHeight, this.startHeight + dy);
-        }
-        if (this.resizeDirection.includes('n')) {
-            const heightChange = Math.max(minHeight - this.startHeight, -dy);
-            newHeight = this.startHeight - heightChange;
-            newTop = this.startTop + heightChange;
-        }
-        
-        // Максимальные размеры (80% от окна)
-        const maxWidth = window.innerWidth * 0.8;
-        const maxHeight = window.innerHeight * 0.8;
-        
-        newWidth = Math.min(newWidth, maxWidth);
-        newHeight = Math.min(newHeight, maxHeight);
-        
-        // Применяем изменения
-        modal.style.width = newWidth + 'px';
-        modal.style.height = newHeight + 'px';
-        modal.style.left = newLeft + 'px';
-        modal.style.top = newTop + 'px';
-        modal.style.right = 'auto';
-    }
-
-    stopResize() {
-        this.isResizing = false;
-        this.resizeDirection = null;
-        
-        const modal = document.getElementById('callModal');
-        if (modal) {
-            modal.style.transition = 'all 0.3s ease';
-        }
-    }
+    // =============== ДЕМОНСТРАЦИЯ ЭКРАНА ===============
 
     async toggleScreenShare() {
         try {
@@ -1738,9 +1288,9 @@ showLocalVideo() {
             
             let errorMessage = 'Ошибка демонстрации экрана';
             if (error.name === 'NotReadableError') {
-                errorMessage = 'Не удалось получить доступ к аудио/видео устройствам. Проверьте настройки браузера.';
+                errorMessage = 'Не удалось получить доступ к экрану.';
             } else if (error.name === 'NotAllowedError') {
-                errorMessage = 'Доступ к демонстрации экрана запрещен. Разрешите доступ в настройках браузера.';
+                errorMessage = 'Доступ к демонстрации экрана запрещен.';
             }
             
             this.showNotification(errorMessage, 'error');
@@ -1753,24 +1303,25 @@ showLocalVideo() {
             
             this.updateStatus('Начинаю демонстрацию экрана...');
             
-            // Останавливаем старую демонстрацию экрана, если она есть
             if (this.screenStream) {
-                await this.stopScreenShare();
+                this.screenStream.getTracks().forEach(track => track.stop());
+                this.screenStream = null;
             }
             
-            // Получаем поток экрана с аудио
+            // Опции для захвата экрана
             const constraints = {
                 video: {
                     cursor: "always",
                     displaySurface: "monitor",
-                    frameRate: { ideal: 30 }
+                    frameRate: { ideal: 30, max: 30 }
                 },
-                audio: {
-                    echoCancellation: false,
-                    noiseSuppression: false,
-                    autoGainControl: false
-                }
+                audio: false // Не захватываем аудио системы
             };
+
+            // Для Firefox нужны другие настройки
+            if (navigator.userAgent.includes('Firefox')) {
+                constraints.video.mediaSource = 'screen';
+            }
             
             this.screenStream = await navigator.mediaDevices.getDisplayMedia(constraints);
             
@@ -1786,29 +1337,26 @@ showLocalVideo() {
                 this.originalAudioTrack = this.localStream.getAudioTracks()[0];
             }
             
-            // Заменяем треки в PeerConnection
-            await this.replaceMediaTracks();
+            // Заменяем видеотрек в PeerConnection
+            await this.replaceVideoTrackWithScreen();
             
             // Обновляем локальное видео
             this.updateLocalVideoWithScreen();
             
-            // Устанавливаем флаги
             this.isScreenSharing = true;
             this.screenShareActive = true;
             
-            // Обновляем UI
             this.updateScreenShareUI(true);
             
-            // Отправляем уведомление о начале трансляции
             this.notifyScreenShareStarted();
             
-            // Обработчик остановки демонстрации через UI браузера
+            // Обработчик остановки через UI браузера
             const screenVideoTrack = this.screenStream.getVideoTracks()[0];
             if (screenVideoTrack) {
-                screenVideoTrack.addEventListener('ended', () => {
+                screenVideoTrack.onended = () => {
                     console.log('🖥️ Screen share ended by browser UI');
                     this.stopScreenShare();
-                });
+                };
             }
             
             this.updateStatus('Демонстрация экрана активна');
@@ -1818,11 +1366,11 @@ showLocalVideo() {
             console.error('❌ Error starting screen share:', error);
             
             if (error.name === 'NotAllowedError') {
-                this.showNotification('Доступ к демонстрации экрана запрещен', 'error');
+                this.showNotification('Доступ к экрану запрещен', 'error');
             } else if (error.name === 'NotFoundError') {
                 this.showNotification('Нет доступных источников для демонстрации', 'error');
             } else {
-                this.showNotification('Ошибка демонстрации экрана: ' + error.message, 'error');
+                this.showNotification('Ошибка демонстрации экрана', 'error');
             }
             
             this.isScreenSharing = false;
@@ -1830,9 +1378,9 @@ showLocalVideo() {
         }
     }
 
-    async replaceMediaTracks() {
-        if (!this.peerConnection) {
-            console.error('❌ No peer connection available');
+    async replaceVideoTrackWithScreen() {
+        if (!this.peerConnection || !this.screenStream) {
+            console.error('❌ No peer connection or screen stream');
             return false;
         }
         
@@ -1840,37 +1388,28 @@ showLocalVideo() {
             const senders = this.peerConnection.getSenders();
             console.log('📤 Available senders:', senders.length);
             
-            // Получаем треки экрана
             const screenVideoTrack = this.screenStream.getVideoTracks()[0];
-            const screenAudioTrack = this.screenStream.getAudioTracks()[0];
             
-            // Заменяем видеотрек
-            if (screenVideoTrack) {
-                const videoSender = senders.find(s => s.track && s.track.kind === 'video');
-                if (videoSender) {
-                    console.log('🔄 Replacing video track...');
-                    await videoSender.replaceTrack(screenVideoTrack);
-                    console.log('✅ Video track replaced');
-                } else {
-                    console.log('⚠️ No video sender found, adding new track');
-                    this.peerConnection.addTrack(screenVideoTrack, this.screenStream);
-                }
+            if (!screenVideoTrack) {
+                console.error('❌ No video track in screen stream');
+                return false;
             }
             
-            // Заменяем аудиотрек (если есть)
-            if (screenAudioTrack) {
-                const audioSender = senders.find(s => s.track && s.track.kind === 'audio');
-                if (audioSender) {
-                    console.log('🔄 Replacing audio track...');
-                    await audioSender.replaceTrack(screenAudioTrack);
-                    console.log('✅ Audio track replaced');
-                }
-            }
+            const videoSender = senders.find(s => s.track && s.track.kind === 'video');
             
-            return true;
+            if (videoSender) {
+                console.log('🔄 Replacing video track...');
+                await videoSender.replaceTrack(screenVideoTrack);
+                console.log('✅ Video track replaced with screen share');
+                return true;
+            } else {
+                console.log('⚠️ No video sender found, adding new track');
+                this.peerConnection.addTrack(screenVideoTrack, this.screenStream);
+                return true;
+            }
             
         } catch (error) {
-            console.error('❌ Error replacing media tracks:', error);
+            console.error('❌ Error replacing video track:', error);
             return false;
         }
     }
@@ -1882,11 +1421,12 @@ showLocalVideo() {
         if (localVideo && this.screenStream) {
             localVideo.srcObject = this.screenStream;
             localVideo.style.display = 'block';
+            localVideo.style.transform = 'none'; // Не зеркалим экран
+            
             if (localVideoPlaceholder) {
                 localVideoPlaceholder.style.display = 'none';
             }
             
-            // Убедимся, что видео воспроизводится
             localVideo.play().catch(e => console.warn('Video play failed:', e));
             
             console.log('✅ Local video updated with screen stream');
@@ -1910,24 +1450,19 @@ showLocalVideo() {
                 this.screenStream = null;
             }
             
-            // Восстанавливаем оригинальные треки
-            if (this.peerConnection && (this.originalVideoTrack || this.originalAudioTrack)) {
-                await this.restoreOriginalTracks();
+            // Восстанавливаем оригинальный видеотрек
+            if (this.peerConnection) {
+                await this.restoreOriginalVideoTrack();
             }
             
             // Восстанавливаем локальное видео
             this.restoreLocalVideo();
             
-            // Сбрасываем флаги
             this.isScreenSharing = false;
             this.screenShareActive = false;
-            this.originalVideoTrack = null;
-            this.originalAudioTrack = null;
             
-            // Обновляем UI
             this.updateScreenShareUI(false);
             
-            // Отправляем уведомление о завершении трансляции
             this.notifyScreenShareEnded();
             
             this.updateStatus('Демонстрация экрана завершена');
@@ -1938,25 +1473,32 @@ showLocalVideo() {
         }
     }
 
-    async restoreOriginalTracks() {
-        const senders = this.peerConnection.getSenders();
+    async restoreOriginalVideoTrack() {
+        if (!this.peerConnection) return;
         
-        // Восстанавливаем видеотрек
-        if (this.originalVideoTrack) {
-            const videoSender = senders.find(s => s.track && s.track.kind === 'video');
-            if (videoSender) {
-                await videoSender.replaceTrack(this.originalVideoTrack);
-                console.log('✅ Original video track restored');
+        try {
+            const senders = this.peerConnection.getSenders();
+            
+            if (this.originalVideoTrack && this.originalVideoTrack.readyState === 'live') {
+                const videoSender = senders.find(s => s.track && s.track.kind === 'video');
+                
+                if (videoSender) {
+                    console.log('🔄 Restoring original video track...');
+                    await videoSender.replaceTrack(this.originalVideoTrack);
+                    console.log('✅ Original video track restored');
+                }
             }
-        }
-        
-        // Восстанавливаем аудиотрек
-        if (this.originalAudioTrack) {
-            const audioSender = senders.find(s => s.track && s.track.kind === 'audio');
-            if (audioSender) {
-                await audioSender.replaceTrack(this.originalAudioTrack);
-                console.log('✅ Original audio track restored');
+            
+            // Восстанавливаем аудиотрек если был
+            if (this.originalAudioTrack && this.originalAudioTrack.readyState === 'live') {
+                const audioSender = senders.find(s => s.track && s.track.kind === 'audio');
+                if (audioSender) {
+                    await audioSender.replaceTrack(this.originalAudioTrack);
+                }
             }
+            
+        } catch (error) {
+            console.error('❌ Error restoring video track:', error);
         }
     }
 
@@ -1964,21 +1506,25 @@ showLocalVideo() {
         const localVideo = document.getElementById('localVideo');
         const localVideoPlaceholder = document.getElementById('localVideoPlaceholder');
         
-        if (!localVideo || !localVideoPlaceholder) {
-            return;
-        }
+        if (!localVideo) return;
         
         if (this.localStream && !this.isCameraOff) {
             localVideo.srcObject = this.localStream;
             localVideo.style.display = 'block';
-            localVideoPlaceholder.style.display = 'none';
+            localVideo.style.transform = 'scaleX(-1)'; // Зеркалим обратно
             
-            // Убедимся, что видео воспроизводится
+            if (localVideoPlaceholder) {
+                localVideoPlaceholder.style.display = 'none';
+            }
+            
             localVideo.play().catch(e => console.warn('Video play failed:', e));
         } else {
             localVideo.srcObject = null;
             localVideo.style.display = 'none';
-            localVideoPlaceholder.style.display = 'flex';
+            
+            if (localVideoPlaceholder) {
+                localVideoPlaceholder.style.display = 'flex';
+            }
         }
         
         console.log('✅ Local video restored');
@@ -1996,29 +1542,23 @@ showLocalVideo() {
             if (isActive) {
                 screenShareBtn.innerHTML = '🖥️⏹️';
                 screenShareBtn.style.background = 'linear-gradient(45deg, #dc3545, #c82333)';
-                screenShareBtn.style.borderColor = 'rgba(255,255,255,0.3)';
-                screenShareBtn.title = 'Остановить демонстрацию экрана';
+                screenShareBtn.title = 'Остановить демонстрацию';
             } else {
                 screenShareBtn.innerHTML = '🖥️';
                 screenShareBtn.style.background = 'linear-gradient(45deg, #4a4a4a, #2d2d2d)';
-                screenShareBtn.style.borderColor = 'rgba(255,255,255,0.2)';
-                screenShareBtn.title = 'Начать демонстрацию экрана';
+                screenShareBtn.title = 'Демонстрация экрана';
             }
         }
     }
 
     notifyScreenShareStarted() {
-        if (!window.socket || !this.currentCall) {
-            return;
-        }
+        if (!window.socket || !this.currentCall) return;
         
-        const targetUser = this.isCaller ? 
-            this.currentCall.targetUser : 
-            this.currentCall.caller;
+        const targetUser = this.isCaller ? this.currentCall.targetUser : this.currentCall.caller;
         
         window.socket.emit('screen_share_started', {
             callId: this.currentCall.callId,
-            sharer: document.getElementById('username')?.textContent || 'Пользователь',
+            sharer: window.USERNAME || document.getElementById('username')?.textContent || 'Пользователь',
             targetUser: targetUser
         });
         
@@ -2026,17 +1566,13 @@ showLocalVideo() {
     }
 
     notifyScreenShareEnded() {
-        if (!window.socket || !this.currentCall) {
-            return;
-        }
+        if (!window.socket || !this.currentCall) return;
         
-        const targetUser = this.isCaller ? 
-            this.currentCall.targetUser : 
-            this.currentCall.caller;
+        const targetUser = this.isCaller ? this.currentCall.targetUser : this.currentCall.caller;
         
         window.socket.emit('screen_share_ended', {
             callId: this.currentCall.callId,
-            sharer: document.getElementById('username')?.textContent || 'Пользователь',
+            sharer: window.USERNAME || document.getElementById('username')?.textContent || 'Пользователь',
             targetUser: targetUser
         });
         
@@ -2045,16 +1581,14 @@ showLocalVideo() {
 
     handleRemoteScreenShareStarted(data) {
         console.log('🖥️ Remote screen share started by:', data.sharer);
-        this.updateStatus(`${data.sharer} начал демонстрацию экрана`);
+        this.updateStatus(`${data.sharer} демонстрирует экран`);
         
-        // Обновляем UI для удаленного пользователя
         const remoteStatus = document.getElementById('remoteStatus');
         if (remoteStatus) {
-            remoteStatus.textContent = 'Демонстрирует экран';
+            remoteStatus.textContent = 'демонстрация экрана';
             remoteStatus.style.color = '#28a745';
         }
         
-        // Показываем уведомление
         this.showNotification(`${data.sharer} начал демонстрацию экрана`, 'info');
     }
 
@@ -2062,16 +1596,16 @@ showLocalVideo() {
         console.log('🖥️ Remote screen share ended by:', data.sharer);
         this.updateStatus(`${data.sharer} завершил демонстрацию экрана`);
         
-        // Сбрасываем UI для удаленного пользователя
         const remoteStatus = document.getElementById('remoteStatus');
         if (remoteStatus) {
             remoteStatus.textContent = 'онлайн';
             remoteStatus.style.color = '#cccccc';
         }
         
-        // Показываем уведомление
         this.showNotification(`${data.sharer} завершил демонстрацию экрана`, 'info');
     }
+
+    // =============== УПРАВЛЕНИЕ МИКРОФОНОМ И КАМЕРОЙ ===============
 
     toggleMute() {
         if (this.localStream) {
@@ -2080,21 +1614,22 @@ showLocalVideo() {
                 this.isMuted = !this.isMuted;
                 audioTrack.enabled = !this.isMuted;
                 
-                // Обновляем UI
                 const muteIndicator = document.getElementById('muteIndicator');
                 const muteBtn = document.getElementById('muteBtn');
                 
                 if (this.isMuted) {
-                    muteIndicator.style.display = 'inline';
-                    muteBtn.innerHTML = '🎤❌';
-                    muteBtn.style.background = 'linear-gradient(45deg, #dc3545, #c82333)';
-                    muteBtn.style.borderColor = 'rgba(255,255,255,0.3)';
+                    if (muteIndicator) muteIndicator.style.display = 'inline';
+                    if (muteBtn) {
+                        muteBtn.innerHTML = '🎤❌';
+                        muteBtn.style.background = 'linear-gradient(45deg, #dc3545, #c82333)';
+                    }
                     this.updateStatus('Микрофон отключен');
                 } else {
-                    muteIndicator.style.display = 'none';
-                    muteBtn.innerHTML = '🎤';
-                    muteBtn.style.background = 'linear-gradient(45deg, #4a4a4a, #2d2d2d)';
-                    muteBtn.style.borderColor = 'rgba(255,255,255,0.2)';
+                    if (muteIndicator) muteIndicator.style.display = 'none';
+                    if (muteBtn) {
+                        muteBtn.innerHTML = '🎤';
+                        muteBtn.style.background = 'linear-gradient(45deg, #4a4a4a, #2d2d2d)';
+                    }
                     this.updateStatus('Микрофон включен');
                 }
                 
@@ -2106,35 +1641,32 @@ showLocalVideo() {
     toggleCamera() {
         if (this.localStream && this.callType === 'video') {
             const videoTrack = this.localStream.getVideoTracks()[0];
-            if (videoTrack) {
+            if (videoTrack && !this.isScreenSharing) {
                 this.isCameraOff = !this.isCameraOff;
                 videoTrack.enabled = !this.isCameraOff;
                 
-                // Обновляем UI
                 const cameraIndicator = document.getElementById('cameraIndicator');
                 const cameraBtn = document.getElementById('cameraBtn');
                 const localVideo = document.getElementById('localVideo');
                 const localVideoPlaceholder = document.getElementById('localVideoPlaceholder');
                 
                 if (this.isCameraOff) {
-                    cameraIndicator.style.display = 'inline';
-                    cameraBtn.innerHTML = '📹❌';
-                    cameraBtn.style.background = 'linear-gradient(45deg, #dc3545, #c82333)';
-                    cameraBtn.style.borderColor = 'rgba(255,255,255,0.3)';
-                    
+                    if (cameraIndicator) cameraIndicator.style.display = 'inline';
+                    if (cameraBtn) {
+                        cameraBtn.innerHTML = '📹❌';
+                        cameraBtn.style.background = 'linear-gradient(45deg, #dc3545, #c82333)';
+                    }
                     if (localVideo) localVideo.style.display = 'none';
                     if (localVideoPlaceholder) localVideoPlaceholder.style.display = 'flex';
-                    
                     this.updateStatus('Камера отключена');
                 } else {
-                    cameraIndicator.style.display = 'none';
-                    cameraBtn.innerHTML = '📹';
-                    cameraBtn.style.background = 'linear-gradient(45deg, #4a4a4a, #2d2d2d)';
-                    cameraBtn.style.borderColor = 'rgba(255,255,255,0.2)';
-                    
+                    if (cameraIndicator) cameraIndicator.style.display = 'none';
+                    if (cameraBtn) {
+                        cameraBtn.innerHTML = '📹';
+                        cameraBtn.style.background = 'linear-gradient(45deg, #4a4a4a, #2d2d2d)';
+                    }
                     if (localVideo) localVideo.style.display = 'block';
                     if (localVideoPlaceholder) localVideoPlaceholder.style.display = 'none';
-                    
                     this.updateStatus('Камера включена');
                 }
                 
@@ -2142,6 +1674,8 @@ showLocalVideo() {
             }
         }
     }
+
+    // =============== УПРАВЛЕНИЕ ИНТЕРФЕЙСОМ ===============
 
     showCallModal() {
         const modal = document.getElementById('callModal');
@@ -2154,16 +1688,15 @@ showLocalVideo() {
             modal.style.borderRadius = '0';
             modal.style.cursor = '';
             modal.style.resize = '';
+            
             this.isCallModalMinimized = false;
             
-            // Обновляем кнопку сворачивания
             const minimizeBtn = modal.querySelector('.minimize-call-btn');
             if (minimizeBtn) {
                 minimizeBtn.textContent = '➖';
                 minimizeBtn.title = 'Свернуть';
             }
             
-            // Обновляем информацию о звонке с проверкой
             const remoteUserName = document.getElementById('remoteUserName');
             if (remoteUserName && this.currentCall) {
                 remoteUserName.textContent = this.isCaller ? 
@@ -2171,16 +1704,20 @@ showLocalVideo() {
                     (this.currentCall.caller || 'Собеседник');
             }
             
-            // Показываем нужные элементы управления
             this.updateControlVisibility();
         }
     }
 
+    hideCallModal() {
+        const modal = document.getElementById('callModal');
+        if (modal) {
+            modal.style.display = 'none';
+        }
+    }
+
     updateControlVisibility() {
-        // Скрываем все элементы управления сначала
         this.hideAllControls();
         
-        // Показываем нужные элементы управления в зависимости от состояния
         if (this.isInCall) {
             this.showActiveCallControls();
         } else if (this.currentCall?.status === 'incoming') {
@@ -2190,13 +1727,6 @@ showLocalVideo() {
         } else if (this.peerConnection?.iceConnectionState === 'disconnected' || 
                   this.peerConnection?.iceConnectionState === 'failed') {
             this.showReconnectControls();
-        }
-    }
-
-    hideCallModal() {
-        const modal = document.getElementById('callModal');
-        if (modal) {
-            modal.style.display = 'none';
         }
     }
 
@@ -2261,12 +1791,9 @@ showLocalVideo() {
     }
 
     updateCallInfo(text) {
-        if (!text) return;
-        
         const callTitle = document.getElementById('callTitle');
         if (callTitle) {
             callTitle.textContent = text;
-            callTitle.style.color = '#ffffff';
         }
     }
 
@@ -2274,7 +1801,6 @@ showLocalVideo() {
         const statusMessage = document.getElementById('statusMessage');
         if (statusMessage) {
             statusMessage.textContent = text;
-            statusMessage.style.color = '#ffffff';
         }
     }
 
@@ -2284,13 +1810,11 @@ showLocalVideo() {
         
         if (iceStatus) {
             iceStatus.textContent = text;
-            iceStatus.style.color = '#cccccc';
         }
         
         if (connectionStatus) {
             connectionStatus.textContent = text;
             
-            // Цвет в зависимости от статуса
             if (text.includes('активно') || text.includes('установлено')) {
                 connectionStatus.style.color = '#28a745';
             } else if (text.includes('ошибка') || text.includes('не удалось')) {
@@ -2303,11 +1827,19 @@ showLocalVideo() {
         }
     }
 
+    // =============== ТАЙМЕР ЗВОНКА ===============
+
     startCallTimer() {
         let seconds = 0;
         const timerElement = document.getElementById('callTimer');
         
         if (!timerElement) return;
+        
+        this.callStartTime = Date.now();
+        
+        if (this.callTimer) {
+            clearInterval(this.callTimer);
+        }
         
         this.callTimer = setInterval(() => {
             seconds++;
@@ -2316,7 +1848,6 @@ showLocalVideo() {
             
             timerElement.textContent = 
                 `${minutes.toString().padStart(2, '0')}:${remainingSeconds.toString().padStart(2, '0')}`;
-            timerElement.style.color = '#ffffff';
         }, 1000);
     }
 
@@ -2326,56 +1857,203 @@ showLocalVideo() {
             this.callTimer = null;
         }
         
+        this.callStartTime = null;
+        
         const timerElement = document.getElementById('callTimer');
         if (timerElement) {
             timerElement.textContent = '00:00';
-            timerElement.style.color = '#cccccc';
         }
     }
+
+    // =============== МИНИМИЗАЦИЯ ===============
+
+    toggleMinimize() {
+        if (this.isCallModalMinimized) {
+            this.restoreCallModal();
+        } else {
+            this.minimizeCallModal();
+        }
+    }
+
+    minimizeCallModal() {
+        const modal = document.getElementById('callModal');
+        const callContent = document.getElementById('callContent');
+        const callControls = document.getElementById('callControls');
+        
+        if (!modal) return;
+        
+        modal.style.width = '350px';
+        modal.style.height = '120px';
+        modal.style.minHeight = '120px';
+        modal.style.maxHeight = '120px';
+        modal.style.top = '20px';
+        modal.style.right = '20px';
+        modal.style.left = 'auto';
+        modal.style.borderRadius = '12px';
+        modal.style.overflow = 'hidden';
+        modal.style.boxShadow = '0 10px 30px rgba(0,0,0,0.5)';
+        modal.style.resize = 'none';
+        
+        if (callContent) callContent.style.display = 'none';
+        if (callControls) callControls.style.display = 'none';
+        
+        this.updateMinimizedView();
+        
+        this.isCallModalMinimized = true;
+        
+        const minimizeBtn = modal.querySelector('.minimize-call-btn');
+        if (minimizeBtn) {
+            minimizeBtn.textContent = '➕';
+            minimizeBtn.title = 'Развернуть';
+        }
+    }
+
+    restoreCallModal() {
+        const modal = document.getElementById('callModal');
+        const callContent = document.getElementById('callContent');
+        const callControls = document.getElementById('callControls');
+        
+        if (!modal) return;
+        
+        modal.style.width = '100%';
+        modal.style.height = '100%';
+        modal.style.minHeight = '';
+        modal.style.maxHeight = '';
+        modal.style.top = '0';
+        modal.style.right = 'auto';
+        modal.style.left = '0';
+        modal.style.borderRadius = '0';
+        modal.style.overflow = '';
+        modal.style.boxShadow = 'none';
+        modal.style.cursor = '';
+        modal.style.resize = '';
+        
+        if (callContent) callContent.style.display = 'flex';
+        if (callControls) callControls.style.display = 'flex';
+        
+        this.isCallModalMinimized = false;
+        
+        const minimizeBtn = modal.querySelector('.minimize-call-btn');
+        if (minimizeBtn) {
+            minimizeBtn.textContent = '➖';
+            minimizeBtn.title = 'Свернуть';
+        }
+        
+        this.updateControlVisibility();
+    }
+
+    updateMinimizedView() {
+        const modal = document.getElementById('callModal');
+        if (!modal || !this.currentCall) return;
+        
+        let title = '';
+        let status = '';
+        let icon = '📞';
+        
+        if (this.currentCall.status === 'incoming') {
+            title = `Входящий от ${this.currentCall.caller}`;
+            status = 'Ожидание...';
+            icon = '📥';
+        } else if (this.currentCall.status === 'calling') {
+            title = `Звонок ${this.currentCall.targetUser}`;
+            status = 'Ожидание...';
+            icon = '📤';
+        } else if (this.currentCall.status === 'active') {
+            title = this.isCaller ? 
+                `Разговор с ${this.currentCall.targetUser}` : 
+                `Разговор с ${this.currentCall.caller}`;
+            
+            const timer = document.getElementById('callTimer')?.textContent || '00:00';
+            status = `Длительность: ${timer}`;
+            icon = '🎙️';
+        }
+        
+        const callHeader = modal.querySelector('.call-header');
+        if (callHeader) {
+            callHeader.innerHTML = `
+                <div class="call-info" id="callInfo" style="width: 100%; padding: 10px; display: flex; align-items: center; gap: 10px;">
+                    <div style="font-size: 24px; flex-shrink: 0;">${icon}</div>
+                    <div style="flex: 1; overflow: hidden;">
+                        <div style="font-weight: bold; color: #ffffff; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${title}">${title}</div>
+                        <div style="font-size: 12px; opacity: 0.8; color: #cccccc; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${status}</div>
+                    </div>
+                    <div class="mini-controls" style="display: flex; gap: 5px; flex-shrink: 0;">
+                        <button class="mini-end-btn" style="background: rgba(220,53,69,0.8); border: none; color: #ffffff; font-size: 16px; cursor: pointer; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center;">
+                            📞
+                        </button>
+                    </div>
+                </div>
+                <div class="call-header-buttons" style="position: absolute; top: 5px; right: 5px; display: flex; gap: 5px;">
+                    <button class="minimize-call-btn" style="background: rgba(255,255,255,0.1); border: none; color: #ffffff; font-size: 16px; cursor: pointer; width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; padding: 0;">➕</button>
+                    <button class="close-call-btn" style="background: rgba(255,255,255,0.1); border: none; color: #ffffff; font-size: 16px; cursor: pointer; width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; padding: 0;">✕</button>
+                </div>
+            `;
+            
+            const endBtn = modal.querySelector('.mini-end-btn');
+            if (endBtn) {
+                endBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    this.endCall();
+                });
+            }
+            
+            const minimizeBtn = modal.querySelector('.minimize-call-btn');
+            if (minimizeBtn) {
+                minimizeBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    this.toggleMinimize();
+                });
+            }
+            
+            const closeBtn = modal.querySelector('.close-call-btn');
+            if (closeBtn) {
+                closeBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    this.endCall();
+                });
+            }
+        }
+    }
+
+    // =============== ОЧИСТКА ===============
 
     cleanupCall() {
         console.log('🧹 Cleaning up call...');
         
-        // Сбрасываем флаг уведомления
         this.isNotificationShown = false;
         
-        // Останавливаем таймер
         this.stopCallTimer();
         
-        // Останавливаем демонстрацию экрана если активна
         if (this.isScreenSharing) {
             this.stopScreenShare();
         }
         
-        // Останавливаем все медиапотоки
         this.stopAllMediaStreams();
-        
-        // Закрываем WebRTC соединение
         this.closePeerConnection();
-        
-        // Сбрасываем состояние
         this.resetCallState();
-        
-        // Скрываем модальное окно
         this.hideCallModal();
+        this.resetVideoElements();
+        this.resetUIButtons();
         
-        // Удаляем уведомление о входящем звонке
         const notification = document.getElementById('incomingCallNotification');
         if (notification) {
             notification.remove();
         }
         
-        // Сбрасываем элементы видео
-        this.resetVideoElements();
+        if (this.callTimeout) {
+            clearTimeout(this.callTimeout);
+            this.callTimeout = null;
+        }
         
-        // Сбрасываем UI кнопок
-        this.resetUIButtons();
+        if (this.reconnectTimeout) {
+            clearTimeout(this.reconnectTimeout);
+            this.reconnectTimeout = null;
+        }
         
         console.log('✅ Call cleanup completed');
     }
 
     stopAllMediaStreams() {
-        // Локальный поток
         if (this.localStream) {
             this.localStream.getTracks().forEach(track => {
                 track.stop();
@@ -2384,13 +2062,11 @@ showLocalVideo() {
             this.localStream = null;
         }
         
-        // Удаленный поток
         if (this.remoteStream) {
             this.remoteStream.getTracks().forEach(track => track.stop());
             this.remoteStream = null;
         }
         
-        // Поток экрана
         if (this.screenStream) {
             this.screenStream.getTracks().forEach(track => track.stop());
             this.screenStream = null;
@@ -2405,7 +2081,7 @@ showLocalVideo() {
     }
 
     resetCallState() {
-        this.currentCall = null; // Это обязательно
+        this.currentCall = null;
         this.isCaller = false;
         this.isInCall = false;
         this.callType = null;
@@ -2417,13 +2093,6 @@ showLocalVideo() {
         this.originalAudioTrack = null;
         this.reconnectAttempts = 0;
         this.isCallModalMinimized = false;
-        this.isDragging = false;
-        this.isResizing = false;
-        
-        if (this.callTimeout) {
-            clearTimeout(this.callTimeout);
-            this.callTimeout = null;
-        }
     }
 
     resetVideoElements() {
@@ -2436,6 +2105,7 @@ showLocalVideo() {
         if (localVideo) {
             localVideo.srcObject = null;
             localVideo.style.display = 'none';
+            localVideo.style.transform = 'none';
         }
         if (remoteVideo) {
             remoteVideo.srcObject = null;
@@ -2443,15 +2113,12 @@ showLocalVideo() {
         }
         if (localVideoPlaceholder) {
             localVideoPlaceholder.style.display = 'flex';
-            localVideoPlaceholder.style.color = '#ffffff';
         }
         if (remoteVideoPlaceholder) {
             remoteVideoPlaceholder.style.display = 'flex';
-            remoteVideoPlaceholder.style.color = '#ffffff';
         }
         if (remotePlaceholderText) {
             remotePlaceholderText.textContent = 'Ожидание собеседника';
-            remotePlaceholderText.style.color = '#cccccc';
         }
     }
 
@@ -2460,16 +2127,15 @@ showLocalVideo() {
         if (screenShareBtn) {
             screenShareBtn.innerHTML = '🖥️';
             screenShareBtn.style.background = 'linear-gradient(45deg, #4a4a4a, #2d2d2d)';
-            screenShareBtn.style.borderColor = 'rgba(255,255,255,0.2)';
         }
         
-        // Сбрасываем индикаторы
         const muteIndicator = document.getElementById('muteIndicator');
         const cameraIndicator = document.getElementById('cameraIndicator');
         const screenIndicator = document.getElementById('screenIndicator');
         const remoteStatus = document.getElementById('remoteStatus');
         const connectionStatus = document.getElementById('connectionStatus');
         const iceStatus = document.getElementById('iceStatus');
+        const iceConnectionType = document.getElementById('iceConnectionType');
         
         if (muteIndicator) muteIndicator.style.display = 'none';
         if (cameraIndicator) cameraIndicator.style.display = 'none';
@@ -2478,12 +2144,9 @@ showLocalVideo() {
             remoteStatus.textContent = 'подключение...';
             remoteStatus.style.color = '#cccccc';
         }
-        if (connectionStatus) {
-            connectionStatus.textContent = '';
-        }
-        if (iceStatus) {
-            iceStatus.textContent = '';
-        }
+        if (connectionStatus) connectionStatus.textContent = '';
+        if (iceStatus) iceStatus.textContent = '';
+        if (iceConnectionType) iceConnectionType.innerHTML = '';
     }
 
     showNotification(message, type = 'info') {
@@ -2549,11 +2212,6 @@ if (!document.getElementById('call-styles')) {
             }
         }
         
-        @keyframes glow {
-            0%, 100% { box-shadow: 0 0 10px rgba(40,167,69,0.5); }
-            50% { box-shadow: 0 0 20px rgba(40,167,69,0.8); }
-        }
-        
         .calling-controls {
             animation: pulse 2s infinite;
         }
@@ -2586,120 +2244,30 @@ if (!document.getElementById('call-styles')) {
         
         .video-container:hover {
             box-shadow: 0 0 25px rgba(255,255,255,0.15);
-            border-color: rgba(255,255,255,0.3);
-        }
-        
-        #connectionStatus {
-            transition: color 0.3s ease, opacity 0.3s ease;
-        }
-        
-        .connected-state {
-            animation: glow 2s infinite;
         }
         
         /* Стили для минимизированного окна */
-        .modal-overlay[style*="width: 300px"] .call-header {
-            padding: 15px;
-            text-align: left;
+        .modal-overlay[style*="width: 350px"] .call-header {
+            padding: 10px !important;
         }
         
-        .modal-overlay[style*="width: 300px"] .call-header-buttons {
-            top: 15px;
-            right: 15px;
+        .modal-overlay[style*="width: 350px"] .call-info {
+            padding: 0 !important;
         }
         
-        .modal-overlay[style*="width: 300px"] #callTitle {
-            font-size: 16px;
-            margin-bottom: 5px;
+        .modal-overlay[style*="width: 350px"] #callTitle {
+            font-size: 14px !important;
+            margin-bottom: 2px !important;
         }
         
-        .modal-overlay[style*="width: 300px"] #callTimer {
-            font-size: 12px;
+        .modal-overlay[style*="width: 350px"] #callTimer {
+            font-size: 11px !important;
         }
         
-        .modal-overlay[style*="width: 300px"] #connectionStatus {
-            font-size: 10px;
-        }
-        
-        /* Стили для резиновых границ */
-        .resize-handles .resize-handle {
-            position: absolute;
-            z-index: 100;
-            background: transparent;
-        }
-        
-        .resize-handles .resize-handle.n {
-            top: -5px;
-            left: 5px;
-            right: 5px;
-            height: 10px;
-            cursor: n-resize;
-        }
-        
-        .resize-handles .resize-handle.e {
-            top: 5px;
-            right: -5px;
-            bottom: 5px;
-            width: 10px;
-            cursor: e-resize;
-        }
-        
-        .resize-handles .resize-handle.s {
-            bottom: -5px;
-            left: 5px;
-            right: 5px;
-            height: 10px;
-            cursor: s-resize;
-        }
-        
-        .resize-handles .resize-handle.w {
-            top: 5px;
-            left: -5px;
-            bottom: 5px;
-            width: 10px;
-            cursor: w-resize;
-        }
-        
-        .resize-handles .resize-handle.ne {
-            top: -7px;
-            right: -7px;
-            width: 15px;
-            height: 15px;
-            cursor: ne-resize;
-        }
-        
-        .resize-handles .resize-handle.nw {
-            top: -7px;
-            left: -7px;
-            width: 15px;
-            height: 15px;
-            cursor: nw-resize;
-        }
-        
-        .resize-handles .resize-handle.se {
-            bottom: -7px;
-            right: -7px;
-            width: 15px;
-            height: 15px;
-            cursor: se-resize;
-        }
-        
-        .resize-handles .resize-handle.sw {
-            bottom: -7px;
-            left: -7px;
-            width: 15px;
-            height: 15px;
-            cursor: sw-resize;
-        }
-        
-        /* Активное состояние для перетаскивания */
-        .dragging {
-            opacity: 0.9;
-            cursor: move !important;
-        }
-        
-        .resizing {
-            opacity: 0.9;
+        .modal-overlay[style*="width: 350px"] .call-header-buttons {
+            top: 5px !important;
+            right: 5px !important;
+            gap: 5px !important;
         }
     `;
     document.head.appendChild(styles);

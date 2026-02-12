@@ -3140,19 +3140,21 @@ io.on('connection', (socket) => {
         }
     });
 
-    // WebRTC передача предложения (offer)
-    socket.on('webrtc_offer', (data) => {
-        console.log(`📤 WebRTC offer от ${socket.username} к ${data.targetUser}`);
-        
-        const targetSocketId = userSockets.get(data.targetUser);
-        if (targetSocketId) {
+  socket.on('webrtc_offer', (data) => {
+    console.log(`📤 WebRTC offer от ${socket.username} к ${data.targetUser}`);
+    
+    const targetSocketId = userSockets.get(data.targetUser);
+    if (targetSocketId) {
+        // Добавляем задержку для продакшена
+        setTimeout(() => {
             io.to(targetSocketId).emit('webrtc_offer', {
                 callId: data.callId,
                 caller: socket.username,
                 offer: data.offer
             });
-        }
-    });
+        }, 100);
+    }
+});
 
     // WebRTC передача ответа (answer)
     socket.on('webrtc_answer', (data) => {
@@ -3167,17 +3169,18 @@ io.on('connection', (socket) => {
         }
     });
 
-    // WebRTC передача ICE кандидата
-    socket.on('webrtc_ice_candidate', (data) => {
-        const targetSocketId = userSockets.get(data.targetUser);
-        if (targetSocketId) {
+ socket.on('webrtc_ice_candidate', (data) => {
+    const targetSocketId = userSockets.get(data.targetUser);
+    if (targetSocketId) {
+        // Добавляем задержку для продакшена
+        setTimeout(() => {
             io.to(targetSocketId).emit('webrtc_ice_candidate', {
                 callId: data.callId,
                 candidate: data.candidate
             });
-        }
-    });
-
+        }, 50);
+    }
+});
     // Начало трансляции экрана
     socket.on('screen_share_started', (data) => {
         console.log(`🖥️ ${socket.username} начал трансляцию экрана в звонке ${data.callId}`);

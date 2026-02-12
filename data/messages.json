@@ -68,5 +68,15 @@
     "date": "2026-02-04T04:55:12.875Z",
     "messageType": "text",
     "fileData": null
+  },
+  {
+    "sender": "admin",
+    "receiver": "aaa",
+    "message": "аа",
+    "timestamp": "09:13:04",
+    "type": "private",
+    "date": "2026-02-12T04:13:04.851Z",
+    "messageType": "text",
+    "fileData": null
   }
 ]
