@@ -116,11 +116,12 @@ class SettingsManager {
             }
         });
 
-        // Выбор цвета
+        // Выбор цвета акцента - ИСПРАВЛЕНО
         document.addEventListener('click', (e) => {
             if (e.target.classList.contains('color-option') || e.target.closest('.color-option')) {
                 const option = e.target.classList.contains('color-option') ? e.target : e.target.closest('.color-option');
-                this.selectAccentColor(option.getAttribute('data-color'));
+                const color = option.getAttribute('data-color');
+                this.selectAccentColor(color);
             }
         });
 
@@ -188,6 +189,13 @@ class SettingsManager {
 
         // Инициализация модального окна настроек
         this.createSettingsModal();
+        
+        // Добавляем слушатель для изменения темы через системные настройки
+        window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+            if (this.userSettings.theme === 'auto') {
+                this.applyTheme();
+            }
+        });
     }
 
     createSettingsModal() {
@@ -219,6 +227,7 @@ class SettingsManager {
                 max-height: 90vh;
                 overflow: hidden;
                 display: flex;
+                box-shadow: 0 10px 30px rgba(0,0,0,0.2);
             ">
                 <!-- Боковая панель с вкладками -->
                 <div class="settings-sidebar" style="
@@ -230,7 +239,7 @@ class SettingsManager {
                 ">
                     <div class="sidebar-header" style="margin-bottom: 30px;">
                         <h3 style="margin: 0 0 10px 0; color: #333;">⚙️ Настройки</h3>
-                        <div style="font-size: 12px; color: #6c757d;">${this.currentUser}</div>
+                        <div style="font-size: 12px; color: #6c757d;">${this.currentUser || 'Пользователь'}</div>
                     </div>
                     
                     <div class="settings-tabs" style="display: flex; flex-direction: column; gap: 5px;">
@@ -246,6 +255,7 @@ class SettingsManager {
                             display: flex;
                             align-items: center;
                             gap: 10px;
+                            transition: all 0.3s ease;
                         ">
                             👤 Профиль
                         </button>
@@ -358,6 +368,7 @@ class SettingsManager {
                             cursor: pointer;
                             font-size: 14px;
                             margin-bottom: 10px;
+                            font-weight: 600;
                         ">💾 Сохранить</button>
                         <button id="resetSettings" class="btn-secondary" style="
                             width: 100%;
@@ -381,7 +392,7 @@ class SettingsManager {
                 ">
                     <div class="settings-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px; padding-bottom: 15px; border-bottom: 1px solid #e9ecef;">
                         <h3 style="margin: 0; color: #333;" id="settingsTitle">Настройки профиля</h3>
-                        <button class="close-modal" style="background: none; border: none; font-size: 20px; cursor: pointer; color: #666;">✕</button>
+                        <button class="close-modal" style="background: none; border: none; font-size: 24px; cursor: pointer; color: #666; padding: 5px;">✕</button>
                     </div>
                     
                     <div class="settings-content">
@@ -390,25 +401,26 @@ class SettingsManager {
                             <div class="profile-settings">
                                 <div class="avatar-section" style="margin-bottom: 25px;">
                                     <h4 style="margin-bottom: 15px; color: #495057;">🖼️ Аватар</h4>
-                                    <div style="display: flex; align-items: center; gap: 20px;">
+                                    <div style="display: flex; align-items: center; gap: 20px; flex-wrap: wrap;">
                                         <div id="avatarPreviewLarge" style="
                                             width: 100px;
                                             height: 100px;
                                             border-radius: 50%;
-                                            border: 3px solid #007bff;
+                                            border: 3px solid ${this.userSettings.accentColor || '#007bff'};
                                             overflow: hidden;
                                             cursor: pointer;
                                             background: #f8f9fa;
                                             display: flex;
                                             align-items: center;
                                             justify-content: center;
+                                            transition: border-color 0.3s ease;
                                         ">
-                                            <img id="avatarPreviewImgLarge" src="/default-avatar.png" alt="Аватар" style="width: 100%; height: 100%; object-fit: cover;">
+                                            <img id="avatarPreviewImgLarge" src="/static/default-avatar.png" alt="Аватар" style="width: 100%; height: 100%; object-fit: cover;">
                                         </div>
                                         <div>
                                             <button id="uploadAvatarBtnSettings" class="btn-primary" style="
                                                 padding: 8px 16px;
-                                                background: #007bff;
+                                                background: ${this.userSettings.accentColor || '#007bff'};
                                                 color: white;
                                                 border: none;
                                                 border-radius: 5px;
@@ -416,6 +428,7 @@ class SettingsManager {
                                                 font-size: 14px;
                                                 margin-bottom: 5px;
                                                 display: block;
+                                                transition: background 0.3s ease;
                                             ">📁 Загрузить новый</button>
                                             <button id="removeAvatarBtn" class="btn-secondary" style="
                                                 padding: 6px 12px;
@@ -461,42 +474,45 @@ class SettingsManager {
                             </div>
                         </div>
                         
-                        <!-- Вкладка внешнего вида -->
+                        <!-- Вкладка внешнего вида - ИСПРАВЛЕНО, добавлены акценты -->
                         <div id="tab-appearance" class="settings-tab-content">
                             <div class="appearance-settings">
-                                <div class="theme-section" style="margin-bottom: 25px;">
-                                    <h4 style="margin-bottom: 15px; color: #495057;">🌙 Тема</h4>
+                                <div class="theme-section" style="margin-bottom: 30px;">
+                                    <h4 style="margin-bottom: 15px; color: #495057;">🌙 Тема оформления</h4>
                                     <div class="theme-options" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px;">
-                                        <div class="theme-option active" data-theme="auto" style="
-                                            border: 2px solid #007bff;
+                                        <div class="theme-option ${this.userSettings.theme === 'auto' ? 'active' : ''}" data-theme="auto" style="
+                                            border: 2px solid ${this.userSettings.theme === 'auto' ? this.userSettings.accentColor : '#dee2e6'};
                                             border-radius: 10px;
                                             padding: 15px;
                                             text-align: center;
                                             cursor: pointer;
                                             background: linear-gradient(45deg, #f8f9fa 50%, #343a40 50%);
+                                            transition: all 0.3s ease;
                                         ">
                                             <div style="font-size: 24px;">🌓</div>
                                             <div style="font-size: 12px; margin-top: 5px;">Авто</div>
                                         </div>
-                                        <div class="theme-option" data-theme="light" style="
-                                            border: 1px solid #dee2e6;
+                                        <div class="theme-option ${this.userSettings.theme === 'light' ? 'active' : ''}" data-theme="light" style="
+                                            border: 2px solid ${this.userSettings.theme === 'light' ? this.userSettings.accentColor : '#dee2e6'};
                                             border-radius: 10px;
                                             padding: 15px;
                                             text-align: center;
                                             cursor: pointer;
                                             background: #f8f9fa;
+                                            transition: all 0.3s ease;
                                         ">
                                             <div style="font-size: 24px;">☀️</div>
                                             <div style="font-size: 12px; margin-top: 5px;">Светлая</div>
                                         </div>
-                                        <div class="theme-option" data-theme="dark" style="
-                                            border: 1px solid #dee2e6;
+                                        <div class="theme-option ${this.userSettings.theme === 'dark' ? 'active' : ''}" data-theme="dark" style="
+                                            border: 2px solid ${this.userSettings.theme === 'dark' ? this.userSettings.accentColor : '#dee2e6'};
                                             border-radius: 10px;
                                             padding: 15px;
                                             text-align: center;
                                             cursor: pointer;
                                             background: #343a40;
                                             color: white;
+                                            transition: all 0.3s ease;
                                         ">
                                             <div style="font-size: 24px;">🌙</div>
                                             <div style="font-size: 12px; margin-top: 5px;">Темная</div>
@@ -504,57 +520,93 @@ class SettingsManager {
                                     </div>
                                 </div>
                                 
-                                <div class="color-section" style="margin-bottom: 25px;">
+                                <!-- Акцентный цвет - ИСПРАВЛЕНО, теперь работает -->
+                                <div class="accent-color-section" style="margin-bottom: 30px;">
                                     <h4 style="margin-bottom: 15px; color: #495057;">🎨 Акцентный цвет</h4>
-                                    <div class="color-options" style="display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px;">
-                                        <div class="color-option active" data-color="#007bff" style="
-                                            width: 40px;
-                                            height: 40px;
+                                    <p style="font-size: 12px; color: #6c757d; margin-bottom: 15px;">
+                                        Выберите основной цвет интерфейса. Акцентный цвет используется для кнопок, выделения и элементов навигации.
+                                    </p>
+                                    <div class="color-options" style="display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px;">
+                                        <div class="color-option ${this.userSettings.accentColor === '#007bff' ? 'active' : ''}" data-color="#007bff" style="
+                                            width: 45px;
+                                            height: 45px;
                                             border-radius: 50%;
                                             background: #007bff;
                                             cursor: pointer;
-                                            border: 3px solid #007bff;
-                                        "></div>
-                                        <div class="color-option" data-color="#28a745" style="
-                                            width: 40px;
-                                            height: 40px;
+                                            border: 3px solid ${this.userSettings.accentColor === '#007bff' ? '#007bff' : 'white'};
+                                            box-shadow: ${this.userSettings.accentColor === '#007bff' ? '0 0 0 2px rgba(0,123,255,0.3)' : 'none'};
+                                            transition: all 0.3s ease;
+                                            margin: 0 auto;
+                                        " title="Синий"></div>
+                                        <div class="color-option ${this.userSettings.accentColor === '#28a745' ? 'active' : ''}" data-color="#28a745" style="
+                                            width: 45px;
+                                            height: 45px;
                                             border-radius: 50%;
                                             background: #28a745;
                                             cursor: pointer;
-                                            border: 3px solid white;
-                                        "></div>
-                                        <div class="color-option" data-color="#dc3545" style="
-                                            width: 40px;
-                                            height: 40px;
+                                            border: 3px solid ${this.userSettings.accentColor === '#28a745' ? '#28a745' : 'white'};
+                                            box-shadow: ${this.userSettings.accentColor === '#28a745' ? '0 0 0 2px rgba(40,167,69,0.3)' : 'none'};
+                                            transition: all 0.3s ease;
+                                            margin: 0 auto;
+                                        " title="Зеленый"></div>
+                                        <div class="color-option ${this.userSettings.accentColor === '#dc3545' ? 'active' : ''}" data-color="#dc3545" style="
+                                            width: 45px;
+                                            height: 45px;
                                             border-radius: 50%;
                                             background: #dc3545;
                                             cursor: pointer;
-                                            border: 3px solid white;
-                                        "></div>
-                                        <div class="color-option" data-color="#ffc107" style="
-                                            width: 40px;
-                                            height: 40px;
+                                            border: 3px solid ${this.userSettings.accentColor === '#dc3545' ? '#dc3545' : 'white'};
+                                            box-shadow: ${this.userSettings.accentColor === '#dc3545' ? '0 0 0 2px rgba(220,53,69,0.3)' : 'none'};
+                                            transition: all 0.3s ease;
+                                            margin: 0 auto;
+                                        " title="Красный"></div>
+                                        <div class="color-option ${this.userSettings.accentColor === '#ffc107' ? 'active' : ''}" data-color="#ffc107" style="
+                                            width: 45px;
+                                            height: 45px;
                                             border-radius: 50%;
                                             background: #ffc107;
                                             cursor: pointer;
-                                            border: 3px solid white;
-                                        "></div>
-                                        <div class="color-option" data-color="#6f42c1" style="
-                                            width: 40px;
-                                            height: 40px;
+                                            border: 3px solid ${this.userSettings.accentColor === '#ffc107' ? '#ffc107' : 'white'};
+                                            box-shadow: ${this.userSettings.accentColor === '#ffc107' ? '0 0 0 2px rgba(255,193,7,0.3)' : 'none'};
+                                            transition: all 0.3s ease;
+                                            margin: 0 auto;
+                                        " title="Желтый"></div>
+                                        <div class="color-option ${this.userSettings.accentColor === '#6f42c1' ? 'active' : ''}" data-color="#6f42c1" style="
+                                            width: 45px;
+                                            height: 45px;
                                             border-radius: 50%;
                                             background: #6f42c1;
                                             cursor: pointer;
-                                            border: 3px solid white;
-                                        "></div>
-                                        <div class="color-option" data-color="#fd7e14" style="
-                                            width: 40px;
-                                            height: 40px;
+                                            border: 3px solid ${this.userSettings.accentColor === '#6f42c1' ? '#6f42c1' : 'white'};
+                                            box-shadow: ${this.userSettings.accentColor === '#6f42c1' ? '0 0 0 2px rgba(111,66,193,0.3)' : 'none'};
+                                            transition: all 0.3s ease;
+                                            margin: 0 auto;
+                                        " title="Фиолетовый"></div>
+                                        <div class="color-option ${this.userSettings.accentColor === '#fd7e14' ? 'active' : ''}" data-color="#fd7e14" style="
+                                            width: 45px;
+                                            height: 45px;
                                             border-radius: 50%;
                                             background: #fd7e14;
                                             cursor: pointer;
-                                            border: 3px solid white;
-                                        "></div>
+                                            border: 3px solid ${this.userSettings.accentColor === '#fd7e14' ? '#fd7e14' : 'white'};
+                                            box-shadow: ${this.userSettings.accentColor === '#fd7e14' ? '0 0 0 2px rgba(253,126,20,0.3)' : 'none'};
+                                            transition: all 0.3s ease;
+                                            margin: 0 auto;
+                                        " title="Оранжевый"></div>
+                                    </div>
+                                    
+                                    <!-- Пользовательский цвет -->
+                                    <div style="margin-top: 20px; display: flex; align-items: center; gap: 15px;">
+                                        <label style="font-size: 13px; color: #495057;">Свой цвет:</label>
+                                        <input type="color" id="customColorPicker" value="${this.userSettings.accentColor}" style="
+                                            width: 50px;
+                                            height: 50px;
+                                            border: 2px solid #dee2e6;
+                                            border-radius: 8px;
+                                            cursor: pointer;
+                                            padding: 0;
+                                        ">
+                                        <span style="font-size: 12px; color: #6c757d;" id="customColorValue">${this.userSettings.accentColor}</span>
                                     </div>
                                 </div>
                                 
@@ -562,15 +614,15 @@ class SettingsManager {
                                     <h4 style="margin-bottom: 15px; color: #495057;">📐 Оформление</h4>
                                     <div class="checkbox-group" style="display: flex; flex-direction: column; gap: 15px;">
                                         <label class="checkbox-label" style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
-                                            <input type="checkbox" id="compactMode" class="checkbox-input" style="transform: scale(1.2);">
+                                            <input type="checkbox" id="compactMode" class="checkbox-input" ${this.userSettings.compactMode ? 'checked' : ''} style="transform: scale(1.2);">
                                             <span>Компактный режим</span>
                                         </label>
                                         <label class="checkbox-label" style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
-                                            <input type="checkbox" id="showAvatars" class="checkbox-input" style="transform: scale(1.2);" checked>
+                                            <input type="checkbox" id="showAvatars" class="checkbox-input" ${this.userSettings.showAvatars ? 'checked' : ''} style="transform: scale(1.2);">
                                             <span>Показывать аватары</span>
                                         </label>
                                         <label class="checkbox-label" style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
-                                            <input type="checkbox" id="animations" class="checkbox-input" style="transform: scale(1.2);" checked>
+                                            <input type="checkbox" id="animations" class="checkbox-input" ${this.userSettings.animations ? 'checked' : ''} style="transform: scale(1.2);">
                                             <span>Анимации</span>
                                         </label>
                                     </div>
@@ -585,15 +637,15 @@ class SettingsManager {
                                     <h4 style="margin-bottom: 15px; color: #495057;">🔔 Уведомления</h4>
                                     <div class="checkbox-group" style="display: flex; flex-direction: column; gap: 15px;">
                                         <label class="checkbox-label" style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
-                                            <input type="checkbox" id="notifyMessages" class="checkbox-input" style="transform: scale(1.2);" checked>
+                                            <input type="checkbox" id="notifyMessages" class="checkbox-input" ${this.userSettings.notifyMessages ? 'checked' : ''} style="transform: scale(1.2);">
                                             <span>Новые сообщения</span>
                                         </label>
                                         <label class="checkbox-label" style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
-                                            <input type="checkbox" id="notifyCalls" class="checkbox-input" style="transform: scale(1.2);" checked>
+                                            <input type="checkbox" id="notifyCalls" class="checkbox-input" ${this.userSettings.notifyCalls ? 'checked' : ''} style="transform: scale(1.2);">
                                             <span>Входящие звонки</span>
                                         </label>
                                         <label class="checkbox-label" style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
-                                            <input type="checkbox" id="notifyMentions" class="checkbox-input" style="transform: scale(1.2);" checked>
+                                            <input type="checkbox" id="notifyMentions" class="checkbox-input" ${this.userSettings.notifyMentions ? 'checked' : ''} style="transform: scale(1.2);">
                                             <span>Упоминания</span>
                                         </label>
                                     </div>
@@ -603,7 +655,7 @@ class SettingsManager {
                                     <h4 style="margin-bottom: 15px; color: #495057;">🔊 Звук</h4>
                                     <div class="checkbox-group" style="display: flex; flex-direction: column; gap: 15px;">
                                         <label class="checkbox-label" style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
-                                            <input type="checkbox" id="soundEnabled" class="checkbox-input" style="transform: scale(1.2);" checked>
+                                            <input type="checkbox" id="soundEnabled" class="checkbox-input" ${this.userSettings.soundEnabled ? 'checked' : ''} style="transform: scale(1.2);">
                                             <span>Включить звук</span>
                                         </label>
                                         <div class="form-group">
@@ -613,22 +665,24 @@ class SettingsManager {
                                                 padding: 10px;
                                                 border: 1px solid #ced4da;
                                                 border-radius: 5px;
+                                                background: white;
                                             ">
-                                                <option value="default">🔔 По умолчанию</option>
-                                                <option value="chime">🎵 Мелодия</option>
-                                                <option value="bell">🔔 Колокольчик</option>
-                                                <option value="pop">💥 Хлопок</option>
+                                                <option value="default" ${this.userSettings.notificationSound === 'default' ? 'selected' : ''}>🔔 По умолчанию</option>
+                                                <option value="chime" ${this.userSettings.notificationSound === 'chime' ? 'selected' : ''}>🎵 Мелодия</option>
+                                                <option value="bell" ${this.userSettings.notificationSound === 'bell' ? 'selected' : ''}>🔔 Колокольчик</option>
+                                                <option value="pop" ${this.userSettings.notificationSound === 'pop' ? 'selected' : ''}>💥 Хлопок</option>
                                             </select>
                                         </div>
                                         <button id="testSoundBtn" class="btn-secondary" style="
                                             padding: 8px 16px;
-                                            background: #6c757d;
+                                            background: ${this.userSettings.accentColor || '#6c757d'};
                                             color: white;
                                             border: none;
                                             border-radius: 5px;
                                             cursor: pointer;
                                             font-size: 14px;
                                             align-self: flex-start;
+                                            transition: background 0.3s ease;
                                         ">🎵 Тест звука</button>
                                     </div>
                                 </div>
@@ -642,15 +696,15 @@ class SettingsManager {
                                     <h4 style="margin-bottom: 15px; color: #495057;">👥 Видимость</h4>
                                     <div class="checkbox-group" style="display: flex; flex-direction: column; gap: 15px;">
                                         <label class="checkbox-label" style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
-                                            <input type="checkbox" id="showOnlineStatus" class="checkbox-input" style="transform: scale(1.2);" checked>
+                                            <input type="checkbox" id="showOnlineStatus" class="checkbox-input" ${this.userSettings.showOnlineStatus ? 'checked' : ''} style="transform: scale(1.2);">
                                             <span>Показывать статус "В сети"</span>
                                         </label>
                                         <label class="checkbox-label" style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
-                                            <input type="checkbox" id="allowGroupInvites" class="checkbox-input" style="transform: scale(1.2);" checked>
+                                            <input type="checkbox" id="allowGroupInvites" class="checkbox-input" ${this.userSettings.allowGroupInvites ? 'checked' : ''} style="transform: scale(1.2);">
                                             <span>Разрешить приглашения в группы</span>
                                         </label>
                                         <label class="checkbox-label" style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
-                                            <input type="checkbox" id="allowPrivateMessages" class="checkbox-input" style="transform: scale(1.2);" checked>
+                                            <input type="checkbox" id="allowPrivateMessages" class="checkbox-input" ${this.userSettings.allowPrivateMessages ? 'checked' : ''} style="transform: scale(1.2);">
                                             <span>Разрешить личные сообщения</span>
                                         </label>
                                     </div>
@@ -718,6 +772,7 @@ class SettingsManager {
                                             cursor: pointer;
                                             font-size: 16px;
                                             font-weight: bold;
+                                            transition: transform 0.2s ease;
                                         ">🎁 Получить ежедневную награду</button>
                                     </div>
                                 </div>
@@ -744,12 +799,13 @@ class SettingsManager {
                                     <h4 style="margin-bottom: 15px; color: #495057;">🔐 Безопасность</h4>
                                     <button id="changePasswordBtn" class="btn-primary" style="
                                         padding: 10px 20px;
-                                        background: #007bff;
+                                        background: ${this.userSettings.accentColor || '#007bff'};
                                         color: white;
                                         border: none;
                                         border-radius: 5px;
                                         cursor: pointer;
                                         font-size: 14px;
+                                        transition: background 0.3s ease;
                                     ">🔑 Сменить пароль</button>
                                 </div>
                                 
@@ -794,6 +850,23 @@ class SettingsManager {
 
         document.body.appendChild(modal);
 
+        // Добавляем обработчик для кастомного выбора цвета
+        setTimeout(() => {
+            const colorPicker = document.getElementById('customColorPicker');
+            if (colorPicker) {
+                colorPicker.addEventListener('input', (e) => {
+                    const color = e.target.value;
+                    document.getElementById('customColorValue').textContent = color;
+                });
+                
+                colorPicker.addEventListener('change', (e) => {
+                    const color = e.target.value;
+                    this.selectAccentColor(color);
+                    document.getElementById('customColorValue').textContent = color;
+                });
+            }
+        }, 100);
+
         // Создаем модальные окна для смены пароля
         this.createChangePasswordModal();
     }
@@ -824,10 +897,11 @@ class SettingsManager {
                 border-radius: 15px;
                 width: 400px;
                 max-width: 95%;
+                box-shadow: 0 10px 30px rgba(0,0,0,0.2);
             ">
                 <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding-bottom: 15px; border-bottom: 1px solid #e9ecef;">
                     <h3 style="margin: 0; color: #333;">🔑 Смена пароля</h3>
-                    <button class="close-modal" style="background: none; border: none; font-size: 20px; cursor: pointer; color: #666;">✕</button>
+                    <button class="close-modal" style="background: none; border: none; font-size: 24px; cursor: pointer; color: #666; padding: 5px;">✕</button>
                 </div>
                 
                 <div class="password-form">
@@ -838,6 +912,7 @@ class SettingsManager {
                             padding: 10px;
                             border: 1px solid #ced4da;
                             border-radius: 5px;
+                            font-size: 14px;
                         ">
                     </div>
                     
@@ -848,6 +923,7 @@ class SettingsManager {
                             padding: 10px;
                             border: 1px solid #ced4da;
                             border-radius: 5px;
+                            font-size: 14px;
                         ">
                         <div class="password-strength" style="margin-top: 5px;">
                             <div class="strength-bar" style="
@@ -870,18 +946,21 @@ class SettingsManager {
                             padding: 10px;
                             border: 1px solid #ced4da;
                             border-radius: 5px;
+                            font-size: 14px;
                         ">
                     </div>
                     
                     <button id="confirmPasswordChange" class="btn-primary" style="
                         width: 100%;
                         padding: 12px;
-                        background: #28a745;
+                        background: ${this.userSettings.accentColor || '#28a745'};
                         color: white;
                         border: none;
                         border-radius: 8px;
                         cursor: pointer;
                         font-size: 16px;
+                        font-weight: 600;
+                        transition: background 0.3s ease;
                     ">💾 Сохранить пароль</button>
                 </div>
             </div>
@@ -890,69 +969,81 @@ class SettingsManager {
         document.body.appendChild(modal);
     }
 
-  openSettings() {
-    const modal = document.getElementById('settingsModal');
-    if (modal) {
-        this.loadCurrentSettings();
-        modal.style.display = 'flex';
-        this.switchTab('profile');
-    } else {
-        console.error('Settings modal not found');
-        this.createSettingsModal(); // Создаем модальное окно если его нет
-        setTimeout(() => this.openSettings(), 100);
+    openSettings() {
+        const modal = document.getElementById('settingsModal');
+        if (modal) {
+            this.loadCurrentSettings();
+            modal.style.display = 'flex';
+            this.switchTab('profile');
+        } else {
+            console.error('Settings modal not found');
+            this.createSettingsModal();
+            setTimeout(() => this.openSettings(), 100);
+        }
     }
-}
 
-  switchTab(tabName) {
-    // Деактивируем все вкладки
-    document.querySelectorAll('.settings-tab').forEach(tab => {
-        if (tab) {
-            tab.classList.remove('active');
-            tab.style.background = 'transparent';
-            tab.style.color = '#333';
-        }
-    });
-    
-    document.querySelectorAll('.settings-tab-content').forEach(content => {
-        if (content) {
-            content.classList.remove('active');
-            content.style.display = 'none';
-        }
-    });
-
-    // Активируем выбранную вкладку
-    const activeTab = document.querySelector(`.settings-tab[data-tab="${tabName}"]`);
-    const activeContent = document.getElementById(`tab-${tabName}`);
-    
-    if (activeTab && activeContent) {
-        activeTab.classList.add('active');
-        activeTab.style.background = '#007bff';
-        activeTab.style.color = 'white';
-        activeContent.classList.add('active');
-        activeContent.style.display = 'block';
+    switchTab(tabName) {
+        // Деактивируем все вкладки
+        document.querySelectorAll('.settings-tab').forEach(tab => {
+            if (tab) {
+                tab.classList.remove('active');
+                tab.style.background = 'transparent';
+                tab.style.color = '#333';
+            }
+        });
         
-        // Обновляем заголовок
-        const titleElement = document.getElementById('settingsTitle');
-        if (titleElement) {
-            const titles = {
-                'profile': 'Настройки профиля',
-                'appearance': 'Внешний вид',
-                'notifications': 'Уведомления',
-                'privacy': 'Приватность',
-                'gifts': 'Мои подарки',
-                'currency': 'Валюта и награды',
-                'security': 'Безопасность'
-            };
+        document.querySelectorAll('.settings-tab-content').forEach(content => {
+            if (content) {
+                content.classList.remove('active');
+                content.style.display = 'none';
+            }
+        });
+
+        // Активируем выбранную вкладку
+        const activeTab = document.querySelector(`.settings-tab[data-tab="${tabName}"]`);
+        const activeContent = document.getElementById(`tab-${tabName}`);
+        
+        if (activeTab && activeContent) {
+            activeTab.classList.add('active');
+            activeTab.style.background = this.userSettings.accentColor || '#007bff';
+            activeTab.style.color = 'white';
+            activeContent.classList.add('active');
+            activeContent.style.display = 'block';
             
-            titleElement.textContent = titles[tabName] || 'Настройки';
+            // Обновляем заголовок
+            const titleElement = document.getElementById('settingsTitle');
+            if (titleElement) {
+                const titles = {
+                    'profile': 'Настройки профиля',
+                    'appearance': 'Внешний вид',
+                    'notifications': 'Уведомления',
+                    'privacy': 'Приватность',
+                    'gifts': 'Мои подарки',
+                    'currency': 'Валюта и награды',
+                    'security': 'Безопасность'
+                };
+                
+                titleElement.textContent = titles[tabName] || 'Настройки';
+            }
+            
+            // Загружаем данные для соответствующих вкладок
+            if (tabName === 'gifts' && window.giftManager) {
+                setTimeout(() => this.loadGiftsManagement(), 100);
+            }
+            
+            if (tabName === 'currency' && window.currencyManager) {
+                setTimeout(() => this.loadCurrencyData(), 100);
+            }
         }
     }
-}
 
     loadCurrentSettings() {
         // Загружаем текущие настройки в форму
-        document.getElementById('usernameDisplay').value = this.currentUser;
-        document.getElementById('userStatus').value = this.userSettings.userStatus;
+        const usernameInput = document.getElementById('usernameDisplay');
+        if (usernameInput) usernameInput.value = this.currentUser;
+        
+        const userStatus = document.getElementById('userStatus');
+        if (userStatus) userStatus.value = this.userSettings.userStatus;
 
         // Тема
         document.querySelectorAll('.theme-option').forEach(option => {
@@ -963,35 +1054,63 @@ class SettingsManager {
         const activeTheme = document.querySelector(`.theme-option[data-theme="${this.userSettings.theme}"]`);
         if (activeTheme) {
             activeTheme.classList.add('active');
-            activeTheme.style.borderColor = '#007bff';
+            activeTheme.style.borderColor = this.userSettings.accentColor;
         }
 
-        // Цвет
+        // Цвет акцента - ИСПРАВЛЕНО
         document.querySelectorAll('.color-option').forEach(option => {
             option.classList.remove('active');
             option.style.borderColor = 'white';
+            option.style.boxShadow = 'none';
         });
         
         const activeColor = document.querySelector(`.color-option[data-color="${this.userSettings.accentColor}"]`);
         if (activeColor) {
             activeColor.classList.add('active');
-            activeColor.style.borderColor = activeColor.getAttribute('data-color');
+            activeColor.style.borderColor = this.userSettings.accentColor;
+            activeColor.style.boxShadow = `0 0 0 2px ${this.userSettings.accentColor}40`;
         }
 
+        // Обновляем кастомный цвет
+        const customColorPicker = document.getElementById('customColorPicker');
+        const customColorValue = document.getElementById('customColorValue');
+        if (customColorPicker) customColorPicker.value = this.userSettings.accentColor;
+        if (customColorValue) customColorValue.textContent = this.userSettings.accentColor;
+
         // Чекбоксы
-        document.getElementById('compactMode').checked = this.userSettings.compactMode;
-        document.getElementById('showAvatars').checked = this.userSettings.showAvatars;
-        document.getElementById('animations').checked = this.userSettings.animations;
-        document.getElementById('showOnlineStatus').checked = this.userSettings.showOnlineStatus;
-        document.getElementById('allowGroupInvites').checked = this.userSettings.allowGroupInvites;
-        document.getElementById('allowPrivateMessages').checked = this.userSettings.allowPrivateMessages;
-        document.getElementById('notifyMessages').checked = this.userSettings.notifyMessages;
-        document.getElementById('notifyCalls').checked = this.userSettings.notifyCalls;
-        document.getElementById('notifyMentions').checked = this.userSettings.notifyMentions;
-        document.getElementById('soundEnabled').checked = this.userSettings.soundEnabled;
+        const compactMode = document.getElementById('compactMode');
+        if (compactMode) compactMode.checked = this.userSettings.compactMode;
+        
+        const showAvatars = document.getElementById('showAvatars');
+        if (showAvatars) showAvatars.checked = this.userSettings.showAvatars;
+        
+        const animations = document.getElementById('animations');
+        if (animations) animations.checked = this.userSettings.animations;
+        
+        const showOnlineStatus = document.getElementById('showOnlineStatus');
+        if (showOnlineStatus) showOnlineStatus.checked = this.userSettings.showOnlineStatus;
+        
+        const allowGroupInvites = document.getElementById('allowGroupInvites');
+        if (allowGroupInvites) allowGroupInvites.checked = this.userSettings.allowGroupInvites;
+        
+        const allowPrivateMessages = document.getElementById('allowPrivateMessages');
+        if (allowPrivateMessages) allowPrivateMessages.checked = this.userSettings.allowPrivateMessages;
+        
+        const notifyMessages = document.getElementById('notifyMessages');
+        if (notifyMessages) notifyMessages.checked = this.userSettings.notifyMessages;
+        
+        const notifyCalls = document.getElementById('notifyCalls');
+        if (notifyCalls) notifyCalls.checked = this.userSettings.notifyCalls;
+        
+        const notifyMentions = document.getElementById('notifyMentions');
+        if (notifyMentions) notifyMentions.checked = this.userSettings.notifyMentions;
+        
+        const soundEnabled = document.getElementById('soundEnabled');
+        if (soundEnabled) soundEnabled.checked = this.userSettings.soundEnabled;
 
         // Звук уведомлений
-        document.getElementById('notificationSound').value = this.userSettings.notificationSound;
+        const notificationSound = document.getElementById('notificationSound');
+        if (notificationSound) notificationSound.value = this.userSettings.notificationSound;
 
         // Загружаем аватар
         this.loadUserAvatar();
@@ -1002,8 +1121,9 @@ class SettingsManager {
             const response = await fetch(`/api/user/${this.currentUser}`);
             if (response.ok) {
                 const userData = await response.json();
-                const avatarUrl = userData.avatar || '/default-avatar.png';
-                document.getElementById('avatarPreviewImgLarge').src = avatarUrl;
+                const avatarUrl = userData.avatar || '/static/default-avatar.png';
+                const avatarImg = document.getElementById('avatarPreviewImgLarge');
+                if (avatarImg) avatarImg.src = avatarUrl;
             }
         } catch (error) {
             console.error('Error loading user avatar:', error);
@@ -1034,7 +1154,8 @@ class SettingsManager {
 
             if (response.ok) {
                 const result = await response.json();
-                document.getElementById('avatarPreviewImgLarge').src = result.avatar;
+                const avatarImg = document.getElementById('avatarPreviewImgLarge');
+                if (avatarImg) avatarImg.src = result.avatar;
                 this.showNotification('Аватар успешно обновлен', 'success');
                 
                 // Обновляем аватар во всем приложении
@@ -1052,10 +1173,17 @@ class SettingsManager {
 
     async removeAvatar() {
         try {
-            // Здесь должна быть логика удаления аватара на сервере
-            // Пока просто сбрасываем на дефолтный
-            document.getElementById('avatarPreviewImgLarge').src = '/default-avatar.png';
-            this.showNotification('Аватар удален', 'success');
+            const response = await fetch('/api/user/avatar', {
+                method: 'DELETE'
+            });
+
+            if (response.ok) {
+                const avatarImg = document.getElementById('avatarPreviewImgLarge');
+                if (avatarImg) avatarImg.src = '/static/default-avatar.png';
+                this.showNotification('Аватар удален', 'success');
+            } else {
+                throw new Error('Delete failed');
+            }
         } catch (error) {
             console.error('Error removing avatar:', error);
             this.showNotification('Ошибка удаления аватара', 'error');
@@ -1071,7 +1199,7 @@ class SettingsManager {
         const selectedTheme = document.querySelector(`.theme-option[data-theme="${theme}"]`);
         if (selectedTheme) {
             selectedTheme.classList.add('active');
-            selectedTheme.style.borderColor = '#007bff';
+            selectedTheme.style.borderColor = this.userSettings.accentColor;
         }
         
         this.userSettings.theme = theme;
@@ -1079,19 +1207,58 @@ class SettingsManager {
     }
 
     selectAccentColor(color) {
+        // Обновляем в настройках
+        this.userSettings.accentColor = color;
+        
+        // Обновляем UI цветовых опций
         document.querySelectorAll('.color-option').forEach(option => {
             option.classList.remove('active');
             option.style.borderColor = 'white';
+            option.style.boxShadow = 'none';
         });
         
         const selectedColor = document.querySelector(`.color-option[data-color="${color}"]`);
         if (selectedColor) {
             selectedColor.classList.add('active');
             selectedColor.style.borderColor = color;
+            selectedColor.style.boxShadow = `0 0 0 2px ${color}40`;
         }
         
-        this.userSettings.accentColor = color;
+        // Обновляем кастомный цвет
+        const customColorPicker = document.getElementById('customColorPicker');
+        const customColorValue = document.getElementById('customColorValue');
+        if (customColorPicker) customColorPicker.value = color;
+        if (customColorValue) customColorValue.textContent = color;
+        
+        // Обновляем акцентный цвет в интерфейсе
         this.applyAccentColor();
+        
+        // Обновляем цвета кнопок и элементов
+        this.updateUIAccentColors(color);
+    }
+
+    updateUIAccentColors(color) {
+        // Обновляем активную вкладку
+        const activeTab = document.querySelector('.settings-tab.active');
+        if (activeTab) {
+            activeTab.style.background = color;
+        }
+        
+        // Обновляем кнопки с классом btn-primary
+        document.querySelectorAll('.btn-primary:not(#dailyRewardBtn)').forEach(btn => {
+            btn.style.background = color;
+        });
+        
+        // Обновляем рамку аватара
+        const avatarPreview = document.getElementById('avatarPreviewLarge');
+        if (avatarPreview) {
+            avatarPreview.style.borderColor = color;
+        }
+        
+        // Обновляем активные опции темы
+        document.querySelectorAll('.theme-option.active').forEach(option => {
+            option.style.borderColor = color;
+        });
     }
 
     handleCheckboxChange(setting, value) {
@@ -1119,13 +1286,81 @@ class SettingsManager {
 
         document.documentElement.setAttribute('data-theme', actualTheme);
         document.body.className = `${actualTheme}-theme`;
+        
+        // Сохраняем тему в localStorage для других компонентов
+        localStorage.setItem('currentTheme', actualTheme);
     }
 
     applyAccentColor() {
         const color = this.userSettings.accentColor;
+        
+        // Применяем CSS переменные
         document.documentElement.style.setProperty('--accent-color', color);
+        document.documentElement.style.setProperty('--accent-color-rgb', this.hexToRgb(color));
         document.documentElement.style.setProperty('--accent-color-dark', this.darkenColor(color, 20));
         document.documentElement.style.setProperty('--accent-color-light', this.lightenColor(color, 20));
+        
+        // Сохраняем в localStorage
+        localStorage.setItem('accentColor', color);
+        
+        // Генерируем событие изменения цвета
+        window.dispatchEvent(new CustomEvent('accentColorChanged', { 
+            detail: { color: color } 
+        }));
+    }
+
+    hexToRgb(hex) {
+        // Конвертируем HEX в RGB
+        let r = 0, g = 0, b = 0;
+        
+        if (hex.startsWith('#')) {
+            hex = hex.substring(1);
+            
+            if (hex.length === 3) {
+                r = parseInt(hex[0] + hex[0], 16);
+                g = parseInt(hex[1] + hex[1], 16);
+                b = parseInt(hex[2] + hex[2], 16);
+            } else if (hex.length === 6) {
+                r = parseInt(hex.substring(0, 2), 16);
+                g = parseInt(hex.substring(2, 4), 16);
+                b = parseInt(hex.substring(4, 6), 16);
+            }
+        }
+        
+        return `${r}, ${g}, ${b}`;
+    }
+
+    darkenColor(color, percent) {
+        // Упрощенная функция затемнения цвета
+        // В реальном проекте лучше использовать библиотеку или более сложную логику
+        if (color.startsWith('#')) {
+            let r = parseInt(color.substring(1, 3), 16);
+            let g = parseInt(color.substring(3, 5), 16);
+            let b = parseInt(color.substring(5, 7), 16);
+            
+            r = Math.max(0, r - (r * percent / 100));
+            g = Math.max(0, g - (g * percent / 100));
+            b = Math.max(0, b - (b * percent / 100));
+            
+            return `#${Math.round(r).toString(16).padStart(2, '0')}${Math.round(g).toString(16).padStart(2, '0')}${Math.round(b).toString(16).padStart(2, '0')}`;
+        }
+        return color;
+    }
+
+    lightenColor(color, percent) {
+        // Упрощенная функция осветления цвета
+        if (color.startsWith('#')) {
+            let r = parseInt(color.substring(1, 3), 16);
+            let g = parseInt(color.substring(3, 5), 16);
+            let b = parseInt(color.substring(5, 7), 16);
+            
+            r = Math.min(255, r + ((255 - r) * percent / 100));
+            g = Math.min(255, g + ((255 - g) * percent / 100));
+            b = Math.min(255, b + ((255 - b) * percent / 100));
+            
+            return `#${Math.round(r).toString(16).padStart(2, '0')}${Math.round(g).toString(16).padStart(2, '0')}${Math.round(b).toString(16).padStart(2, '0')}`;
+        }
+        return color;
     }
 
     applyLayoutSettings() {
@@ -1148,23 +1383,31 @@ class SettingsManager {
         }
     }
 
-    darkenColor(color, percent) {
-        // Упрощенная функция затемнения цвета
-        return color;
-    }
-
-    lightenColor(color, percent) {
-        // Упрощенная функция осветления цвета
-        return color;
-    }
-
     openChangePasswordModal() {
         const modal = document.getElementById('changePasswordModal');
         if (modal) {
             modal.style.display = 'flex';
-            document.getElementById('currentPassword').value = '';
-            document.getElementById('newPassword').value = '';
-            document.getElementById('confirmPassword').value = '';
+            
+            // Очищаем поля
+            const currentPass = document.getElementById('currentPassword');
+            const newPass = document.getElementById('newPassword');
+            const confirmPass = document.getElementById('confirmPassword');
+            
+            if (currentPass) currentPass.value = '';
+            if (newPass) newPass.value = '';
+            if (confirmPass) confirmPass.value = '';
+            
+            // Сбрасываем индикатор силы пароля
+            const strengthBar = document.querySelector('.strength-bar div');
+            const strengthText = document.querySelector('.strength-text');
+            if (strengthBar) {
+                strengthBar.style.width = '0%';
+                strengthBar.style.background = '#dc3545';
+            }
+            if (strengthText) {
+                strengthText.textContent = 'Надежность пароля: Слабый';
+                strengthText.style.color = '#6c757d';
+            }
         }
     }
 
@@ -1189,7 +1432,6 @@ class SettingsManager {
         }
 
         try {
-            // Здесь должна быть логика смены пароля на сервере
             const response = await fetch('/api/user/change-password', {
                 method: 'POST',
                 headers: {
@@ -1205,11 +1447,12 @@ class SettingsManager {
                 this.showNotification('Пароль успешно изменен', 'success');
                 document.getElementById('changePasswordModal').style.display = 'none';
             } else {
-                throw new Error('Password change failed');
+                const error = await response.json();
+                throw new Error(error.message || 'Password change failed');
             }
         } catch (error) {
             console.error('Error changing password:', error);
-            this.showNotification('Ошибка смены пароля', 'error');
+            this.showNotification(error.message || 'Ошибка смены пароля', 'error');
         }
     }
 
@@ -1254,6 +1497,8 @@ class SettingsManager {
                     setTimeout(() => {
                         this.logout();
                     }, 2000);
+                } else {
+                    throw new Error('Logout all failed');
                 }
             } catch (error) {
                 console.error('Error logging out from all devices:', error);
@@ -1265,13 +1510,30 @@ class SettingsManager {
     testNotificationSound() {
         // Проигрываем тестовый звук
         const audio = new Audio('/sounds/notification.mp3');
-        audio.play().catch(e => console.log('Audio play failed:', e));
+        audio.play().catch(e => {
+            console.log('Audio play failed:', e);
+            this.showNotification('Не удалось воспроизвести звук', 'warning');
+        });
+        
         this.showNotification('Тестовый звук воспроизведен', 'info');
     }
 
     saveSettings() {
         // Сохраняем выбранный статус
         this.userSettings.userStatus = document.getElementById('userStatus').value;
+        
+        // Сохраняем чекбоксы
+        this.userSettings.compactMode = document.getElementById('compactMode').checked;
+        this.userSettings.showAvatars = document.getElementById('showAvatars').checked;
+        this.userSettings.animations = document.getElementById('animations').checked;
+        this.userSettings.showOnlineStatus = document.getElementById('showOnlineStatus').checked;
+        this.userSettings.allowGroupInvites = document.getElementById('allowGroupInvites').checked;
+        this.userSettings.allowPrivateMessages = document.getElementById('allowPrivateMessages').checked;
+        this.userSettings.notifyMessages = document.getElementById('notifyMessages').checked;
+        this.userSettings.notifyCalls = document.getElementById('notifyCalls').checked;
+        this.userSettings.notifyMentions = document.getElementById('notifyMentions').checked;
+        this.userSettings.soundEnabled = document.getElementById('soundEnabled').checked;
+        this.userSettings.notificationSound = document.getElementById('notificationSound').value;
 
         this.saveUserSettings();
         this.applySettings();
@@ -1335,11 +1597,12 @@ class SettingsManager {
             
             return `
                 <div class="equipped-slot-item" style="
-                    border: 2px dashed ${gift ? '#28a745' : '#dee2e6'};
+                    border: 2px dashed ${gift ? this.userSettings.accentColor : '#dee2e6'};
                     border-radius: 10px;
                     padding: 15px;
                     text-align: center;
                     background: ${gift ? '#f8fff9' : '#f8f9fa'};
+                    transition: border-color 0.3s ease;
                 ">
                     <div style="font-size: 12px; color: #6c757d; margin-bottom: 8px;">${name}</div>
                     ${gift ? `
@@ -1353,6 +1616,7 @@ class SettingsManager {
                             border-radius: 5px;
                             cursor: pointer;
                             font-size: 11px;
+                            transition: background 0.3s ease;
                         ">Снять</button>
                     ` : `
                         <div style="font-size: 20px; color: #6c757d; margin-bottom: 8px;">┄</div>
@@ -1389,7 +1653,7 @@ class SettingsManager {
                 <div style="grid-column: 1 / -1; text-align: center; padding: 40px; color: #6c757d;">
                     <div style="font-size: 48px; margin-bottom: 15px;">🎁</div>
                     <div>У вас пока нет подарков</div>
-                    <button class="open-gift-shop-btn" style="margin-top: 15px; padding: 8px 16px; background: #ffc107; color: #212529; border: none; border-radius: 5px; cursor: pointer;">
+                    <button class="open-gift-shop-btn" style="margin-top: 15px; padding: 8px 16px; background: ${this.userSettings.accentColor || '#ffc107'}; color: white; border: none; border-radius: 5px; cursor: pointer; transition: background 0.3s ease;">
                         🛒 Перейти в магазин
                     </button>
                 </div>
@@ -1410,14 +1674,15 @@ class SettingsManager {
             
             return `
                 <div class="management-gift-item ${isEquipped ? 'equipped' : ''}" style="
-                    border: 1px solid ${isEquipped ? '#007bff' : '#dee2e6'};
+                    border: 1px solid ${isEquipped ? this.userSettings.accentColor : '#dee2e6'};
                     border-radius: 8px;
                     padding: 10px;
                     text-align: center;
-                    background: ${isEquipped ? '#e7f3ff' : 'white'};
+                    background: ${isEquipped ? `${this.userSettings.accentColor}10` : 'white'};
                     position: relative;
+                    transition: all 0.3s ease;
                 " data-gift-id="${gift.id}">
-                    ${isEquipped ? '<div style="position: absolute; top: 5px; right: 5px; color: #007bff; font-size: 12px;">✓</div>' : ''}
+                    ${isEquipped ? `<div style="position: absolute; top: 5px; right: 5px; color: ${this.userSettings.accentColor}; font-size: 12px;">✓</div>` : ''}
                     <div style="font-size: 20px; margin-bottom: 5px;">${gift.name.split(' ')[0]}</div>
                     <div style="font-size: 10px; color: #6c757d; margin-bottom: 8px; height: 30px; overflow: hidden;">${gift.name}</div>
                     
@@ -1431,12 +1696,13 @@ class SettingsManager {
                         ${canEquip ? `
                             <button class="equip-gift-management-btn" style="
                                 padding: 3px 8px;
-                                background: #28a745;
+                                background: ${this.userSettings.accentColor};
                                 color: white;
                                 border: none;
                                 border-radius: 3px;
                                 cursor: pointer;
                                 font-size: 10px;
+                                transition: background 0.3s ease;
                             ">Надеть</button>
                         ` : isEquipped ? `
                             <button class="unequip-gift-management-btn" style="
@@ -1488,9 +1754,41 @@ class SettingsManager {
     // Методы для валюты
     loadCurrencyData() {
         if (window.currencyManager) {
-            document.getElementById('userBalance').textContent = window.currencyManager.balance;
-            document.getElementById('dailyStreak').textContent = `${window.currencyManager.dailyStreak} дней`;
+            const balanceElement = document.getElementById('userBalance');
+            if (balanceElement) balanceElement.textContent = window.currencyManager.balance || 0;
+            
+            const streakElement = document.getElementById('dailyStreak');
+            if (streakElement) streakElement.textContent = `${window.currencyManager.dailyStreak || 0} дней`;
+            
             this.updateCurrencyHistory();
+            
+            // Обновляем информацию о следующей награде
+            this.updateNextRewardTime();
+        }
+    }
+
+    updateNextRewardTime() {
+        const nextRewardElement = document.getElementById('nextRewardTime');
+        if (!nextRewardElement || !window.currencyManager) return;
+        
+        const lastClaim = localStorage.getItem(`dailyReward_${this.currentUser}`);
+        if (!lastClaim) {
+            nextRewardElement.textContent = 'Доступно сейчас!';
+            nextRewardElement.style.color = '#28a745';
+            return;
+        }
+        
+        const lastClaimTime = new Date(lastClaim).getTime();
+        const now = Date.now();
+        const timeSinceLastClaim = now - lastClaimTime;
+        const hoursUntilNext = Math.max(0, 24 - Math.floor(timeSinceLastClaim / (1000 * 60 * 60)));
+        
+        if (hoursUntilNext <= 0) {
+            nextRewardElement.textContent = 'Доступно сейчас!';
+            nextRewardElement.style.color = '#28a745';
+        } else {
+            nextRewardElement.textContent = `через ${hoursUntilNext} ч.`;
+            nextRewardElement.style.color = '#ffc107';
         }
     }
 
@@ -1509,7 +1807,7 @@ class SettingsManager {
             <div class="history-item" style="display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid #e9ecef;">
                 <div style="flex: 1;">
                     <div style="font-size: 12px; color: #495057;">${transaction.description}</div>
-                    <div style="font-size: 10px; color: #6c757d;">${new Date(transaction.timestamp).toLocaleDateString()}</div>
+                    <div style="font-size: 10px; color: #6c757d;">${new Date(transaction.timestamp).toLocaleString()}</div>
                 </div>
                 <div style="font-weight: bold; color: ${transaction.amount >= 0 ? '#28a745' : '#dc3545'};">
                     ${transaction.amount >= 0 ? '+' : ''}${transaction.amount}
@@ -1520,7 +1818,7 @@ class SettingsManager {
 
     showNotification(message, type = 'info') {
         // Используем существующую систему уведомлений
-        if (window.privateChatInstance) {
+        if (window.privateChatInstance && typeof window.privateChatInstance.showNotification === 'function') {
             window.privateChatInstance.showNotification(message, type);
         } else {
             // Простая реализация, если privateChatInstance недоступен
@@ -1536,19 +1834,33 @@ class SettingsManager {
                 color: white;
                 font-weight: bold;
                 z-index: 10010;
-                background: ${type === 'error' ? '#dc3545' : type === 'success' ? '#28a745' : '#17a2b8'};
+                box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+                animation: slideIn 0.3s ease;
+                background: ${type === 'error' ? '#dc3545' : type === 'success' ? '#28a745' : type === 'warning' ? '#ffc107' : this.userSettings.accentColor || '#17a2b8'};
             `;
+            
+            // Добавляем анимацию
+            const style = document.createElement('style');
+            style.textContent = `
+                @keyframes slideIn {
+                    from { transform: translateX(100%); opacity: 0; }
+                    to { transform: translateX(0); opacity: 1; }
+                }
+            `;
+            document.head.appendChild(style);
             
             document.body.appendChild(notification);
             
             setTimeout(() => {
                 if (notification.parentElement) {
-                    notification.remove();
+                    notification.style.animation = 'slideIn 0.3s ease reverse';
+                    setTimeout(() => notification.remove(), 300);
                 }
             }, 3000);
         }
     }
 }
+
 // Инициализация SettingsManager
 document.addEventListener('DOMContentLoaded', function() {
     console.log('🚀 Starting application initialization...');
@@ -1570,37 +1882,90 @@ document.addEventListener('DOMContentLoaded', function() {
         console.log('✅ SettingsManager initialized');
     }
 
-    // Обработчик для кнопки настроек (дублируем для надежности)
-    document.getElementById('settingsBtn')?.addEventListener('click', function() {
-        console.log('⚙️ Settings button clicked');
-        if (window.settingsManager) {
-            window.settingsManager.openSettings();
-        } else {
-            // Fallback: открываем модальное окно напрямую
-            const modal = document.getElementById('settingsModal');
-            if (modal) {
-                modal.style.display = 'flex';
-                console.log('✅ Settings modal opened directly');
-            } else {
-                console.error('❌ Settings modal not found');
+    // Обработчик для кнопки настроек
+    const settingsBtn = document.getElementById('settingsBtn');
+    if (settingsBtn) {
+        settingsBtn.addEventListener('click', function(e) {
+            e.preventDefault();
+            console.log('⚙️ Settings button clicked');
+            if (window.settingsManager) {
+                window.settingsManager.openSettings();
             }
+        });
+    }
+
+    // Обработчик для кнопки профиля в мобильной навигации
+    const mobileProfileBtn = document.getElementById('mobileProfileBtn');
+    if (mobileProfileBtn) {
+        mobileProfileBtn.addEventListener('click', function() {
+            if (window.settingsManager) {
+                window.settingsManager.openSettings();
+            }
+        });
+    }
+
+    // Обработчик для закрытия модальных окон
+    document.addEventListener('click', function(e) {
+        if (e.target.classList.contains('close-modal') || e.target.closest('.close-modal')) {
+            const modal = e.target.closest('.modal-overlay');
+            if (modal) modal.style.display = 'none';
         }
     });
 
-    // Обработчик для закрытия модальных окон
-    document.querySelectorAll('.close-modal').forEach(btn => {
-        btn.addEventListener('click', function() {
-            this.closest('.modal-overlay').style.display = 'none';
-        });
-    });
-
     // Обработчик для клика вне модального окна
-    document.querySelectorAll('.modal-overlay').forEach(modal => {
-        modal.addEventListener('click', function(e) {
-            if (e.target === this) {
-                this.style.display = 'none';
-            }
-        });
+    document.addEventListener('click', function(e) {
+        if (e.target.classList.contains('modal-overlay')) {
+            e.target.style.display = 'none';
+        }
     });
+    
+    // Добавляем CSS переменные в корневой элемент
+    const style = document.createElement('style');
+    style.textContent = `
+        :root {
+            --accent-color: #007bff;
+            --accent-color-dark: #0056b3;
+            --accent-color-light: #3395ff;
+            --accent-color-rgb: 0, 123, 255;
+        }
+        
+        .compact-mode .chat-message {
+            padding: 4px 8px !important;
+            margin: 2px 0 !important;
+        }
+        
+        .hide-avatars .user-avatar,
+        .hide-avatars .conversation-avatar,
+        .hide-avatars .message-avatar {
+            display: none !important;
+        }
+        
+        .no-animations * {
+            animation: none !important;
+            transition: none !important;
+        }
+        
+        .btn-primary {
+            transition: background 0.3s ease, transform 0.2s ease;
+        }
+        
+        .btn-primary:hover {
+            transform: translateY(-1px);
+        }
+        
+        .btn-primary:active {
+            transform: translateY(1px);
+        }
+        
+        .theme-option, .color-option {
+            transition: all 0.3s ease;
+        }
+        
+        .color-option:hover {
+            transform: scale(1.1);
+        }
+    `;
+    document.head.appendChild(style);
 });
+
 window.SettingsManager = SettingsManager;

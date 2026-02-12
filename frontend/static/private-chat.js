@@ -13,9 +13,7 @@ class PrivateChat {
         this.currentAudio = null;
         this.displayedMessageIds = new Set();
         this.avatarCache = new Map();
-         this.chatMenuCreated = false;
-    this.blockedUsers = JSON.parse(localStorage.getItem('blocked_users') || '[]');
-
+        
         if (!window.callManager) {
             window.callManager = new CallManager();
         }
@@ -25,12 +23,27 @@ class PrivateChat {
 checkAdminStatus() {
     try {
         const currentUser = this.getCurrentUser();
-        const isAdmin = currentUser === 'admin';
+        if (!currentUser) return false;
         
-        // Если в будущем понадобится сложная логика проверки
-        if (isAdmin) {
-            // Можно добавить дополнительные проверки через API
-            console.log('👑 User is admin');
+        // Пробуем несколько способов проверки
+        const isAdmin = currentUser === 'admin' || 
+                       currentUser === 'Admin' || 
+                       currentUser.toLowerCase() === 'admin';
+        
+        // Проверяем localStorage
+        const storedAdminStatus = localStorage.getItem(`user_${currentUser}_isAdmin`);
+        if (storedAdminStatus) {
+            return storedAdminStatus === 'true';
+        }
+        
+        // Проверяем через API если есть соединение
+        if (window.socket && window.socket.connected) {
+            window.socket.emit('check_admin_status', { username: currentUser }, (response) => {
+                if (response && response.isAdmin) {
+                    localStorage.setItem(`user_${currentUser}_isAdmin`, 'true');
+                    this.isAdmin = true;
+                }
+            });
         }
         
         return isAdmin;
@@ -45,15 +58,16 @@ init() {
     try {
         console.log('🔄 Initializing private chat...');
         
-        this.currentUser = document.getElementById('username')?.textContent;
+        // Определяем текущего пользователя
+        this.currentUser = this.getCurrentUser();
         if (!this.currentUser) {
-            console.warn('⚠️ Username not found in DOM, trying window.USERNAME');
-            this.currentUser = window.USERNAME;
-        }
-        
-        if (!this.currentUser) {
-            console.error('❌ Username not found anywhere');
-            this.showNotification('Не удалось определить пользователя', 'error');
+            console.warn('⚠️ Username not found, deferring initialization');
+            // Попробуем снова через 1 секунду
+            setTimeout(() => {
+                if (!this.isInitialized) {
+                    this.init();
+                }
+            }, 1000);
             return;
         }
         
@@ -65,6 +79,10 @@ init() {
         
         // Добавляем аватар текущего пользователя в кэш
         this.avatarCache.set(this.currentUser, this.getDefaultAvatarUrl());
+        
+        // Инициализируем набор онлайн пользователей
+        this.onlineUsers = new Set();
+        this.onlineUsers.add(this.currentUser);
         
         if (!window.callManager) {
             console.log('🔄 Initializing CallManager...');
@@ -86,16 +104,234 @@ init() {
         this.setupEmojiPicker();
         this.setupTypingHandlers();
         
+        // ЗАГРУЖАЕМ список онлайн пользователей с задержкой
+        setTimeout(() => {
+            this.loadOnlineUsersFromServer();
+        }, 1000);
+        
+        // Настраиваем периодическую проверку статуса
+        this.setupStatusChecker();
+        
         this.isInitialized = true;
         console.log('✅ Private chat initialized successfully');
         
     } catch (error) {
         console.error('❌ Error initializing PrivateChat:', error);
         this.showNotification('Ошибка инициализации приватного чата', 'error');
-        this.createFallbackUI();
+        // Не создаем fallback UI сразу, попробуем снова
+        setTimeout(() => {
+            if (!this.isInitialized) {
+                this.createFallbackUI();
+            }
+        }, 2000);
+    }
+}   
+async loadOnlineUsersFromServer() {
+    try {
+        console.log('🔄 Loading online users from server...');
+        
+        // Проверяем, загружен ли пользователь
+        if (!this.currentUser) {
+            console.log('⏳ User not yet identified, skipping online users load');
+            return;
+        }
+        
+        // Проверяем, является ли пользователь админом
+        if (!this.isAdmin) {
+            console.log('👤 Regular user, using socket for online users');
+            this.loadOnlineUsersViaSocket();
+            return;
+        }
+        
+        // Для админов пробуем API endpoint с обработкой ошибок
+        try {
+            // ИСПРАВЛЕНО: Используем window.fetch вместо просто fetch
+            const response = await window.fetch('/api/users/online', {
+                method: 'GET',
+                credentials: 'include',
+                headers: {
+                    'Accept': 'application/json',
+                    'Cache-Control': 'no-cache'
+                }
+            });
+            
+            console.log('📡 Online users API response:', response.status);
+            
+            if (response.ok) {
+                const data = await response.json();
+                // ИСПРАВЛЕНО: API возвращает массив, а не объект с полем users
+                if (Array.isArray(data)) {
+                    this.onlineUsers = new Set(data);
+                    this.updateOnlineStatuses();
+                    console.log(`✅ Admin loaded ${data.length} online users from server`);
+                } else {
+                    console.log('⚠️ Invalid response format from online users API', data);
+                    this.loadOnlineUsersViaSocket();
+                }
+            } else if (response.status === 403) {
+                console.log('⚠️ Admin not authorized for online users API');
+                this.isAdmin = false;
+                this.loadOnlineUsersViaSocket();
+            } else {
+                console.log(`⚠️ API returned ${response.status}, using socket`);
+                this.loadOnlineUsersViaSocket();
+            }
+        } catch (apiError) {
+            console.error('❌ API request failed:', apiError);
+            this.loadOnlineUsersViaSocket();
+        }
+        
+    } catch (error) {
+        console.error('❌ Error loading online users:', error);
+        this.loadOnlineUsersViaSocket();
     }
 }
 
+// Новый метод для загрузки через сокет (уже должен быть)
+loadOnlineUsersViaSocket() {
+    if (window.socket && window.socket.connected) {
+        window.socket.emit('get_online_users', (users) => {
+            if (users && Array.isArray(users)) {
+                this.onlineUsers = new Set(users);
+                this.updateOnlineStatuses();
+                console.log(`✅ Loaded ${users.length} online users via socket`);
+            }
+        });
+    } else {
+        console.log('⚠️ Socket not available, using local online users');
+        // Добавляем текущего пользователя как онлайн
+        if (this.currentUser) {
+            this.onlineUsers = new Set([this.currentUser]);
+            this.updateOnlineStatuses();
+        }
+    }
+}
+setupStatusChecker() {
+    // Периодически проверяем статус пользователей
+    setInterval(() => {
+        if (window.socket && window.socket.connected) {
+            window.socket.emit('get_online_users', (users) => {
+                if (users && Array.isArray(users)) {
+                    this.onlineUsers = new Set(users);
+                    this.updateOnlineStatuses();
+                }
+            });
+        }
+    }, 30000); // Каждые 30 секунд
+}
+
+updateOnlineStatuses() {
+    try {
+        console.log('🔄 Updating online statuses...', {
+            currentChat: this.currentChat,
+            onlineUsersCount: this.onlineUsers.size,
+            isCurrentChatOnline: this.currentChat ? this.onlineUsers.has(this.currentChat) : false
+        });
+        
+        // 1. Обновляем статус в заголовке текущего чата
+        if (this.currentChat) {
+            const currentUserStatus = document.getElementById('currentUserStatus');
+            if (currentUserStatus) {
+                const isOnline = this.onlineUsers.has(this.currentChat);
+                currentUserStatus.textContent = isOnline ? 'online' : 'offline';
+                currentUserStatus.className = `user-status ${isOnline ? 'online' : 'offline'}`;
+                console.log(`📱 Status for ${this.currentChat}:`, isOnline ? 'online' : 'offline');
+            }
+        }
+        
+        // 2. Обновляем статус в списке диалогов
+        this.updateConversationsStatus();
+        
+        // 3. Обновляем статус в результатах поиска
+        this.updateSearchResultsStatus();
+        
+    } catch (error) {
+        console.error('❌ Error updating online statuses:', error);
+    }
+}
+updateConversationsStatus() {
+    const conversationItems = document.querySelectorAll('.conversation-item:not(.group-item)');
+    console.log(`📊 Updating status for ${conversationItems.length} conversations`);
+    
+    conversationItems.forEach(item => {
+        // Пробуем разные способы получить имя пользователя
+        let username = null;
+        
+        // Способ 1: data-атрибут
+        username = item.getAttribute('data-username');
+        
+        // Способ 2: элемент с классом username-text
+        if (!username) {
+            const usernameElement = item.querySelector('.username-text');
+            if (usernameElement) {
+                username = usernameElement.textContent.trim();
+            }
+        }
+        
+        // Способ 3: элемент с классом conv-name
+        if (!username) {
+            const convNameElement = item.querySelector('.conv-name');
+            if (convNameElement) {
+                // Извлекаем текст, убираем эмодзи и лишние пробелы
+                username = convNameElement.textContent
+                    .replace(/^👤\s*/, '')
+                    .replace(/\s+/g, ' ')
+                    .trim()
+                    .split(' ')[0];
+            }
+        }
+        
+        if (username) {
+            const isOnline = this.onlineUsers.has(username);
+            
+            // Обновляем индикатор точки
+            let onlineDot = item.querySelector('.online-dot');
+            if (isOnline && !onlineDot) {
+                onlineDot = document.createElement('span');
+                onlineDot.className = 'online-dot';
+                onlineDot.title = 'В сети';
+                
+                // Добавляем рядом с именем пользователя
+                const usernameContainer = item.querySelector('.username-text, .conv-name');
+                if (usernameContainer) {
+                    usernameContainer.appendChild(onlineDot);
+                }
+            } else if (!isOnline && onlineDot) {
+                onlineDot.remove();
+            }
+            
+            // Обновляем текстовый статус
+            let statusElement = item.querySelector('.conv-status');
+            if (!statusElement) {
+                statusElement = document.createElement('div');
+                statusElement.className = 'conv-status';
+                const convInfo = item.querySelector('.conv-info');
+                if (convInfo) {
+                    convInfo.appendChild(statusElement);
+                }
+            }
+            
+            statusElement.textContent = isOnline ? '🟢 онлайн' : '⚫ не в сети';
+            statusElement.className = `conv-status ${isOnline ? 'online' : 'offline'}`;
+        }
+    });
+}
+
+updateSearchResultsStatus() {
+    const searchResults = document.querySelectorAll('.search-result');
+    searchResults.forEach(result => {
+        const usernameElement = result.querySelector('.search-username');
+        if (usernameElement) {
+            const username = usernameElement.textContent.trim();
+            const statusElement = result.querySelector('.search-user-status');
+            if (statusElement && username) {
+                const isOnline = this.onlineUsers.has(username);
+                statusElement.textContent = isOnline ? 'online' : 'offline';
+                statusElement.className = `search-user-status ${isOnline ? 'online' : 'offline'}`;
+            }
+        }
+    });
+}
 createUI() {
     const privateChatContainer = document.getElementById('privateChat');
     if (!privateChatContainer) {
@@ -2278,84 +2514,83 @@ setupEmojiPickerListeners() {
         }
     });
 }
-sendPrivateMessage() {
-    const messageInput = document.getElementById('privateMessageInput');
-    const message = messageInput?.value.trim();
-    
-    if (!message || message === '') {
-        return;
-    }
-    
-    // Проверяем, не заблокирован ли пользователь
-    if (this.isUserBlocked(this.currentChat)) {
-        this.showNotification('Вы заблокировали этого пользователя. Разблокируйте его, чтобы отправлять сообщения.', 'error');
-        return;
-    }
-    
-    const currentUsername = this.getCurrentUser();
-    
-    // Проверяем, не отправляем ли мы сообщение самому себе
-    if (currentUsername === this.currentChat) {
-        this.showNotification('Нельзя отправить сообщение самому себе', 'error');
-        return;
-    }
-    
-    // Создаем уникальный ID для сообщения
-    const messageId = 'msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-    
-    // Создаем объект сообщения
-    const messageData = {
-        sender: currentUsername,
-        receiver: this.currentChat,
-        message: message,
-        messageType: 'text',
-        timestamp: new Date().toLocaleTimeString(),
-        date: new Date().toISOString(),
-        id: messageId
-    };
-    
-    // Проверяем, не отправляли ли мы уже это сообщение
-    if (this.displayedMessageIds.has(messageId)) {
-        console.log('⚠️ Message already sent, skipping:', messageId);
-        return;
-    }
-    
-    this.displayedMessageIds.add(messageId);
-    
-    // Отправляем через сокет
-    if (window.socket) {
-        console.log('📤 Sending private message:', messageData);
-        window.socket.emit('private message', messageData);
-    }
-    
-    // Локально отображаем сообщение сразу
-    this.displayMessage(messageData, true);
-    
-    // Скрываем эмодзи-пикер если открыт
-    const emojiPicker = document.getElementById('emojiPicker');
-    if (emojiPicker) {
-        emojiPicker.style.display = 'none';
-    }
-    
-    // На мобильных устройствах обновляем состояние кнопки
-    if (isMobileDevice()) {
-        const sendButton = document.querySelector('.send-button');
-        if (sendButton) {
-            sendButton.disabled = true;
-            sendButton.style.opacity = '0.5';
-            sendButton.style.cursor = 'not-allowed';
+ sendPrivateMessage() {
+        const messageInput = document.getElementById('privateMessageInput');
+        const message = messageInput?.value.trim();
+        
+        if (!message || message === '') {
+            if (!isMobileDevice()) {
+            }
+            return;
         }
         
-        // Скрываем клавиатуру
-        setTimeout(() => {
-            if (messageInput) {
-                messageInput.blur();
+        // Очищаем поле ввода сразу
+        messageInput.value = '';
+        
+        const currentUsername = this.getCurrentUser();
+        
+        // Проверяем, не отправляем ли мы сообщение самому себе
+        if (currentUsername === this.currentChat) {
+            this.showNotification('Нельзя отправить сообщение самому себе', 'error');
+            return;
+        }
+        
+        // Создаем уникальный ID для сообщения
+        const messageId = 'msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+        
+        // Создаем объект сообщения
+        const messageData = {
+            sender: currentUsername,
+            receiver: this.currentChat,
+            message: message,
+            messageType: 'text',
+            timestamp: new Date().toLocaleTimeString(),
+            date: new Date().toISOString(),
+            id: messageId
+        };
+        
+        // Проверяем, не отправляли ли мы уже это сообщение
+        if (this.displayedMessageIds.has(messageId)) {
+            console.log('⚠️ Message already sent, skipping:', messageId);
+            return;
+        }
+        
+        this.displayedMessageIds.add(messageId);
+        
+        // Отправляем через сокет
+        if (window.socket) {
+            console.log('📤 Sending private message:', messageData);
+            window.socket.emit('private message', messageData);
+        }
+        
+        // Локально отображаем сообщение сразу
+        this.displayMessage(messageData, true);
+        
+        // Скрываем эмодзи-пикер если открыт
+        const emojiPicker = document.getElementById('emojiPicker');
+        if (emojiPicker) {
+            emojiPicker.style.display = 'none';
+        }
+        
+        // На мобильных устройствах обновляем состояние кнопки
+        if (isMobileDevice()) {
+            const sendButton = document.querySelector('.send-button');
+            if (sendButton) {
+                sendButton.disabled = true;
+                sendButton.style.opacity = '0.5';
+                sendButton.style.cursor = 'not-allowed';
             }
-        }, 100);
+            
+            // Скрываем клавиатуру
+            setTimeout(() => {
+                if (messageInput) {
+                    messageInput.blur();
+                }
+            }, 100);
+        }
+        
+        console.log('✅ Message sent successfully');
     }
-    
-    console.log('✅ Message sent successfully');
-}
 openVoiceRecorder() {
     if (!window.voiceMessageManager) {
         console.log('🎤 Creating VoiceMessageManager instance...');
@@ -2383,15 +2618,6 @@ getCurrentChatUser() {
 }
 async startChat(username, isGroup = false, groupId = null) {
     console.log('💬 Starting chat:', { username, isGroup, groupId });
-    
-    // Проверяем, не заблокирован ли пользователь
-    const isBlocked = this.isUserBlocked(username);
-    if (isBlocked && !isGroup) {
-        if (!confirm(`Пользователь ${username} заблокирован.\n\nХотите разблокировать для начала общения?`)) {
-            return;
-        }
-        await this.unblockUser();
-    }
     
     if (isGroup) {
         const group = {
@@ -2422,16 +2648,8 @@ async startChat(username, isGroup = false, groupId = null) {
             groupChatContainer.style.display = 'none';
         }
         
-        // Обновляем заголовок чата
+        // ОБНОВЛЯЕМ ЗАГОЛОВОК ЧАТА С ТЕКУЩИМ СТАТУСОМ
         this.updateChatHeader(username);
-        
-        // Создаем контекстное меню
-        this.createChatContextMenu();
-        
-        // Проверяем и показываем статус блокировки
-        if (isBlocked) {
-            this.updateBlockStatus(true);
-        }
         
         // На мобильных устройствах переключаемся на экран чата
         if (isMobileDevice()) {
@@ -2456,10 +2674,12 @@ async startChat(username, isGroup = false, groupId = null) {
         
         try {
             // Загружаем историю сообщений
-            const response = await fetch(`/api/messages/private/${username}`);
+            console.log(`📨 Loading messages for ${username}...`);
+            const response = await fetch(`/api/messages/private/${encodeURIComponent(username)}`);
             if (response.ok) {
                 const messages = await response.json();
                 this.displayMessageHistory(messages);
+                console.log(`✅ Loaded ${messages.length} messages for ${username}`);
             } else {
                 throw new Error(`HTTP ${response.status}`);
             }
@@ -2470,12 +2690,113 @@ async startChat(username, isGroup = false, groupId = null) {
                 container.innerHTML = '<div class="no-messages">📝 Начните общение первым!</div>';
             }
         }
+        
+        // Обновляем галочки верификации
+        setTimeout(() => {
+            if (window.verificationManager) {
+                window.verificationManager.updateAllVerificationBadges();
+            }
+        }, 300);
+        
+        // ОБНОВЛЯЕМ СТАТУС ТЕКУЩЕГО ЧАТА
+        this.updateCurrentChatStatus();
     }
     
     // Обновляем список бесед
     this.loadConversations();
     
     console.log('✅ Chat started successfully');
+}
+
+// ДОБАВЛЯЕМ новый метод для обновления статуса текущего чата
+updateCurrentChatStatus() {
+    if (!this.currentChat) return;
+    
+    const isOnline = this.onlineUsers.has(this.currentChat);
+    const currentUserStatus = document.getElementById('currentUserStatus');
+    
+    if (currentUserStatus) {
+        currentUserStatus.textContent = isOnline ? 'online' : 'offline';
+        currentUserStatus.className = `user-status ${isOnline ? 'online' : 'offline'}`;
+        console.log(`📱 Current chat status updated: ${this.currentChat} is ${isOnline ? 'online' : 'offline'}`);
+    }
+    
+    // Также обновляем статус в списке диалогов
+    this.updateConversationItemStatus(this.currentChat, isOnline);
+}
+
+updateConversationItemStatus(username, isOnline) {
+    const conversationItem = document.querySelector(`.conversation-item[data-username="${username}"]`);
+    if (conversationItem) {
+        const statusElement = conversationItem.querySelector('.conv-status');
+        if (statusElement) {
+            statusElement.textContent = isOnline ? '🟢 онлайн' : '⚫ не в сети';
+            statusElement.className = `conv-status ${isOnline ? 'online' : 'offline'}`;
+        }
+        
+        const onlineDot = conversationItem.querySelector('.online-dot');
+        if (isOnline && !onlineDot) {
+            const newOnlineDot = document.createElement('span');
+            newOnlineDot.className = 'online-dot';
+            newOnlineDot.title = 'В сети';
+            
+            const usernameContainer = conversationItem.querySelector('.username-text, .conv-name');
+            if (usernameContainer) {
+                usernameContainer.appendChild(newOnlineDot);
+            }
+        } else if (!isOnline && onlineDot) {
+            onlineDot.remove();
+        }
+    }
+}
+
+// Обновляем метод updateChatHeader для включения статуса
+updateChatHeader(username) {
+    const currentChatUser = document.getElementById('currentChatUser');
+    const currentUserStatus = document.getElementById('currentUserStatus');
+    
+    if (currentChatUser) {
+        // Очищаем текст от любых упоминаний о верификации
+        const cleanUsername = username.replace(/[^a-zA-Z0-9_\-]/g, '');
+        currentChatUser.textContent = cleanUsername;
+        
+        // Галочка верификации будет добавлена VerificationManager автоматически
+    }
+    
+    // ОБНОВЛЯЕМ СТАТУС СРАЗУ ПРИ ОБНОВЛЕНИИ ЗАГОЛОВКА
+    if (currentUserStatus) {
+        const isOnline = this.onlineUsers.has(username);
+        currentUserStatus.textContent = isOnline ? 'online' : 'offline';
+        currentUserStatus.className = `user-status ${isOnline ? 'online' : 'offline'}`;
+        console.log(`📱 Header status for ${username}: ${isOnline ? 'online' : 'offline'}`);
+    }
+    
+    // Загружаем аватар с очищенным username
+    this.loadUserAvatar(username).then(avatarUrl => {
+        const userAvatar = document.querySelector('.chat-user-info .user-avatar');
+        if (userAvatar) {
+            userAvatar.innerHTML = '';
+            const img = document.createElement('img');
+            img.src = avatarUrl;
+            img.className = 'user-avatar-img';
+            img.alt = username;
+            img.onerror = () => this.handleAvatarError(img);
+            userAvatar.appendChild(img);
+        }
+    }).catch((error) => {
+        console.error('❌ Error loading avatar:', error);
+        const userAvatar = document.querySelector('.chat-user-info .user-avatar');
+        if (userAvatar) {
+            userAvatar.innerHTML = `<img src="/static/default-avatar.png" class="user-avatar-img" alt="${username}">`;
+        }
+    });
+    
+    // Обновляем галочки верификации
+    setTimeout(() => {
+        if (window.verificationManager) {
+            window.verificationManager.updateAllVerificationBadges();
+        }
+    }, 100);
 }
 closeCurrentChat() {
     this.currentChat = null;
@@ -2906,219 +3227,262 @@ setupAdminPanelTabs() {
         });
     }
 
-    setupSocketListeners() {
-        if (!window.socket) {
-            console.log('⚠️ Socket not available for PrivateChat');
-            return;
+   setupSocketListeners() {
+    if (!window.socket) {
+        console.log('⚠️ Socket not available for PrivateChat');
+        return;
+    }
+    
+    console.log('🎯 Setting up PrivateChat socket listeners...');
+    
+    window.socket.on('private message', (data) => {
+        console.log('📨 Private message received:', data);
+        this.handleIncomingMessage(data);
+    });
+
+    window.socket.on('group_message', (data) => {
+        console.log('📨 Group message received in PrivateChat:', data);
+        this.handleIncomingGroupMessage(data);
+    });
+
+    window.socket.on('conversations updated', () => {
+        console.log('🔄 Conversations updated event received');
+        this.loadConversations();
+    });
+
+    // НОВЫЙ: Получаем полный список онлайн пользователей при подключении
+    window.socket.on('online_users_list', (data) => {
+        console.log('👥 Online users list received:', data.users?.length || 0);
+        if (data.users && Array.isArray(data.users)) {
+            this.onlineUsers = new Set(data.users);
+            this.updateOnlineStatuses();
+            console.log('✅ Online users list updated');
+        }
+    });
+
+    // ОБНОВЛЕННЫЙ: Более надежный обработчик изменения статуса
+    window.socket.on('user-status-changed', (data) => {
+        console.log('🔄 User status changed via socket:', data);
+        
+        // Обрабатываем разные форматы данных
+        if (data.isOnline === true) {
+            this.onlineUsers.add(data.username);
+        } else if (data.isOnline === false) {
+            this.onlineUsers.delete(data.username);
+        } else if (data.status === 'online') {
+            this.onlineUsers.add(data.username);
+        } else if (data.status === 'offline') {
+            this.onlineUsers.delete(data.username);
         }
         
-        console.log('🎯 Setting up PrivateChat socket listeners...');
+        this.updateOnlineStatuses();
+        this.loadConversations();
         
-        window.socket.on('private message', (data) => {
-            console.log('📨 Private message received:', data);
-            this.handleIncomingMessage(data);
-        });
+        // Обновляем заголовок текущего чата если нужно
+        if (this.currentChat === data.username) {
+            this.updateChatHeader(data.username);
+        }
+    });
 
-        window.socket.on('group_message', (data) => {
-            console.log('📨 Group message received in PrivateChat:', data);
-            this.handleIncomingGroupMessage(data);
-        });
-
-        window.socket.on('conversations updated', () => {
-            console.log('🔄 Conversations updated event received');
-            this.loadConversations();
-        });
-         window.socket.on('gift_received', (data) => {
+    window.socket.on('gift_received', (data) => {
         console.log('🎁 Gift received:', data);
         this.handleGiftReceived(data);
     });
-window.socket.on('chat_history_cleared', (data) => {
-    console.log('🧹 Chat history cleared by:', data.clearedBy);
-    if (data.clearedBy === this.currentChat) {
-        // Если очистил собеседник, обновляем чат
-        const messagesContainer = document.getElementById('privateMessages');
-        if (messagesContainer) {
-            messagesContainer.innerHTML = '<div class="no-messages">🧹 Пользователь очистил историю чата</div>';
-        }
-        this.displayedMessageIds.clear();
-    }
-});
 
-window.socket.on('chat_history_cleared_success', (data) => {
-    console.log('✅ Chat history cleared successfully:', data.targetUser);
-    // Можете показать дополнительное уведомление
-    if (data.targetUser === this.currentChat) {
-        this.showNotification(`История чата с ${data.targetUser} очищена (${data.clearedMessages} сообщений)`, 'success');
-    }
-});
-    // Обработчик отправки подарка
     window.socket.on('gift_sent', (data) => {
         console.log('🎁 Gift sent confirmation:', data);
         this.showNotification(`Подарок "${data.gift.name}" отправлен пользователю ${data.receiver}`, 'success');
     });
-window.socket.on('gift_received', (data) => {
-        console.log('🎁 Gift received:', data);
-        this.showNotification(`🎁 Вы получили подарок "${data.gift.name}" от ${data.sender}`, 'success');
-        
-        // Обновляем профиль если открыт
-        if (window.profileManager && window.profileManager.currentProfile) {
-            window.profileManager.viewProfile(window.profileManager.currentProfile.username);
+
+    window.socket.on('group_created', (data) => {
+        console.log('👥 Group created event:', data);
+        if (window.groupChatManager) {
+            window.groupChatManager.handleGroupCreated(data);
+        }
+        this.loadConversations();
+    });
+
+    window.socket.on('group_updated', (data) => {
+        console.log('👥 Group updated event:', data);
+        if (window.groupChatManager && this.currentGroup && this.currentGroup.id === data.groupId) {
+            this.currentGroup = { ...this.currentGroup, ...data.groupData };
+        }
+        this.loadConversations();
+    });
+
+    window.socket.on('user_added_to_group', (data) => {
+        console.log('👥 User added to group:', data);
+        const currentUser = document.getElementById('username')?.textContent;
+        if (currentUser && data.members && data.members.includes(currentUser)) {
+            this.showNotification(`Вас добавили в группу "${data.groupName}"`, 'info');
+            this.loadConversations();
         }
     });
-        window.socket.on('user-status-changed', (data) => {
-            console.log('🔄 User status changed via socket:', data);
-            
-            if (data.status === 'online') {
-                this.onlineUsers.add(data.username);
-            } else if (data.status === 'offline') {
-                this.onlineUsers.delete(data.username);
+
+    window.socket.on('user_removed_from_group', (data) => {
+        console.log('👥 User removed from group:', data);
+        const currentUser = document.getElementById('username')?.textContent;
+        if (currentUser && data.removedUser === currentUser) {
+            this.showNotification(`Вас удалили из группы "${data.groupName}"`, 'warning');
+            if (window.groupChatManager?.currentGroup && window.groupChatManager.currentGroup.id === data.groupId) {
+                window.groupChatManager.closeGroupChat();
             }
-            
+            this.loadConversations();
+        }
+    });
+
+    window.socket.on('system_notification', (data) => {
+        console.log('📢 System notification received:', data);
+        this.showNotification(data.message, data.type || 'info');
+    });
+
+    window.socket.on('error', (data) => {
+        console.error('❌ Socket error:', data);
+        this.showNotification(data.message || 'Произошла ошибка', 'error');
+    });
+
+    window.socket.on('connect', () => {
+        console.log('✅ Socket connected for PrivateChat');
+        this.showNotification('Соединение установлено', 'success');
+        
+        // ЗАПРАШИВАЕМ список онлайн пользователей при подключении
+        if (window.socket) {
+            window.socket.emit('get_online_users', (users) => {
+                if (users && Array.isArray(users)) {
+                    this.onlineUsers = new Set(users);
+                    this.updateOnlineStatuses();
+                    console.log('✅ Initial online users loaded:', users.length);
+                }
+            });
+        }
+        
+        setTimeout(() => {
+            this.loadConversations();
+        }, 1000);
+    });
+
+    window.socket.on('disconnect', (reason) => {
+        console.log('⚠️ Socket disconnected:', reason);
+        this.showNotification('Соединение прервано', 'error');
+        
+        // Очищаем онлайн пользователей при отключении
+        this.onlineUsers.clear();
+        this.updateOnlineStatuses();
+    });
+
+    window.socket.on('reconnect', (attemptNumber) => {
+        console.log('🔄 Socket reconnected after', attemptNumber, 'attempts');
+        this.showNotification('Соединение восстановлено', 'success');
+        
+        // Снова запрашиваем список онлайн пользователей
+        if (window.socket) {
+            window.socket.emit('get_online_users', (users) => {
+                if (users && Array.isArray(users)) {
+                    this.onlineUsers = new Set(users);
+                    this.updateOnlineStatuses();
+                    console.log('✅ Online users reloaded after reconnect');
+                }
+            });
+        }
+        
+        setTimeout(() => {
+            this.loadConversations();
+        }, 500);
+    });
+
+    window.socket.on('online_users', (data) => {
+        console.log('👥 Online users received:', data.users?.length || 0);
+        if (data.users && Array.isArray(data.users)) {
+            this.onlineUsers = new Set(data.users);
             this.updateOnlineStatuses();
-            this.loadConversations();
-        });
+        }
+    });
 
-        window.socket.on('group_created', (data) => {
-            console.log('👥 Group created event:', data);
-            if (window.groupChatManager) {
-                window.groupChatManager.handleGroupCreated(data);
+    window.socket.on('message_history', (data) => {
+        console.log('📜 Message history received for:', data.chatId);
+        if (data.messages && Array.isArray(data.messages)) {
+            if (data.chatType === 'private' && this.currentChat === data.chatId) {
+                this.displayMessageHistory(data.messages);
+            } else if (data.chatType === 'group' && window.groupChatManager?.currentGroup?.id === data.chatId) {
+                window.groupChatManager.displayGroupMessages(data.messages);
             }
-            this.loadConversations();
-        });
+        }
+    });
 
-        window.socket.on('group_updated', (data) => {
-            console.log('👥 Group updated event:', data);
-            if (window.groupChatManager && this.currentGroup && this.currentGroup.id === data.groupId) {
-                this.currentGroup = { ...this.currentGroup, ...data.groupData };
-            }
-            this.loadConversations();
-        });
-
-        window.socket.on('user_added_to_group', (data) => {
-            console.log('👥 User added to group:', data);
-            const currentUser = document.getElementById('username')?.textContent;
-            if (currentUser && data.members && data.members.includes(currentUser)) {
-                this.showNotification(`Вас добавили в группу "${data.groupName}"`, 'info');
-                this.loadConversations();
-            }
-        });
-
-        window.socket.on('user_removed_from_group', (data) => {
-            console.log('👥 User removed from group:', data);
-            const currentUser = document.getElementById('username')?.textContent;
-            if (currentUser && data.removedUser === currentUser) {
-                this.showNotification(`Вас удалили из группы "${data.groupName}"`, 'warning');
-                if (window.groupChatManager?.currentGroup && window.groupChatManager.currentGroup.id === data.groupId) {
-                    window.groupChatManager.closeGroupChat();
-                }
-                this.loadConversations();
-            }
-        });
-
-        window.socket.on('system_notification', (data) => {
-            console.log('📢 System notification received:', data);
-            this.showNotification(data.message, data.type || 'info');
-        });
-
-        window.socket.on('error', (data) => {
-            console.error('❌ Socket error:', data);
-            this.showNotification(data.message || 'Произошла ошибка', 'error');
-        });
-
-        window.socket.on('connect', () => {
-            console.log('✅ Socket connected for PrivateChat');
-            this.showNotification('Соединение установлено', 'success');
-            
-            setTimeout(() => {
-                this.loadConversations();
-            }, 1000);
-        });
-
-        window.socket.on('disconnect', (reason) => {
-            console.log('⚠️ Socket disconnected:', reason);
-            this.showNotification('Соединение прервано', 'error');
-        });
-
-        window.socket.on('reconnect', (attemptNumber) => {
-            console.log('🔄 Socket reconnected after', attemptNumber, 'attempts');
-            this.showNotification('Соединение восстановлено', 'success');
-            
-            setTimeout(() => {
-                this.loadConversations();
-            }, 500);
-        });
-
-        window.socket.on('online_users', (data) => {
-            console.log('👥 Online users received:', data.users);
-            if (data.users && Array.isArray(data.users)) {
-                this.onlineUsers = new Set(data.users);
-                this.updateOnlineStatuses();
-            }
-        });
-
-        window.socket.on('message_history', (data) => {
-            console.log('📜 Message history received for:', data.chatId);
-            if (data.messages && Array.isArray(data.messages)) {
-                if (data.chatType === 'private' && this.currentChat === data.chatId) {
-                    this.displayMessageHistory(data.messages);
-                } else if (data.chatType === 'group' && window.groupChatManager?.currentGroup?.id === data.chatId) {
-                    window.groupChatManager.displayGroupMessages(data.messages);
+    window.socket.on('message_delivered', (data) => {
+        console.log('✅ Message delivered:', data.messageId);
+        if (data.messageId) {
+            const messageElement = document.querySelector(`[data-message-id="${data.messageId}"]`);
+            if (messageElement) {
+                const deliveredBadge = messageElement.querySelector('.delivery-status');
+                if (!deliveredBadge) {
+                    const statusElement = document.createElement('span');
+                    statusElement.className = 'delivery-status';
+                    statusElement.textContent = ' ✓';
+                    statusElement.style.color = '#28a745';
+                    statusElement.style.marginLeft = '5px';
+                    messageElement.querySelector('.message-time')?.appendChild(statusElement);
                 }
             }
-        });
+        }
+    });
 
-        window.socket.on('message_delivered', (data) => {
-            console.log('✅ Message delivered:', data.messageId);
-            if (data.messageId) {
-                const messageElement = document.querySelector(`[data-message-id="${data.messageId}"]`);
-                if (messageElement) {
-                    const deliveredBadge = messageElement.querySelector('.delivery-status');
-                    if (!deliveredBadge) {
-                        const statusElement = document.createElement('span');
-                        statusElement.className = 'delivery-status';
-                        statusElement.textContent = ' ✓';
-                        statusElement.style.color = '#28a745';
-                        statusElement.style.marginLeft = '5px';
-                        messageElement.querySelector('.message-time')?.appendChild(statusElement);
-                    }
+    window.socket.on('message_read', (data) => {
+        console.log('👀 Message read:', data.messageId);
+        if (data.messageId) {
+            const messageElement = document.querySelector(`[data-message-id="${data.messageId}"]`);
+            if (messageElement) {
+                const readBadge = messageElement.querySelector('.read-status');
+                if (!readBadge) {
+                    const statusElement = document.createElement('span');
+                    statusElement.className = 'read-status';
+                    statusElement.textContent = ' 👁️';
+                    statusElement.style.color = '#007bff';
+                    statusElement.style.marginLeft = '5px';
+                    messageElement.querySelector('.message-time')?.appendChild(statusElement);
                 }
             }
-        });
+        }
+    });
 
-        window.socket.on('message_read', (data) => {
-            console.log('👀 Message read:', data.messageId);
-            if (data.messageId) {
-                const messageElement = document.querySelector(`[data-message-id="${data.messageId}"]`);
-                if (messageElement) {
-                    const readBadge = messageElement.querySelector('.read-status');
-                    if (!readBadge) {
-                        const statusElement = document.createElement('span');
-                        statusElement.className = 'read-status';
-                        statusElement.textContent = ' 👁️';
-                        statusElement.style.color = '#007bff';
-                        statusElement.style.marginLeft = '5px';
-                        messageElement.querySelector('.message-time')?.appendChild(statusElement);
-                    }
-                }
-            }
-        });
+    window.socket.on('user_typing', (data) => {
+        console.log('⌨️ User typing:', data);
+        if (this.currentChat === data.sender) {
+            this.showTypingIndicator(data.sender);
+        }
+    });
 
-        window.socket.on('user_typing', (data) => {
-            console.log('⌨️ User typing:', data);
-            if (this.currentChat === data.sender) {
-                this.showTypingIndicator(data.sender);
-            }
-        });
+    window.socket.on('user_stopped_typing', (data) => {
+        console.log('💤 User stopped typing:', data);
+        if (this.currentChat === data.sender) {
+            this.hideTypingIndicator();
+        }
+    });
 
-        window.socket.on('user_stopped_typing', (data) => {
-            console.log('💤 User stopped typing:', data);
-            if (this.currentChat === data.sender) {
-                this.hideTypingIndicator();
-            }
-        });
+    window.socket.on('user_verification_changed', (data) => {
+        console.log('✅ User verification changed:', data);
+        // Обновляем галочки верификации
+        if (window.verificationManager) {
+            window.verificationManager.updateAllVerificationBadges();
+        }
+    });
 
-        console.log('✅ PrivateChat socket listeners setup completed');
-    }
+    window.socket.on('user_avatar_updated', (data) => {
+        console.log('🖼️ User avatar updated:', data);
+        // Обновляем аватар в кэше
+        this.avatarCache.set(data.username, data.avatar);
+        
+        // Обновляем аватар в текущем чате если нужно
+        if (this.currentChat === data.username) {
+            this.updateChatHeader(data.username);
+        }
+        
+        // Обновляем аватар в списке диалогов
+        this.loadConversations();
+    });
+
+    console.log('✅ PrivateChat socket listeners setup completed');
+}   
 handleGiftReceived(data) {
     const notificationMessage = `🎁 Вы получили подарок "${data.gift.name}" от ${data.sender}`;
     
@@ -3343,7 +3707,7 @@ handleGiftReceived(data) {
         }
     }
 
- addCustomStyles() {
+addCustomStyles() {
     if (!document.getElementById('private-chat-styles')) {
         const styles = document.createElement('style');
         styles.id = 'private-chat-styles';
@@ -3392,9 +3756,9 @@ handleGiftReceived(data) {
                 text-overflow: ellipsis;
             }
             
+            /* СТИЛИ ДЛЯ СТАТУСА ПОЛЬЗОВАТЕЛЯ */
             .user-status {
                 font-size: 12px;
-                color: #6c757d;
                 display: flex;
                 align-items: center;
                 gap: 4px;
@@ -3402,160 +3766,149 @@ handleGiftReceived(data) {
             
             .user-status.online {
                 color: #28a745;
+                font-weight: bold;
+            }
+            
+            .user-status.online::before {
+                content: '●';
+                color: #28a745;
+                font-size: 14px;
+                animation: pulse 2s infinite;
             }
             
             .user-status.offline {
                 color: #dc3545;
             }
-                    /* Стили для меню действий чата */
-            .chat-menu-btn {
-                background: none;
-                border: none;
-                color: #6c757d;
-                font-size: 24px;
-                cursor: pointer;
-                padding: 8px;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                min-width: 40px;
-                height: 40px;
+            
+            .user-status.offline::before {
+                content: '○';
+                color: #dc3545;
+                font-size: 14px;
+            }
+            
+            /* ИНДИКАТОР ОНЛАЙН СТАТУСА В СПИСКЕ ДИАЛОГОВ */
+            .online-dot {
+                display: inline-block;
+                width: 8px;
+                height: 8px;
                 border-radius: 50%;
-                transition: all 0.3s ease;
+                background: #28a745;
+                margin-left: 6px;
+                vertical-align: middle;
+                animation: pulse 2s infinite;
             }
             
-            .chat-menu-btn:hover {
-                background: #f8f9fa;
-                color: #007bff;
-                transform: scale(1.1);
+            .conv-status {
+                font-size: 11px;
+                margin-top: 2px;
+                padding: 2px 6px;
+                border-radius: 10px;
+                display: inline-block;
+                font-weight: 500;
             }
             
-            .chat-context-menu {
-                display: none;
-                position: absolute;
-                top: 70px;
-                right: 20px;
-                background: white;
-                border: 1px solid #ddd;
-                border-radius: 8px;
-                box-shadow: 0 4px 20px rgba(0,0,0,0.15);
-                z-index: 1000;
-                min-width: 200px;
-                overflow: hidden;
-                animation: fadeIn 0.2s ease;
+            .conv-status.online {
+                background: rgba(40, 167, 69, 0.1);
+                color: #28a745;
+                border: 1px solid rgba(40, 167, 69, 0.2);
             }
             
-            .menu-header {
-                padding: 12px 15px;
-                background: #f8f9fa;
-                border-bottom: 1px solid #eee;
-                font-weight: bold;
-                color: #333;
+            .conv-status.offline {
+                background: rgba(108, 117, 125, 0.1);
+                color: #6c757d;
+                border: 1px solid rgba(108, 117, 125, 0.2);
             }
             
-            .menu-items {
-                list-style: none;
-                margin: 0;
-                padding: 0;
+            /* СТАТУС В РЕЗУЛЬТАТАХ ПОИСКА */
+            .search-user-status {
+                font-size: 11px;
+                padding: 2px 6px;
+                border-radius: 10px;
+                display: inline-block;
+                font-weight: 500;
             }
             
-            .menu-item {
-                padding: 12px 15px;
-                cursor: pointer;
-                transition: background 0.3s ease;
-                border-bottom: 1px solid #f0f0f0;
+            .search-user-status.online {
+                background: rgba(40, 167, 69, 0.1);
+                color: #28a745;
+                border: 1px solid rgba(40, 167, 69, 0.2);
+            }
+            
+            .search-user-status.offline {
+                background: rgba(108, 117, 125, 0.1);
+                color: #6c757d;
+                border: 1px solid rgba(108, 117, 125, 0.2);
+            }
+            
+            /* Стили для кнопок звонков */
+            .chat-call-buttons {
                 display: flex;
                 align-items: center;
                 gap: 10px;
-                font-size: 14px;
             }
             
-            .menu-item:hover {
-                background: #f8f9fa;
-            }
-            
-            .menu-item:last-child {
-                border-bottom: none;
-            }
-            
-            .menu-item.danger {
-                color: #dc3545;
-            }
-            
-            .menu-item.danger:hover {
-                background: #f8d7da;
-            }
-            
-            .menu-item.warning {
-                color: #ffc107;
-            }
-            
-            .menu-item.warning:hover {
-                background: #fff3cd;
-            }
-            
-            @keyframes fadeIn {
-                from { opacity: 0; transform: translateY(-10px); }
-                to { opacity: 1; transform: translateY(0); }
-            }
-            
-            /* Стили для предупреждения о блокировке */
-            .block-warning {
-                padding: 15px;
-                margin: 10px;
-                background: #fff3cd;
-                border: 1px solid #ffeaa7;
-                border-radius: 8px;
-                text-align: center;
-                color: #856404;
-                font-size: 14px;
-            }
-            
-            .block-warning button {
-                background: #28a745;
+            .video-call-btn {
+                background: #28a745 !important;
                 color: white;
                 border: none;
-                padding: 5px 10px;
-                border-radius: 4px;
-                margin-top: 5px;
+                border-radius: 8px;
+                width: 40px;
+                height: 40px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
                 cursor: pointer;
-                font-size: 12px;
+                font-size: 18px;
+                transition: all 0.3s ease;
             }
             
-            /* Стили для заблокированных пользователей в списке */
-            .conversation-item.blocked {
-                opacity: 0.6;
-                position: relative;
+            .audio-call-btn {
+                background: #007bff !important;
+                color: white;
+                border: none;
+                border-radius: 8px;
+                width: 40px;
+                height: 40px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                cursor: pointer;
+                font-size: 18px;
+                transition: all 0.3s ease;
             }
             
-            .conversation-item.blocked::after {
-                content: "🚫";
-                position: absolute;
-                right: 10px;
-                top: 50%;
-                transform: translateY(-50%);
-                font-size: 16px;
+            .close-chat {
+                background: #dc3545 !important;
+                color: white;
+                border: none;
+                border-radius: 8px;
+                width: 40px;
+                height: 40px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                cursor: pointer;
+                font-size: 18px;
+                transition: all 0.3s ease;
+                margin-left: 5px;
             }
             
-            /* Дополнительные стили для мобильных */
-            @media (max-width: 768px) {
-                .chat-context-menu {
-                    position: fixed;
-                    top: auto;
-                    bottom: 0;
-                    left: 0;
-                    right: 0;
-                    width: 100%;
-                    border-radius: 15px 15px 0 0;
-                    max-width: 100%;
-                }
-                
-                .menu-item {
-                    padding: 16px 20px;
-                    font-size: 16px;
-                }
+            .video-call-btn:hover {
+                background: #218838 !important;
+                transform: scale(1.1);
             }
-              /* Стили для кнопки меню */
+            
+            .audio-call-btn:hover {
+                background: #0056b3 !important;
+                transform: scale(1.1);
+            }
+            
+            .close-chat:hover {
+                background: #c82333 !important;
+                transform: scale(1.1);
+            }
+            
+            /* Стили для меню */
             .chat-menu-btn {
                 background: none !important;
                 border: none !important;
@@ -3576,116 +3929,6 @@ handleGiftReceived(data) {
                 background: #f8f9fa !important;
                 color: #007bff !important;
                 transform: scale(1.1) !important;
-            }
-            
-            /* Стили для контекстного меню */
-            .chat-context-menu {
-                display: none;
-                position: absolute;
-                top: 70px;
-                right: 20px;
-                background: white;
-                border: 1px solid #ddd;
-                border-radius: 8px;
-                box-shadow: 0 4px 20px rgba(0,0,0,0.15);
-                z-index: 1000;
-                min-width: 200px;
-                overflow: hidden;
-                animation: fadeIn 0.2s ease;
-            }
-            
-            .menu-header {
-                padding: 12px 15px;
-                background: #f8f9fa;
-                border-bottom: 1px solid #eee;
-                font-weight: bold;
-                color: #333;
-            }
-            
-            .menu-items {
-                list-style: none;
-                margin: 0;
-                padding: 0;
-            }
-            
-            .menu-item {
-                padding: 12px 15px;
-                cursor: pointer;
-                transition: background 0.3s ease;
-                border-bottom: 1px solid #f0f0f0;
-                display: flex;
-                align-items: center;
-                gap: 10px;
-                font-size: 14px;
-            }
-            
-            .menu-item:hover {
-                background: #f8f9fa;
-            }
-            
-            .menu-item:last-child {
-                border-bottom: none;
-            }
-            
-            .menu-item.danger {
-                color: #dc3545;
-            }
-            
-            .menu-item.danger:hover {
-                background: #f8d7da;
-            }
-            
-            .menu-item.warning {
-                color: #ffc107;
-            }
-            
-            .menu-item.warning:hover {
-                background: #fff3cd;
-            }
-            
-            @keyframes fadeIn {
-                from { opacity: 0; transform: translateY(-10px); }
-                to { opacity: 1; transform: translateY(0); }
-            }
-            
-            /* Дополнительные стили для мобильных */
-            @media (max-width: 768px) {
-                .chat-context-menu {
-                    position: fixed;
-                    top: auto;
-                    bottom: 0;
-                    left: 0;
-                    right: 0;
-                    width: 100%;
-                    border-radius: 15px 15px 0 0;
-                    max-width: 100%;
-                }
-                
-                .menu-item {
-                    padding: 16px 20px;
-                    font-size: 16px;
-                }
-            }
-            /* Стили для кнопок звонков */
-            .chat-call-buttons {
-                display: flex;
-                align-items: center;
-                gap: 10px;
-            }
-            
-            .video-call-btn:hover {
-                background: #218838 !important;
-                transform: scale(1.1);
-            }
-            
-            .audio-call-btn:hover {
-                background: #0056b3 !important;
-                transform: scale(1.1);
-            }
-            
-            .close-chat:hover {
-                background: #c82333 !important;
-                transform: scale(1.1);
             }
             
             /* Адаптивность для мобильных */
@@ -3711,36 +3954,39 @@ handleGiftReceived(data) {
                     gap: 8px;
                 }
                 
-                .video-call-btn, .audio-call-btn {
-                    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
-                }
-                
-                .video-call-btn:active {
-                    background: #1e7e34 !important;
-                    transform: scale(0.95);
-                }
-                
-                .audio-call-btn:active {
-                    background: #004085 !important;
-                    transform: scale(0.95);
+                .video-call-btn, .audio-call-btn, .close-chat {
+                    width: 44px;
+                    height: 44px;
+                    font-size: 20px;
+                    border-radius: 50%;
                 }
             }
             
             /* Анимации */
             @keyframes pulse {
-                0% { transform: scale(1); }
-                50% { transform: scale(1.05); }
-                100% { transform: scale(1); }
+                0% {
+                    opacity: 1;
+                    transform: scale(1);
+                }
+                50% {
+                    opacity: 0.5;
+                    transform: scale(0.9);
+                }
+                100% {
+                    opacity: 1;
+                    transform: scale(1);
+                }
             }
             
-            .video-call-btn.calling {
-                animation: pulse 1.5s infinite;
-                background: #ffc107 !important;
-            }
-            
-            .audio-call-btn.calling {
-                animation: pulse 1.5s infinite;
-                background: #ffc107 !important;
+            @keyframes slideIn {
+                from {
+                    opacity: 0;
+                    transform: translateY(10px);
+                }
+                to {
+                    opacity: 1;
+                    transform: translateY(0);
+                }
             }
             
             /* Общие стили для плеера голосовых сообщений */
@@ -3752,6 +3998,7 @@ handleGiftReceived(data) {
                 background: #f8f9fa;
                 border-radius: 10px;
                 margin: 5px 0;
+                animation: slideIn 0.3s ease;
             }
             
             .play-voice-btn {
@@ -3829,11 +4076,69 @@ handleGiftReceived(data) {
             .voice-icon {
                 font-size: 14px;
             }
+            
+            /* Стили для сообщений */
+            .private-message {
+                max-width: 85%;
+                margin-bottom: 10px;
+                padding: 12px 16px;
+                border-radius: 15px;
+                animation: slideIn 0.3s ease;
+                position: relative;
+            }
+            
+            .private-message.own {
+                background: linear-gradient(45deg, #667eea, #764ba2);
+                color: white;
+                margin-left: auto;
+                border-bottom-right-radius: 5px;
+            }
+            
+            .private-message.other {
+                background: #f8f9fa;
+                color: #333;
+                margin-right: auto;
+                border-bottom-left-radius: 5px;
+            }
+            
+            .message-content {
+                position: relative;
+                z-index: 1;
+            }
+            
+            .message-header {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                margin-bottom: 8px;
+                font-size: 12px;
+            }
+            
+            .message-header strong {
+                font-weight: 600;
+            }
+            
+            .message-time {
+                opacity: 0.8;
+                font-size: 11px;
+                margin-left: 10px;
+            }
+            
+            .message-text {
+                font-size: 15px;
+                line-height: 1.4;
+                word-break: break-word;
+            }
+            
+            .delivery-status, .read-status {
+                font-size: 10px;
+                margin-left: 5px;
+                opacity: 0.8;
+            }
         `;
         document.head.appendChild(styles);
     }
 }
-
     debounce(func, wait) {
         let timeout;
         return function executedFunction(...args) {
@@ -4363,8 +4668,6 @@ async displayConversations() {
                 try {
                     if (!conversation.isGroup) {
                         conversation.avatarUrl = await this.loadUserAvatarSafe(conversation.username);
-                        // Проверяем блокировку
-                        conversation.isBlocked = this.isUserBlocked(conversation.username);
                     }
                     return conversation;
                 } catch (error) {
@@ -4393,9 +4696,11 @@ renderConversationsList(conversations, container) {
     container.innerHTML = '';
 
     if (conversations.length === 0) {
-        container.innerHTML = '<div class="conversation-item empty">Нет диалогов</div>';
+        container.innerHTML = '<div class="conversation-item empty">📝 Нет диалогов</div>';
         return;
     }
+
+    console.log(`🔄 Rendering ${conversations.length} conversations`);
 
     conversations.forEach(conversation => {
         const convElement = document.createElement('div');
@@ -4411,77 +4716,167 @@ renderConversationsList(conversations, container) {
         
         convElement.className = `conversation-item ${isActive ? 'active' : ''} ${isGroup ? 'group-item' : ''}`;
         
+        // Сохраняем имя пользователя в data-атрибуте для точного определения
+        if (!isGroup && conversation.username) {
+            convElement.setAttribute('data-username', conversation.username);
+        }
+        
         const lastMsg = conversation.lastMessage;
-        let preview = 'Нет сообщений';
+        let preview = '📝 Нет сообщений';
+        let timestamp = '';
         
         if (lastMsg) {
-            preview = lastMsg.isOwn ? `Вы: ${lastMsg.text}` : 
-                     isGroup ? `${lastMsg.sender}: ${lastMsg.text}` : lastMsg.text;
-            if (preview.length > 30) preview = preview.substring(0, 30) + '...';
+            // Форматируем текст предпросмотра
+            let messageText = lastMsg.text || '📄 Вложение';
+            if (lastMsg.type === 'voice') {
+                messageText = '🎤 Голосовое сообщение';
+            } else if (lastMsg.type === 'file') {
+                messageText = '📎 Файл';
+            } else if (lastMsg.type === 'image') {
+                messageText = '🖼️ Изображение';
+            } else if (lastMsg.type === 'gift') {
+                messageText = '🎁 Подарок';
+            }
+            
+            preview = lastMsg.isOwn ? `Вы: ${messageText}` : 
+                     isGroup ? `${lastMsg.sender}: ${messageText}` : messageText;
+            
+            // Обрезаем длинный текст
+            if (preview.length > 35) {
+                preview = preview.substring(0, 35) + '...';
+            }
+            
+            // Форматируем время
+            timestamp = lastMsg.timestamp || this.formatMessageTime(lastMsg.date);
         }
 
         if (!isGroup) {
-            // Для приватных чатов - с аватаром
+            // ПРИВАТНЫЙ ЧАТ
+            const displayName = conversation.username || 'Неизвестный';
             const isOnline = this.onlineUsers.has(conversation.username);
             const onlineIndicator = isOnline ? '<span class="online-dot" title="В сети"></span>' : '';
+            
+            // Проверяем верификацию
+            const isVerified = window.verificationManager?.isUserVerified(displayName) || false;
+            const verifiedBadge = isVerified ? ' ✅' : '';
+            
             const avatarUrl = conversation.avatarUrl || this.getDefaultAvatarUrl();
             
             convElement.innerHTML = `
                 <div class="conv-info">
                     <div class="conv-header">
-                        <span class="conv-name">
-                            <img src="${avatarUrl}" class="conversation-avatar" alt="${conversation.username}" 
-                                 onerror="this.src='${this.getDefaultAvatarUrl()}'"
-                                 data-username="${conversation.username}"
-                                 data-is-group="false">
-                            ${conversation.username} ${onlineIndicator}
-                        </span>
-                        ${lastMsg ? `<span class="conv-time">${lastMsg.timestamp}</span>` : ''}
+                        <div class="conv-name-wrapper">
+                            <span class="conv-name">
+                                <img src="${avatarUrl}" class="conversation-avatar" alt="${displayName}" 
+                                     onerror="this.src='${this.getDefaultAvatarUrl()}'"
+                                     data-username="${displayName}"
+                                     data-is-group="false"
+                                     title="Открыть профиль">
+                                <span class="username-text">${displayName}${verifiedBadge}</span>
+                                ${onlineIndicator}
+                            </span>
+                            ${timestamp ? `<span class="conv-time">${timestamp}</span>` : ''}
+                        </div>
                     </div>
                     <div class="conv-preview">${preview}</div>
+                    <div class="conv-status ${isOnline ? 'online' : 'offline'}">
+                        ${isOnline ? '🟢 онлайн' : '⚫ не в сети'}
+                    </div>
                 </div>
             `;
-
-            convElement.addEventListener('click', (e) => {
-                // Если кликнули на аватар - открываем профиль
-                const avatar = e.target.closest('.conversation-avatar');
-                if (avatar) {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    this.openUserProfile(conversation.username);
-                    return;
+            
+            // Асинхронно загружаем актуальный аватар
+            this.loadUserAvatarSafe(displayName).then(avatarUrl => {
+                const avatarImg = convElement.querySelector('.conversation-avatar');
+                if (avatarImg && avatarImg.src !== avatarUrl) {
+                    avatarImg.src = avatarUrl;
                 }
-                
-                // Если кликнули на карточку - открываем чат
-                this.startChat(conversation.username);
+            }).catch(() => {
+                // В случае ошибки оставляем текущий аватар
             });
             
         } else {
-            // Для групповых чатов - БЕЗ аватара, БЕЗ профиля
-            const memberInfo = `<div class="conv-members">${conversation.memberCount || conversation.members?.length || 0} участников</div>`;
+            // ГРУППОВОЙ ЧАТ
+            const memberCount = conversation.memberCount || conversation.members?.length || 0;
+            const displayName = conversation.name || conversation.username || 'Без названия';
             
             convElement.innerHTML = `
                 <div class="conv-info">
                     <div class="conv-header">
-                        <span class="conv-name">
-                            <div class="group-avatar" data-is-group="true">👥</div>
-                            ${conversation.name}
-                        </span>
-                        ${lastMsg ? `<span class="conv-time">${lastMsg.timestamp}</span>` : ''}
+                        <div class="conv-name-wrapper">
+                            <span class="conv-name">
+                                <div class="group-avatar" style="
+                                    width: 40px;
+                                    height: 40px;
+                                    border-radius: 50%;
+                                    background: linear-gradient(45deg, #667eea, #764ba2);
+                                    display: flex;
+                                    align-items: center;
+                                    justify-content: center;
+                                    color: white;
+                                    font-size: 20px;
+                                    margin-right: 10px;
+                                ">👥</div>
+                                <span class="group-name-text">${displayName}</span>
+                            </span>
+                            ${timestamp ? `<span class="conv-time">${timestamp}</span>` : ''}
+                        </div>
                     </div>
                     <div class="conv-preview">${preview}</div>
-                    ${memberInfo}
+                    <div class="conv-meta">
+                        <span class="conv-members">👤 ${memberCount} участников</span>
+                    </div>
                 </div>
             `;
-
-            convElement.addEventListener('click', (e) => {
-                // Для групп просто открываем чат, не предлагаем профиль
-                this.startChat(conversation.name, true, conversation.id);
-            });
         }
-        
+
+        // Обработчик клика
+        convElement.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            
+            if (isGroup) {
+                console.log(`💬 Opening group chat:`, {
+                    isGroup: true,
+                    name: conversation.name || conversation.username,
+                    id: conversation.id
+                });
+                
+                this.startChat(conversation.name || conversation.username, true, conversation.id);
+            } else {
+                // Для приватных чатов проверяем, куда кликнули
+                const avatar = e.target.closest('.conversation-avatar');
+                if (avatar) {
+                    // Если кликнули на аватар - открываем профиль
+                    const username = avatar.getAttribute('data-username');
+                    if (username) {
+                        this.openUserProfile(username);
+                        return;
+                    }
+                }
+                
+                // Если кликнули на карточку - открываем чат
+                this.startChat(conversation.username);
+            }
+        });
+
+        // Эффекты при наведении
+        convElement.addEventListener('mouseenter', () => {
+            if (!isActive) {
+                convElement.style.backgroundColor = '#f8f9fa';
+            }
+        });
+
+        convElement.addEventListener('mouseleave', () => {
+            if (!isActive) {
+                convElement.style.backgroundColor = '';
+            }
+        });
+
         container.appendChild(convElement);
     });
+
+    console.log('✅ Conversations rendered successfully');
 }
 displayConversationsWithDefaultAvatars() {
     const container = document.getElementById('conversationsList');
@@ -5337,52 +5732,73 @@ showChatList() {
     // Обновляем активную кнопку
     this.updateMobileNavActive('chats');
 }
-    updateOnlineStatuses() {
-        console.log('🔄 Updating online statuses...');
-        
-        if (this.currentChat) {
-            const currentUserStatus = document.getElementById('currentUserStatus');
-            if (currentUserStatus) {
-                const isOnline = this.onlineUsers.has(this.currentChat);
-                currentUserStatus.textContent = isOnline ? 'online' : 'offline';
-                currentUserStatus.className = `user-status ${isOnline ? 'online' : 'offline'}`;
+updateOnlineStatuses() {
+    console.log('🔄 Updating online statuses...', {
+        currentChat: this.currentChat,
+        onlineUsers: Array.from(this.onlineUsers),
+        socket: window.socket?.connected
+    });
+    
+    if (this.currentChat) {
+        const currentUserStatus = document.getElementById('currentUserStatus');
+        if (currentUserStatus) {
+            const isOnline = this.onlineUsers.has(this.currentChat);
+            console.log(`📱 Status for ${this.currentChat}:`, isOnline ? 'online' : 'offline');
+            currentUserStatus.textContent = isOnline ? 'online' : 'offline';
+            currentUserStatus.className = `user-status ${isOnline ? 'online' : 'offline'}`;
+        }
+    }
+    
+    // Обновляем статус в списке диалогов
+    const conversationItems = document.querySelectorAll('.conversation-item:not(.group-item)');
+    conversationItems.forEach(item => {
+        const usernameElement = item.querySelector('.conv-name, .username-text');
+        if (usernameElement) {
+            const text = usernameElement.textContent.trim();
+            // Извлекаем имя пользователя из текста (убираем лишние символы)
+            let username = text.replace(/^👤\s*/, '').split(' ')[0];
+            
+            // Убираем галочку верификации если есть
+            username = username.replace(/✅\s*/, '').trim();
+            
+            if (username) {
+                const isOnline = this.onlineUsers.has(username);
+                const onlineDot = isOnline ? '<span class="online-dot"></span>' : '';
+                
+                // Обновляем только индикатор онлайн статуса
+                const existingIndicator = usernameElement.querySelector('.online-dot');
+                if (existingIndicator) {
+                    existingIndicator.remove();
+                }
+                if (isOnline) {
+                    usernameElement.insertAdjacentHTML('beforeend', onlineDot);
+                }
+                
+                // Обновляем текст статуса под именем пользователя
+                const statusElement = item.querySelector('.conv-status');
+                if (statusElement) {
+                    statusElement.textContent = isOnline ? '🟢 онлайн' : '⚫ не в сети';
+                    statusElement.className = `conv-status ${isOnline ? 'online' : 'offline'}`;
+                }
             }
         }
-        
-        const conversationItems = document.querySelectorAll('.conversation-item:not(.group-item)');
-        conversationItems.forEach(item => {
-            const usernameElement = item.querySelector('.conv-name');
-            if (usernameElement) {
-                const text = usernameElement.textContent.trim();
-                const username = text.replace(/^👤\s*/, '').split(' ')[0];
-                
-                if (username) {
-                    const isOnline = this.onlineUsers.has(username);
-                    const onlineDot = isOnline ? '<span class="online-dot"></span>' : '';
-                    
-                    const currentContent = usernameElement.innerHTML;
-                    const baseContent = currentContent.replace(/<span class="online-dot"><\/span>/g, '');
-                    usernameElement.innerHTML = baseContent + onlineDot;
-                }
+    });
+    
+    // Обновляем статус в результатах поиска
+    const searchResults = document.querySelectorAll('.search-result');
+    searchResults.forEach(result => {
+        const usernameElement = result.querySelector('.search-username');
+        if (usernameElement) {
+            const username = usernameElement.textContent.trim();
+            const statusElement = result.querySelector('.search-user-status');
+            if (statusElement && username) {
+                const isOnline = this.onlineUsers.has(username);
+                statusElement.textContent = isOnline ? 'online' : 'offline';
+                statusElement.className = `search-user-status ${isOnline ? 'online' : 'offline'}`;
             }
-        });
-        
-        const searchResults = document.querySelectorAll('.search-result');
-        searchResults.forEach(result => {
-            const usernameElement = result.querySelector('.search-username');
-            if (usernameElement) {
-                const username = usernameElement.textContent.trim();
-                const statusElement = result.querySelector('.search-user-status');
-                if (statusElement && username) {
-                    const isOnline = this.onlineUsers.has(username);
-                    statusElement.textContent = isOnline ? 'online' : 'offline';
-                    statusElement.className = `search-user-status ${isOnline ? 'online' : 'offline'}`;
-                }
-            }
-        });
-    }
-
-
+        }
+    });
+}
     showNotification(message, type = 'info') {
         const notification = document.createElement('div');
         notification.className = `notification ${type}`;
@@ -5441,38 +5857,24 @@ toggleAdminPanel() {
             }
         });
     }
-
 async loadOnlineUsers() {
     try {
         console.log('🔄 Loading online users...');
         
-        if (!this.isAdmin) {
-            console.log('⚠️ User is not admin, skipping online users load');
-            return;
-        }
-
-        // Убираем проблемный вызов fetchCallImpl
         const response = await fetch('/api/users/online');
-        
-        if (response.status === 404) {
-            console.log('⚠️ Online users endpoint not found');
-            this.showFallbackOnlineUsers();
-            return;
+        if (response.ok) {
+            const onlineUsersArray = await response.json();
+            this.onlineUsers = new Set(onlineUsersArray);
+            this.updateOnlineStatuses();
+            console.log(`✅ Loaded ${onlineUsersArray.length} online users`);
+        } else {
+            console.log('⚠️ Online users endpoint not available');
+            // Используем данные из сокета
         }
-        
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}`);
-        }
-        
-        const users = await response.json();
-        this.displayOnlineUsers(users);
-        
     } catch (error) {
         console.error('❌ Error loading online users:', error);
-        this.showFallbackOnlineUsers();
     }
 }
-
 showFallbackOnlineUsers() {
     const onlineUsersList = document.getElementById('onlineUsersList');
     if (onlineUsersList) {
@@ -5965,717 +6367,70 @@ openGiftForUser(username) {
             }
         }
     }
-createChatContextMenu() {
-    const chatTopBar = document.querySelector('.chat-top-bar');
-    if (!chatTopBar || this.chatMenuCreated) return;
-    
-    // Создаем кнопку меню (три точки)
-    const menuButton = document.createElement('button');
-    menuButton.className = 'chat-menu-btn';
-    menuButton.innerHTML = '⋮';
-    menuButton.title = 'Действия с чатом';
-    menuButton.style.cssText = `
-        background: none !important;
-        border: none !important;
-        color: #6c757d !important;
-        font-size: 24px !important;
-        cursor: pointer !important;
-        padding: 8px !important;
-        display: flex !important;
-        align-items: center !important;
-        justify-content: center !important;
-        min-width: 40px !important;
-        height: 40px !important;
-        border-radius: 50% !important;
-        transition: all 0.3s ease !important;
-        margin-left: 10px;
-    `;
-    
-    // Создаем контекстное меню
-    const contextMenu = document.createElement('div');
-    contextMenu.className = 'chat-context-menu';
-    contextMenu.style.cssText = `
-        display: none;
-        position: absolute;
-        top: 60px;
-        right: 10px;
-        background: white;
-        border: 1px solid #ddd;
-        border-radius: 10px;
-        box-shadow: 0 4px 20px rgba(0,0,0,0.15);
-        z-index: 1000;
-        min-width: 180px;
-        max-width: 250px;
-        overflow: hidden;
-        animation: fadeIn 0.2s ease;
-    `;
-    
-    // Для мобильных - адаптируем стили
-    if (isMobileDevice()) {
-        contextMenu.style.cssText += `
-            position: fixed;
-            top: auto;
-            bottom: 80px; /* Над навигацией */
-            right: 10px;
-            left: 10px;
-            width: auto;
-            max-width: 280px;
-            margin: 0 auto;
-            border-radius: 12px;
-        `;
-    }
-    
-    const isBlocked = this.isUserBlocked(this.currentChat);
-    
-    contextMenu.innerHTML = `
-        <div class="menu-header" style="
-            padding: 12px 15px;
-            background: #f8f9fa;
-            border-bottom: 1px solid #eee;
-            font-weight: bold;
-            color: #333;
-            font-size: 14px;
-        ">
-            ${this.currentChat}
-        </div>
-        <ul class="menu-items" style="list-style: none; margin: 0; padding: 0;">
-            <li class="menu-item" data-action="view-profile" style="
-                padding: 12px 15px;
-                cursor: pointer;
-                transition: background 0.3s ease;
-                border-bottom: 1px solid #f0f0f0;
-                display: flex;
-                align-items: center;
-                gap: 10px;
-                font-size: 14px;
-            ">
-                <span style="color: #007bff;">👤</span>
-                <span>Профиль пользователя</span>
-            </li>
-            <li class="menu-item" data-action="clear-chat" style="
-                padding: 12px 15px;
-                cursor: pointer;
-                transition: background 0.3s ease;
-                border-bottom: 1px solid #f0f0f0;
-                display: flex;
-                align-items: center;
-                gap: 10px;
-                font-size: 14px;
-            ">
-                <span style="color: #6c757d;">🧹</span>
-                <span>Очистить историю</span>
-            </li>
-            <li class="menu-item ${isBlocked ? 'warning' : 'danger'}" data-action="${isBlocked ? 'unblock-user' : 'block-user'}" style="
-                padding: 12px 15px;
-                cursor: pointer;
-                transition: background 0.3s ease;
-                border-bottom: 1px solid #f0f0f0;
-                display: flex;
-                align-items: center;
-                gap: 10px;
-                font-size: 14px;
-            ">
-                <span style="color: ${isBlocked ? '#ffc107' : '#dc3545'};">${isBlocked ? '🔓' : '🚫'}</span>
-                <span>${isBlocked ? 'Разблокировать' : 'Заблокировать'}</span>
-            </li>
-            <li class="menu-item danger" data-action="delete-chat" style="
-                padding: 12px 15px;
-                cursor: pointer;
-                transition: background 0.3s ease;
-                display: flex;
-                align-items: center;
-                gap: 10px;
-                font-size: 14px;
-            ">
-                <span style="color: #dc3545;">🗑️</span>
-                <span>Удалить чат</span>
-            </li>
-        </ul>
-    `;
-    
-    // Добавляем элементы в DOM
-    chatTopBar.appendChild(menuButton);
-    document.body.appendChild(contextMenu);
-    
-    // Обработчики событий для меню
-    let menuVisible = false;
-    
-    // Показать/скрыть меню
-    menuButton.addEventListener('click', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        
-        // Если меню уже отображается, скрываем его
-        if (menuVisible) {
-            contextMenu.style.display = 'none';
-            menuVisible = false;
-            return;
-        }
-        
-        // Обновляем статус блокировки
-        const isBlocked = this.isUserBlocked(this.currentChat);
-        const blockItem = contextMenu.querySelector('[data-action*="block"]');
-        if (blockItem) {
-            if (isBlocked) {
-                blockItem.setAttribute('data-action', 'unblock-user');
-                blockItem.innerHTML = `
-                    <span style="color: #ffc107;">🔓</span>
-                    <span>Разблокировать</span>
-                `;
-                blockItem.className = 'menu-item warning';
-            } else {
-                blockItem.setAttribute('data-action', 'block-user');
-                blockItem.innerHTML = `
-                    <span style="color: #dc3545;">🚫</span>
-                    <span>Заблокировать</span>
-                `;
-                blockItem.className = 'menu-item danger';
-            }
-        }
-        
-        // Позиционируем меню
-        if (isMobileDevice()) {
-            // Для мобильных - фиксированное позиционирование над навигацией
-            contextMenu.style.bottom = '80px';
-            contextMenu.style.top = 'auto';
-            contextMenu.style.left = '10px';
-            contextMenu.style.right = '10px';
-            contextMenu.style.margin = '0 auto';
-        } else {
-            // Для десктопа - абсолютное позиционирование
-            const rect = menuButton.getBoundingClientRect();
-            contextMenu.style.top = `${rect.bottom + window.scrollY + 5}px`;
-            contextMenu.style.right = `${window.innerWidth - rect.right - 10}px`;
-        }
-        
-        contextMenu.style.display = 'block';
-        menuVisible = true;
-        
-        // Добавляем анимацию появления
-        contextMenu.style.opacity = '0';
-        contextMenu.style.transform = 'translateY(-10px)';
-        
-        setTimeout(() => {
-            contextMenu.style.transition = 'all 0.2s ease';
-            contextMenu.style.opacity = '1';
-            contextMenu.style.transform = 'translateY(0)';
-        }, 10);
-    });
-    
-    // Обработчики для пунктов меню
-    contextMenu.querySelectorAll('.menu-item').forEach(item => {
-        item.addEventListener('click', (e) => {
-            e.stopPropagation();
-            const action = item.getAttribute('data-action');
-            this.handleChatAction(action);
-            
-            // Закрываем меню с анимацией
-            contextMenu.style.opacity = '0';
-            contextMenu.style.transform = 'translateY(-10px)';
-            setTimeout(() => {
-                contextMenu.style.display = 'none';
-                menuVisible = false;
-            }, 200);
-        });
-        
-        // Эффекты при наведении (только для десктопа)
-        if (!isMobileDevice()) {
-            item.addEventListener('mouseenter', () => {
-                item.style.background = item.classList.contains('danger') ? '#f8d7da' : 
-                                       item.classList.contains('warning') ? '#fff3cd' : '#f8f9fa';
-            });
-            item.addEventListener('mouseleave', () => {
-                item.style.background = '';
-            });
-        }
-        
-        // Для мобильных - эффект при нажатии
-        if (isMobileDevice()) {
-            item.addEventListener('touchstart', () => {
-                item.style.background = item.classList.contains('danger') ? '#f8d7da' : 
-                                       item.classList.contains('warning') ? '#fff3cd' : '#f8f9fa';
-            });
-            item.addEventListener('touchend', () => {
-                setTimeout(() => {
-                    item.style.background = '';
-                }, 200);
-            });
-        }
-    });
-    
-    // Закрытие меню при клике вне его
-    document.addEventListener('click', (e) => {
-        if (menuVisible && 
-            !contextMenu.contains(e.target) && 
-            !menuButton.contains(e.target)) {
-            
-            contextMenu.style.opacity = '0';
-            contextMenu.style.transform = 'translateY(-10px)';
-            
-            setTimeout(() => {
-                contextMenu.style.display = 'none';
-                menuVisible = false;
-            }, 200);
-        }
-    });
-    
-    // Закрытие меню при нажатии Esc
-    document.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape' && menuVisible) {
-            contextMenu.style.opacity = '0';
-            contextMenu.style.transform = 'translateY(-10px)';
-            
-            setTimeout(() => {
-                contextMenu.style.display = 'none';
-                menuVisible = false;
-            }, 200);
-        }
-    });
-    
-    // Для мобильных - закрытие при прокрутке
-    if (isMobileDevice()) {
-        window.addEventListener('scroll', () => {
-            if (menuVisible) {
-                contextMenu.style.opacity = '0';
-                contextMenu.style.transform = 'translateY(-10px)';
-                
-                setTimeout(() => {
-                    contextMenu.style.display = 'none';
-                    menuVisible = false;
-                }, 200);
-            }
-        });
-    }
-    
-    this.chatMenuCreated = true;
-}
-// Обработчик действий меню
-handleChatAction(action) {
-    if (!this.currentChat) {
-        this.showNotification('Выберите чат для выполнения действия', 'error');
-        return;
-    }
-    
-    switch(action) {
-        case 'delete-chat':
-            this.deleteChat();
-            break;
-        case 'block-user':
-            this.blockUser();
-            break;
-        case 'unblock-user':
-            this.unblockUser();
-            break;
-        case 'view-profile':
-            this.openUserProfile(this.currentChat);
-            break;
-        case 'clear-chat':
-            this.clearChat();
-            break;
-        default:
-            console.log('Unknown action:', action);
-    }
-}
 
-// Метод для проверки, заблокирован ли пользователь
-isUserBlocked(username) {
-    const blockedUsers = JSON.parse(localStorage.getItem('blocked_users') || '[]');
-    const currentUser = this.getCurrentUser();
-    return blockedUsers.some(block => 
-        (block.blocker === currentUser && block.blocked === username) ||
-        (block.blocker === username && block.blocked === currentUser)
-    );
-}
-
-// Метод для блокировки пользователя
-async blockUser() {
-    if (!this.currentChat) return;
-    
-    const confirmed = confirm(`Вы уверены, что хотите заблокировать пользователя ${this.currentChat}?\n\nПосле блокировки:\n• Вы не сможете отправлять сообщения друг другу\n• Вы не увидите сообщения друг от друга\n• Блокировку можно отменить в любое время`);
-    
-    if (!confirmed) return;
-    
-    try {
-        const currentUser = this.getCurrentUser();
-        const blockedUsers = JSON.parse(localStorage.getItem('blocked_users') || '[]');
-        
-        // Проверяем, не заблокирован ли уже пользователь
-        const alreadyBlocked = blockedUsers.some(block => 
-            block.blocker === currentUser && block.blocked === this.currentChat
-        );
-        
-        if (alreadyBlocked) {
-            this.showNotification('Пользователь уже заблокирован', 'warning');
-            return;
-        }
-        
-        // Добавляем блокировку
-        blockedUsers.push({
-            blocker: currentUser,
-            blocked: this.currentChat,
-            timestamp: new Date().toISOString(),
-            reason: 'Пользовательская блокировка'
-        });
-        
-        localStorage.setItem('blocked_users', JSON.stringify(blockedUsers));
-        
-        // Отправляем уведомление через сокет (если доступно)
-        if (window.socket) {
-            window.socket.emit('user_blocked', {
-                blocker: currentUser,
-                blocked: this.currentChat,
-                timestamp: new Date().toISOString()
-            });
-        }
-        
-        // Обновляем интерфейс
-        this.updateBlockStatus(true);
-        
-        this.showNotification(`Пользователь ${this.currentChat} заблокирован`, 'success');
-        
-        // Если мы в чате с заблокированным пользователем, закрываем чат
-        if (this.currentChat === this.currentChat) {
-            this.closeCurrentChat();
-        }
-        
-        // Обновляем список бесед
-        this.loadConversations();
-        
-    } catch (error) {
-        console.error('❌ Error blocking user:', error);
-        this.showNotification('Ошибка при блокировке пользователя', 'error');
-    }
-}
-
-// Метод для разблокировки пользователя
-async unblockUser() {
-    if (!this.currentChat) return;
-    
-    const confirmed = confirm(`Вы уверены, что хотите разблокировать пользователя ${this.currentChat}?\n\nПосле разблокировки:\n• Вы сможете отправлять сообщения друг другу\n• Вы увидите все сообщения\n• Блокировку можно восстановить в любое время`);
-    
-    if (!confirmed) return;
-    
-    try {
-        const currentUser = this.getCurrentUser();
-        let blockedUsers = JSON.parse(localStorage.getItem('blocked_users') || '[]');
-        
-        // Удаляем блокировку
-        const initialLength = blockedUsers.length;
-        blockedUsers = blockedUsers.filter(block => 
-            !(block.blocker === currentUser && block.blocked === this.currentChat)
-        );
-        
-        if (blockedUsers.length === initialLength) {
-            this.showNotification('Пользователь не был заблокирован', 'warning');
-            return;
-        }
-        
-        localStorage.setItem('blocked_users', JSON.stringify(blockedUsers));
-        
-        // Отправляем уведомление через сокет
-        if (window.socket) {
-            window.socket.emit('user_unblocked', {
-                blocker: currentUser,
-                blocked: this.currentChat,
-                timestamp: new Date().toISOString()
-            });
-        }
-        
-        // Обновляем интерфейс
-        this.updateBlockStatus(false);
-        
-        this.showNotification(`Пользователь ${this.currentChat} разблокирован`, 'success');
-        
-        // Обновляем список бесед
-        this.loadConversations();
-        
-    } catch (error) {
-        console.error('❌ Error unblocking user:', error);
-        this.showNotification('Ошибка при разблокировке пользователя', 'error');
-    }
-}
-
-// Метод для обновления статуса блокировки в интерфейсе
-updateBlockStatus(isBlocked) {
-    // Обновляем кнопку в меню
-    const blockButton = document.querySelector('[data-action*="block"]');
-    if (blockButton) {
-        if (isBlocked) {
-            blockButton.setAttribute('data-action', 'unblock-user');
-            blockButton.innerHTML = `
-                <span style="color: #ffc107;">🔓</span>
-                <span>Разблокировать</span>
-            `;
-            blockButton.className = 'menu-item warning';
-        } else {
-            blockButton.setAttribute('data-action', 'block-user');
-            blockButton.innerHTML = `
-                <span style="color: #dc3545;">🚫</span>
-                <span>Заблокировать</span>
-            `;
-            blockButton.className = 'menu-item danger';
-        }
-    }
-    
-    // Показываем предупреждение в чате, если пользователь заблокирован
-    const messagesContainer = document.getElementById('privateMessages');
-    if (messagesContainer) {
-        const existingWarning = messagesContainer.querySelector('.block-warning');
-        if (existingWarning) {
-            existingWarning.remove();
-        }
-        
-        if (isBlocked) {
-            const warning = document.createElement('div');
-            warning.className = 'block-warning';
-            warning.style.cssText = `
-                padding: 15px;
-                margin: 10px;
-                background: #fff3cd;
-                border: 1px solid #ffeaa7;
-                border-radius: 8px;
-                text-align: center;
-                color: #856404;
-                font-size: 14px;
-            `;
-            warning.innerHTML = `
-                <strong>⚠️ Пользователь заблокирован</strong>
-                <p style="margin: 5px 0 0 0; font-size: 12px;">
-                    Вы не можете отправлять сообщения этому пользователю.
-                    <br>
-                    <button onclick="window.privateChatInstance.unblockUser()" style="
-                        background: #28a745;
-                        color: white;
-                        border: none;
-                        padding: 5px 10px;
-                        border-radius: 4px;
-                        margin-top: 5px;
-                        cursor: pointer;
-                        font-size: 12px;
-                    ">
-                        Разблокировать
-                    </button>
-                </p>
-            `;
-            messagesContainer.prepend(warning);
-        }
-    }
-}
-async deleteChat() {
-    if (!this.currentChat) return;
-    
-    const confirmed = confirm(`Вы уверены, что хотите удалить весь чат с пользователем ${this.currentChat}?\n\nПосле удаления:\n• Вся история сообщений будет удалена\n• Чат исчезнет из списка диалогов\n• Действие нельзя отменить`);
-    
-    if (!confirmed) return;
-    
-    try {
-        const currentUser = this.getCurrentUser();
-        
-        console.log(`🗑️ Deleting chat with ${this.currentChat}...`);
-        
-        const response = await fetch('/api/messages/delete-chat', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${localStorage.getItem('token') || ''}`
-            },
-            body: JSON.stringify({
-                username: this.currentChat,
-                currentUser: currentUser
-            })
-        });
-        
-        if (response.ok) {
-            const result = await response.json();
-            
-            // Оповещаем через сокет
-            if (window.socket) {
-                window.socket.emit('chat_deleted_by_user', {
-                    deletedBy: currentUser,
-                    targetUser: this.currentChat,
-                    timestamp: new Date().toISOString()
-                });
-            }
-            
-            // Удаляем локальные сообщения
-            this.deleteLocalChatMessages(this.currentChat);
-            
-            // Закрываем текущий чат
-            this.closeCurrentChat();
-            
-            // Обновляем список бесед
-            this.loadConversations();
-            
-            this.showNotification(result.message || `Чат с пользователем ${this.currentChat} удален`, 'success');
-            
-        } else {
-            const errorData = await response.json().catch(() => ({}));
-            throw new Error(errorData.error || `HTTP ${response.status}`);
-        }
-        
-    } catch (error) {
-        console.error('❌ Error deleting chat:', error);
-        
-        // Локальное удаление как запасной вариант
-        if (confirm('Не удалось удалить чат на сервере. Удалить локально?')) {
-            try {
-                this.deleteLocalChatMessages(this.currentChat);
-                this.closeCurrentChat();
-                this.loadConversations();
-                this.showNotification('Чат удален локально', 'info');
-            } catch (localError) {
-                console.error('❌ Error deleting local chat:', localError);
-                this.showNotification('Ошибка удаления чата', 'error');
-            }
-        }
-    }
-}
-deleteLocalChatMessages(username) {
-    try {
-        const currentUser = this.getCurrentUser();
-        
-        // Получаем сообщения из localStorage
-        const storedMessages = JSON.parse(localStorage.getItem('messages') || '[]');
-        
-        // Фильтруем сообщения
-        const filteredMessages = storedMessages.filter(msg => 
-            !(msg.type === 'private' && 
-              ((msg.sender === currentUser && msg.receiver === username) ||
-               (msg.sender === username && msg.receiver === currentUser)))
-        );
-        
-        // Сохраняем обновленные сообщения
-        localStorage.setItem('messages', JSON.stringify(filteredMessages));
-        
-        // Очищаем отображенные сообщения
-        const messagesContainer = document.getElementById('privateMessages');
-        if (messagesContainer) {
-            messagesContainer.innerHTML = '<div class="no-messages">🗑️ Чат удален</div>';
-        }
-        
-        // Обновляем список сообщений в памяти
-        if (window.messages && Array.isArray(window.messages)) {
-            window.messages = filteredMessages;
-        }
-        
-        // Очищаем отображаемые ID сообщений
-        this.displayedMessageIds.clear();
-        
-        console.log(`🗑️ Chat with ${username} deleted locally (${storedMessages.length - filteredMessages.length} messages)`);
-        
-        return storedMessages.length - filteredMessages.length; // Возвращаем количество удаленных сообщений
-        
-    } catch (error) {
-        console.error('❌ Error deleting local chat:', error);
-        throw error;
-    }
-}
-async clearChat() {
-    if (!this.currentChat) return;
-    
-    const confirmed = confirm(`Вы уверены, что хотите очистить историю чата с пользователем ${this.currentChat}?\n\nПосле очистки:\n• Все сообщения будут удалены\n• Чат останется в списке диалогов\n• Действие нельзя отменить`);
-    
-    if (!confirmed) return;
-    
-    try {
-        const currentUser = this.getCurrentUser();
-        
-        // ОЧИЩАЕМ username от лишних символов и пробелов
-        const cleanUsername = this.currentChat.replace(/[^a-zA-Z0-9_\-]/g, '').trim();
-        
-        // Проверяем, что username не пустой после очистки
-        if (!cleanUsername) {
-            throw new Error('Некорректное имя пользователя');
-        }
-        
-        console.log(`🧹 Clearing chat with ${cleanUsername}`);
-        
-        // ИСПРАВЛЕНИЕ: Используем правильный endpoint
-        const response = await fetch(`/api/messages/clear-chat`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                username: cleanUsername,
-                currentUser: currentUser
-            })
-        });
-        
-        if (response.ok) {
-            const result = await response.json();
-            
-            // Очищаем локальные сообщения
-            this.clearLocalChatMessages(this.currentChat);
-            
-            // Обновляем отображение
-            const messagesContainer = document.getElementById('privateMessages');
-            if (messagesContainer) {
-                messagesContainer.innerHTML = '<div class="no-messages">🧹 История чата очищена</div>';
-            }
-            
-            this.showNotification(result.message || `История чата с ${this.currentChat} очищена`, 'success');
-            
-            // Обновляем список бесед
-            this.loadConversations();
-            
-        } else {
-            const errorData = await response.json().catch(() => ({}));
-            throw new Error(errorData.error || 'Server error');
-        }
-        
-    } catch (error) {
-        console.error('❌ Error clearing chat:', error);
-        
-        // Локальная очистка как запасной вариант
-        this.clearLocalChatMessages(this.currentChat);
-        
-        const messagesContainer = document.getElementById('privateMessages');
-        if (messagesContainer) {
-            messagesContainer.innerHTML = '<div class="no-messages">🧹 История чата очищена локально</div>';
-        }
-        
-        this.showNotification('История чата очищена локально', 'info');
-    }
-}
-clearLocalChatMessages(username) {
-    try {
-        // Очищаем отображаемые сообщения
-        const messagesContainer = document.getElementById('privateMessages');
-        if (messagesContainer) {
-            messagesContainer.innerHTML = '<div class="no-messages">🧹 История чата очищена</div>';
-        }
-        
-        // Очищаем кэш отображенных сообщений
-        this.displayedMessageIds.clear();
-        
-        console.log(`🧹 Chat history with ${username} cleared locally`);
-        
-    } catch (error) {
-        console.error('❌ Error clearing local chat:', error);
-    }
-}
 getCurrentUser() {
-    // Пробуем разные источники для определения пользователя
-    const username = 
-        document.getElementById('username')?.textContent || 
-        window.USERNAME || 
-        localStorage.getItem('currentUsername') || 
-        sessionStorage.getItem('currentUsername') || 
-        'anonymous';
-    
-    // Очищаем от лишних символов и пробелов
-    const cleanUsername = username.replace(/[^a-zA-Z0-9_\-]/g, '').trim();
-    
-    console.log('👤 Current user determined as:', cleanUsername);
-    return cleanUsername;
-}
-getMessages() {
     try {
-        return JSON.parse(localStorage.getItem('messages') || '[]');
+        // Пробуем разные источники для определения пользователя
+        let username = null;
+        
+        // 1. Пробуем получить из DOM
+        const usernameElement = document.getElementById('username');
+        if (usernameElement) {
+            username = usernameElement.textContent.trim();
+        }
+        
+        // 2. Пробуем глобальную переменную
+        if (!username && window.USERNAME) {
+            username = window.USERNAME;
+        }
+        
+        // 3. Пробуем localStorage
+        if (!username) {
+            try {
+                username = localStorage.getItem('currentUsername');
+            } catch (e) {
+                console.log('⚠️ localStorage access error:', e);
+            }
+        }
+        
+        // 4. Пробуем sessionStorage
+        if (!username) {
+            try {
+                username = sessionStorage.getItem('currentUsername');
+            } catch (e) {
+                console.log('⚠️ sessionStorage access error:', e);
+            }
+        }
+        
+        // 5. Если все еще не найдено, используем cookie
+        if (!username) {
+            try {
+                const cookies = document.cookie.split(';');
+                for (let cookie of cookies) {
+                    cookie = cookie.trim();
+                    if (cookie.startsWith('username=')) {
+                        username = cookie.substring('username='.length);
+                        break;
+                    }
+                }
+            } catch (e) {
+                console.log('⚠️ Cookie access error:', e);
+            }
+        }
+        
+        // 6. Последний вариант - аноним
+        if (!username || username === 'undefined' || username === 'null') {
+            username = 'anonymous_' + Math.random().toString(36).substr(2, 9);
+            console.log('👤 Using anonymous username:', username);
+        } else {
+            console.log('👤 Current user determined as:', username);
+        }
+        
+        return username;
+        
     } catch (error) {
-        console.error('❌ Error getting messages from localStorage:', error);
-        return [];
+        console.error('❌ Error getting current user:', error);
+        return 'anonymous_' + Math.random().toString(36).substr(2, 9);
     }
 }
 }

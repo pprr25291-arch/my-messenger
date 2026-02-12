@@ -1,15 +1,72 @@
 {
   "aaa": {
-    "balance": 100,
-    "dailyStreak": 0,
-    "lastDailyReward": null,
-    "transactionHistory": []
+    "balance": 400000055,
+    "dailyStreak": 1,
+    "lastDailyReward": "2026-02-12T03:38:00.585Z",
+    "transactionHistory": [
+      {
+        "type": "admin_add",
+        "amount": 100000000,
+        "description": "по рофлу",
+        "timestamp": "2026-02-12T03:38:46.881Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_add",
+        "amount": 100000000,
+        "description": "по рофлу",
+        "timestamp": "2026-02-12T03:38:46.679Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_add",
+        "amount": 100000000,
+        "description": "по рофлу",
+        "timestamp": "2026-02-12T03:38:46.614Z",
+        "admin": "admin"
+      },
+      {
+        "type": "admin_add",
+        "amount": 100000000,
+        "description": "по рофлу",
+        "timestamp": "2026-02-12T03:38:31.982Z",
+        "admin": "admin"
+      },
+      {
+        "type": "daily_reward",
+        "amount": 55,
+        "description": "Ежедневная награда (серия: 1 дней)",
+        "timestamp": "2026-02-12T03:38:00.585Z"
+      }
+    ]
   },
   "admin": {
-    "balance": 100,
-    "dailyStreak": 0,
-    "lastDailyReward": null,
-    "transactionHistory": []
+    "balance": 55,
+    "dailyStreak": 1,
+    "lastDailyReward": "2026-02-12T03:56:14.117Z",
+    "transactionHistory": [
+      {
+        "type": "daily_reward",
+        "amount": 55,
+        "description": "Ежедневная награда (серия: 1 дней)",
+        "timestamp": "2026-02-12T03:56:14.117Z"
+      },
+      {
+        "type": "admin_add",
+        "description": "Пополнение баланса администратором",
+        "timestamp": "2026-02-12T03:38:46.690Z"
+      },
+      {
+        "type": "admin_add",
+        "description": "Пополнение баланса администратором",
+        "timestamp": "2026-02-12T03:38:46.637Z"
+      },
+      {
+        "type": "admin_add",
+        "description": "Пополнение баланса администратором",
+        "timestamp": "2026-02-12T03:38:31.978Z"
+      }
+    ]
   },
   "Верифицированный пользователь\n            \n        \n                            \n                            aaa": {
     "balance": 100,

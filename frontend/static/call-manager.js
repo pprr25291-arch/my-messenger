@@ -304,109 +304,311 @@ class CallManager {
         }
     }
 
-    async initiateCall(targetUser, callType = 'video') {
-        try {
-            console.log(`📞 Initiating ${callType} call to ${targetUser}`);
-            
-            // Сбрасываем флаг уведомления
-            this.isNotificationShown = false;
-            
-            this.currentCall = {
-                callId: 'call_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
-                targetUser: targetUser,
-                caller: document.getElementById('username')?.textContent || window.USERNAME || 'Unknown',
-                type: callType,
-                status: 'initiating'
-            };
-            
-            this.isCaller = true;
-            this.callType = callType;
-            
-            // Сначала показываем интерфейс звонка
-            this.showCallModal();
-            this.showCallingControls();
-            this.updateCallInfo(`Звонок пользователю ${targetUser}...`);
-            
-            // Получаем локальный медиапоток
-            await this.getLocalStream();
-            
-            // Отправляем запрос на звонок
-            if (window.socket) {
-                window.socket.emit('initiate_call', {
-                    callId: this.currentCall.callId,
-                    caller: this.currentCall.caller,
-                    targetUser: targetUser,
-                    callType: callType
-                });
-                
-                console.log(`📤 Call request sent to ${targetUser}`);
-            }
-            
-            // Таймаут ожидания ответа
-            this.callTimeout = setTimeout(() => {
-                if (this.isInCall === false) {
-                    this.showNotification(`${targetUser} не отвечает`, 'error');
-                    this.endCall();
-                }
-            }, 30000); // 30 секунд
-            
-        } catch (error) {
-            console.error('❌ Error initiating call:', error);
-            this.showNotification('Ошибка инициализации звонка', 'error');
-            this.endCall();
-            throw error;
+  async initiateCall(targetUser, callType = 'video') {
+    try {
+        console.log(`📞 Initiating ${callType} call to ${targetUser}`);
+        
+        // Проверяем наличие устройств
+        const deviceCheck = await this.checkDevices(callType);
+        
+        if (!deviceCheck.canProceed) {
+            this.showNotification(deviceCheck.warning || 'Невозможно совершить звонок', 'error');
+            return;
         }
-    }
 
-    async getLocalStream() {
-        try {
-            const constraints = {
-                audio: {
-                    echoCancellation: true,
-                    noiseSuppression: true,
-                    autoGainControl: true
-                },
-                video: this.callType === 'video' ? {
-                    width: { ideal: 1280 },
-                    height: { ideal: 720 },
-                    frameRate: { ideal: 30 }
-                } : false
-            };
+        // Показываем предупреждение, если есть
+        if (deviceCheck.warning) {
+            this.showNotification(deviceCheck.warning, 'warning');
             
+            // Если видеозвонок без камеры, переключаем на аудио
+            if (callType === 'video' && !deviceCheck.hasVideo && deviceCheck.hasAudio) {
+                callType = 'audio';
+                this.showNotification('Переключено на аудиозвонок', 'info');
+            }
+        }
+        
+        // Сбрасываем флаг уведомления
+        this.isNotificationShown = false;
+        
+        this.currentCall = {
+            callId: 'call_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
+            targetUser: targetUser,
+            caller: document.getElementById('username')?.textContent || window.USERNAME || 'Unknown',
+            type: callType,
+            status: 'initiating'
+        };
+        
+        this.isCaller = true;
+        this.callType = callType;
+        
+        // Сначала показываем интерфейс звонка
+        this.showCallModal();
+        this.showCallingControls();
+        this.updateCallInfo(`Звонок пользователю ${targetUser}...`);
+        
+        // Получаем локальный медиапоток
+        await this.getLocalStream();
+        
+        // Отправляем запрос на звонок
+        if (window.socket) {
+            window.socket.emit('initiate_call', {
+                callId: this.currentCall.callId,
+                caller: this.currentCall.caller,
+                targetUser: targetUser,
+                callType: callType
+            });
+            
+            console.log(`📤 Call request sent to ${targetUser}`);
+        }
+        
+        // Таймаут ожидания ответа
+        this.callTimeout = setTimeout(() => {
+            if (this.isInCall === false) {
+                this.showNotification(`${targetUser} не отвечает`, 'error');
+                this.endCall('Пользователь не отвечает');
+            }
+        }, 30000); // 30 секунд
+        
+    } catch (error) {
+        console.error('❌ Error initiating call:', error);
+        this.showNotification('Ошибка инициализации звонка', 'error');
+        this.endCall();
+        throw error;
+    }
+}
+
+ async getLocalStream() {
+    try {
+        // Проверяем, поддерживает ли браузер getUserMedia
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            throw new Error('Ваш браузер не поддерживает аудио/видео звонки');
+        }
+
+        // Проверяем наличие устройств
+        let hasAudio = false;
+        let hasVideo = false;
+        
+        try {
+            const devices = await navigator.mediaDevices.enumerateDevices();
+            hasAudio = devices.some(device => device.kind === 'audioinput');
+            hasVideo = devices.some(device => device.kind === 'videoinput');
+            
+            console.log('📱 Available devices:', {
+                audio: hasAudio,
+                video: hasVideo,
+                devices: devices.map(d => ({ kind: d.kind, label: d.label }))
+            });
+        } catch (devError) {
+            console.warn('⚠️ Could not enumerate devices:', devError);
+        }
+
+        // Формируем constraints в зависимости от доступных устройств
+        const constraints = {
+            audio: hasAudio ? {
+                echoCancellation: true,
+                noiseSuppression: true,
+                autoGainControl: true
+            } : false,
+            video: (this.callType === 'video' && hasVideo) ? {
+                width: { ideal: 1280 },
+                height: { ideal: 720 },
+                frameRate: { ideal: 30 }
+            } : false
+        };
+
+        console.log('📋 Media constraints:', constraints);
+
+        // Если нет аудио устройства, но звонок аудио/видео - показываем предупреждение
+        if (!hasAudio) {
+            this.showNotification('Микрофон не найден. Вы не сможете говорить.', 'warning');
+        }
+
+        // Если видеозвонок, но нет камеры - показываем предупреждение
+        if (this.callType === 'video' && !hasVideo) {
+            this.showNotification('Камера не найдена. Звонок будет только аудио.', 'warning');
+            this.callType = 'audio'; // Переключаемся на аудио
+        }
+
+        // Если нет ни одного устройства - выводим сообщение
+        if (!hasAudio && !hasVideo) {
+            this.showNotification('Не найдены микрофон или камера. Проверьте подключение устройств.', 'error');
+            
+            // Создаем фейковый аудиопоток (тишина) для возможности звонка
+            const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            const destination = audioContext.createMediaStreamDestination();
+            this.localStream = destination.stream;
+            
+            // Показываем плейсхолдер
+            this.showLocalVideoPlaceholder();
+            
+            return this.localStream;
+        }
+
+        try {
             this.localStream = await navigator.mediaDevices.getUserMedia(constraints);
+            console.log('✅ Local stream obtained:', {
+                audio: this.localStream.getAudioTracks().length,
+                video: this.localStream.getVideoTracks().length
+            });
             
             // Показываем локальное видео
-            const localVideo = document.getElementById('localVideo');
-            const localVideoPlaceholder = document.getElementById('localVideoPlaceholder');
+            this.showLocalVideo();
             
-            if (localVideo && this.localStream) {
-                localVideo.srcObject = this.localStream;
-                localVideo.style.display = 'block';
-                if (localVideoPlaceholder) {
-                    localVideoPlaceholder.style.display = 'none';
-                }
-            }
-            
-            console.log('✅ Local stream obtained');
             return this.localStream;
             
-        } catch (error) {
-            console.error('❌ Error getting local stream:', error);
+        } catch (mediaError) {
+            console.error('❌ Error getting media:', mediaError);
             
             let errorMessage = 'Не удалось получить доступ к камере/микрофону';
-            if (error.name === 'NotFoundError') {
-                errorMessage = 'Камера или микрофон не найдены';
-            } else if (error.name === 'NotReadableError') {
-                errorMessage = 'Не удалось получить доступ к камере/микрофону. Проверьте настройки браузера.';
-            } else if (error.name === 'NotAllowedError') {
+            
+            if (mediaError.name === 'NotFoundError' || mediaError.name === 'DevicesNotFoundError') {
+                errorMessage = 'Камера или микрофон не найдены. Проверьте подключение устройств.';
+            } else if (mediaError.name === 'NotReadableError' || mediaError.name === 'TrackStartError') {
+                errorMessage = 'Не удалось получить доступ к камере/микрофону. Устройство может быть занято другим приложением.';
+            } else if (mediaError.name === 'NotAllowedError' || mediaError.name === 'PermissionDeniedError') {
                 errorMessage = 'Доступ к камере/микрофону запрещен. Разрешите доступ в настройках браузера.';
+            } else if (mediaError.name === 'OverconstrainedError') {
+                errorMessage = 'Запрошенные настройки камеры/микрофона не поддерживаются.';
             }
             
             this.showNotification(errorMessage, 'error');
-            throw error;
+            
+            // Создаем фейковый аудиопоток как запасной вариант
+            try {
+                const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                const destination = audioContext.createMediaStreamDestination();
+                this.localStream = destination.stream;
+                this.showLocalVideoPlaceholder();
+                return this.localStream;
+            } catch (fallbackError) {
+                console.error('❌ Could not create fallback stream:', fallbackError);
+                throw mediaError; // Пробрасываем оригинальную ошибку
+            }
+        }
+        
+    } catch (error) {
+        console.error('❌ Error in getLocalStream:', error);
+        
+        // Создаем пустой поток как крайний случай
+        try {
+            const canvas = document.createElement('canvas');
+            canvas.width = 640;
+            canvas.height = 480;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#1a1a1a';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.font = '24px Arial';
+            ctx.fillStyle = '#ffffff';
+            ctx.fillText('Нет камеры', 200, 240);
+            
+            const stream = canvas.captureStream(30);
+            this.localStream = stream;
+            this.showLocalVideoPlaceholder();
+            
+            return this.localStream;
+        } catch (fallbackError) {
+            throw error; // Пробрасываем оригинальную ошибку
         }
     }
+}
+showLocalVideoPlaceholder() {
+    const localVideo = document.getElementById('localVideo');
+    const localVideoPlaceholder = document.getElementById('localVideoPlaceholder');
+    
+    if (localVideo) {
+        localVideo.srcObject = null;
+        localVideo.style.display = 'none';
+    }
+    
+    if (localVideoPlaceholder) {
+        localVideoPlaceholder.style.display = 'flex';
+        
+        // Обновляем текст в плейсхолдере в зависимости от типа звонка
+        const placeholderText = localVideoPlaceholder.querySelector('div div:last-child');
+        if (placeholderText) {
+            if (this.callType === 'video') {
+                placeholderText.textContent = 'Камера не найдена';
+            } else {
+                placeholderText.textContent = 'Аудиозвонок';
+            }
+        }
+    }
+}
+async checkDevices(callType) {
+    try {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) {
+            return { 
+                success: false, 
+                error: 'Ваш браузер не поддерживает аудио/видео звонки',
+                hasAudio: false,
+                hasVideo: false
+            };
+        }
 
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const hasAudio = devices.some(device => device.kind === 'audioinput');
+        const hasVideo = devices.some(device => device.kind === 'videoinput');
+
+        let warning = null;
+        let canProceed = true;
+
+        if (callType === 'audio' && !hasAudio) {
+            warning = 'Микрофон не найден. Вы не сможете говорить, но можете слушать собеседника.';
+            canProceed = true; // Все равно можем продолжить
+        }
+
+        if (callType === 'video') {
+            if (!hasVideo && !hasAudio) {
+                warning = 'Камера и микрофон не найдены. Звонок невозможен.';
+                canProceed = false;
+            } else if (!hasVideo) {
+                warning = 'Камера не найдена. Звонок будет только аудио.';
+                canProceed = true;
+            } else if (!hasAudio) {
+                warning = 'Микрофон не найден. Вы не сможете говорить.';
+                canProceed = true;
+            }
+        }
+
+        return {
+            success: true,
+            hasAudio,
+            hasVideo,
+            warning,
+            canProceed,
+            devices: devices.map(d => ({ 
+                kind: d.kind, 
+                label: d.label || 'Без названия',
+                deviceId: d.deviceId 
+            }))
+        };
+
+    } catch (error) {
+        console.error('❌ Error checking devices:', error);
+        return {
+            success: false,
+            error: error.message,
+            hasAudio: false,
+            hasVideo: false,
+            canProceed: false
+        };
+    }
+}
+showLocalVideo() {
+    const localVideo = document.getElementById('localVideo');
+    const localVideoPlaceholder = document.getElementById('localVideoPlaceholder');
+    
+    if (localVideo && this.localStream) {
+        localVideo.srcObject = this.localStream;
+        localVideo.style.display = 'block';
+        if (localVideoPlaceholder) {
+            localVideoPlaceholder.style.display = 'none';
+        }
+        
+        // Убедимся, что видео воспроизводится
+        localVideo.play().catch(e => console.warn('Video play failed:', e));
+    }
+}
     handleIncomingCall(data) {
         console.log('📞 Incoming call received:', data);
         
