@@ -2824,6 +2824,27 @@ app.get('/api/users/online-status', authenticateToken, (req, res) => {
         res.status(500).json({ error: 'Failed to load online statuses' });
     }
 });
+app.use((req, res, next) => {
+    // CORS заголовки для WebRTC
+    res.header('Access-Control-Allow-Origin', '*');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+    res.header('Access-Control-Allow-Credentials', 'true');
+    
+    // CSP для WebRTC
+    res.header('Content-Security-Policy', 
+        "default-src * 'unsafe-inline' 'unsafe-eval' data: blob:; " +
+        "script-src * 'unsafe-inline' 'unsafe-eval'; " +
+        "connect-src * ws: wss: http: https:; " +
+        "media-src * blob: data:; " +
+        "frame-src *;"
+    );
+    
+    // Важно для Render
+    res.header('Permissions-Policy', 'camera=*, microphone=*, display-capture=*');
+    
+    next();
+});
 // WebSocket events
 io.on('connection', (socket) => {
     console.log('✅ User connected:', socket.id);
@@ -2840,7 +2861,23 @@ io.on('connection', (socket) => {
             cb(verifiedUsers);
         }
     });
+const server = app.listen(PORT, '0.0.0.0', () => {
+    console.log(`Server running on port ${PORT}`);
+});
 
+const io = require('socket.io')(server, {
+    cors: {
+        origin: "*",
+        methods: ["GET", "POST"],
+        credentials: true,
+        allowedHeaders: ["*"]
+    },
+    transports: ['websocket', 'polling'], // Важно для Render
+    pingTimeout: 60000, // Увеличиваем для Render
+    pingInterval: 25000,
+    allowEIO3: true,
+    maxHttpBufferSize: 1e8
+});
     socket.on('user_verification_changed', (data) => {
         console.log('🔄 User verification changed via socket:', data);
         io.emit('user_verification_changed', data);
