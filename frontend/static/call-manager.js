@@ -304,78 +304,59 @@ class CallManager {
         }
     }
 
-  async initiateCall(targetUser, callType = 'video') {
-    try {
-        console.log(`📞 Initiating ${callType} call to ${targetUser}`);
-        
-        // Проверяем наличие устройств
-        const deviceCheck = await this.checkDevices(callType);
-        
-        if (!deviceCheck.canProceed) {
-            this.showNotification(deviceCheck.warning || 'Невозможно совершить звонок', 'error');
-            return;
-        }
-
-        // Показываем предупреждение, если есть
-        if (deviceCheck.warning) {
-            this.showNotification(deviceCheck.warning, 'warning');
+    async initiateCall(targetUser, callType = 'video') {
+        try {
+            console.log(`📞 Initiating ${callType} call to ${targetUser}`);
             
-            // Если видеозвонок без камеры, переключаем на аудио
-            if (callType === 'video' && !deviceCheck.hasVideo && deviceCheck.hasAudio) {
-                callType = 'audio';
-                this.showNotification('Переключено на аудиозвонок', 'info');
-            }
-        }
-        
-        // Сбрасываем флаг уведомления
-        this.isNotificationShown = false;
-        
-        this.currentCall = {
-            callId: 'call_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
-            targetUser: targetUser,
-            caller: document.getElementById('username')?.textContent || window.USERNAME || 'Unknown',
-            type: callType,
-            status: 'initiating'
-        };
-        
-        this.isCaller = true;
-        this.callType = callType;
-        
-        // Сначала показываем интерфейс звонка
-        this.showCallModal();
-        this.showCallingControls();
-        this.updateCallInfo(`Звонок пользователю ${targetUser}...`);
-        
-        // Получаем локальный медиапоток
-        await this.getLocalStream();
-        
-        // Отправляем запрос на звонок
-        if (window.socket) {
-            window.socket.emit('initiate_call', {
-                callId: this.currentCall.callId,
-                caller: this.currentCall.caller,
+            // Сбрасываем флаг уведомления
+            this.isNotificationShown = false;
+            
+            this.currentCall = {
+                callId: 'call_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
                 targetUser: targetUser,
-                callType: callType
-            });
+                caller: document.getElementById('username')?.textContent || window.USERNAME || 'Unknown',
+                type: callType,
+                status: 'initiating'
+            };
             
-            console.log(`📤 Call request sent to ${targetUser}`);
-        }
-        
-        // Таймаут ожидания ответа
-        this.callTimeout = setTimeout(() => {
-            if (this.isInCall === false) {
-                this.showNotification(`${targetUser} не отвечает`, 'error');
-                this.endCall('Пользователь не отвечает');
+            this.isCaller = true;
+            this.callType = callType;
+            
+            // Сначала показываем интерфейс звонка
+            this.showCallModal();
+            this.showCallingControls();
+            this.updateCallInfo(`Звонок пользователю ${targetUser}...`);
+            
+            // Получаем локальный медиапоток
+            await this.getLocalStream();
+            
+            // Отправляем запрос на звонок
+            if (window.socket) {
+                window.socket.emit('initiate_call', {
+                    callId: this.currentCall.callId,
+                    caller: this.currentCall.caller,
+                    targetUser: targetUser,
+                    callType: callType
+                });
+                
+                console.log(`📤 Call request sent to ${targetUser}`);
             }
-        }, 30000); // 30 секунд
-        
-    } catch (error) {
-        console.error('❌ Error initiating call:', error);
-        this.showNotification('Ошибка инициализации звонка', 'error');
-        this.endCall();
-        throw error;
+            
+            // Таймаут ожидания ответа
+            this.callTimeout = setTimeout(() => {
+                if (this.isInCall === false) {
+                    this.showNotification(`${targetUser} не отвечает`, 'error');
+                    this.endCall();
+                }
+            }, 30000); // 30 секунд
+            
+        } catch (error) {
+            console.error('❌ Error initiating call:', error);
+            this.showNotification('Ошибка инициализации звонка', 'error');
+            this.endCall();
+            throw error;
+        }
     }
-}
 
  async getLocalStream() {
     try {
@@ -509,89 +490,6 @@ class CallManager {
         } catch (fallbackError) {
             throw error; // Пробрасываем оригинальную ошибку
         }
-    }
-}
-showLocalVideoPlaceholder() {
-    const localVideo = document.getElementById('localVideo');
-    const localVideoPlaceholder = document.getElementById('localVideoPlaceholder');
-    
-    if (localVideo) {
-        localVideo.srcObject = null;
-        localVideo.style.display = 'none';
-    }
-    
-    if (localVideoPlaceholder) {
-        localVideoPlaceholder.style.display = 'flex';
-        
-        // Обновляем текст в плейсхолдере в зависимости от типа звонка
-        const placeholderText = localVideoPlaceholder.querySelector('div div:last-child');
-        if (placeholderText) {
-            if (this.callType === 'video') {
-                placeholderText.textContent = 'Камера не найдена';
-            } else {
-                placeholderText.textContent = 'Аудиозвонок';
-            }
-        }
-    }
-}
-async checkDevices(callType) {
-    try {
-        if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) {
-            return { 
-                success: false, 
-                error: 'Ваш браузер не поддерживает аудио/видео звонки',
-                hasAudio: false,
-                hasVideo: false
-            };
-        }
-
-        const devices = await navigator.mediaDevices.enumerateDevices();
-        const hasAudio = devices.some(device => device.kind === 'audioinput');
-        const hasVideo = devices.some(device => device.kind === 'videoinput');
-
-        let warning = null;
-        let canProceed = true;
-
-        if (callType === 'audio' && !hasAudio) {
-            warning = 'Микрофон не найден. Вы не сможете говорить, но можете слушать собеседника.';
-            canProceed = true; // Все равно можем продолжить
-        }
-
-        if (callType === 'video') {
-            if (!hasVideo && !hasAudio) {
-                warning = 'Камера и микрофон не найдены. Звонок невозможен.';
-                canProceed = false;
-            } else if (!hasVideo) {
-                warning = 'Камера не найдена. Звонок будет только аудио.';
-                canProceed = true;
-            } else if (!hasAudio) {
-                warning = 'Микрофон не найден. Вы не сможете говорить.';
-                canProceed = true;
-            }
-        }
-
-        return {
-            success: true,
-            hasAudio,
-            hasVideo,
-            warning,
-            canProceed,
-            devices: devices.map(d => ({ 
-                kind: d.kind, 
-                label: d.label || 'Без названия',
-                deviceId: d.deviceId 
-            }))
-        };
-
-    } catch (error) {
-        console.error('❌ Error checking devices:', error);
-        return {
-            success: false,
-            error: error.message,
-            hasAudio: false,
-            hasVideo: false,
-            canProceed: false
-        };
     }
 }
 showLocalVideo() {
