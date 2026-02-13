@@ -2569,14 +2569,12 @@ app.get('/api/user/:username/verification', authenticateToken, (req, res) => {
 
 app.get('/api/users/online', authenticateToken, (req, res) => {
     try {
-        // Проверяем права администратора
         if (req.user.username !== 'admin') {
             return res.status(403).json({ 
                 error: 'Доступ запрещен. Требуются права администратора.' 
             });
         }
         
-        // Возвращаем массив имен пользователей, которые онлайн
         const onlineUsersArray = Array.from(onlineUsers);
         res.json(onlineUsersArray);
         
@@ -2824,27 +2822,6 @@ app.get('/api/users/online-status', authenticateToken, (req, res) => {
         res.status(500).json({ error: 'Failed to load online statuses' });
     }
 });
-app.use((req, res, next) => {
-    // CORS заголовки для WebRTC
-    res.header('Access-Control-Allow-Origin', '*');
-    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
-    res.header('Access-Control-Allow-Credentials', 'true');
-    
-    // CSP для WebRTC
-    res.header('Content-Security-Policy', 
-        "default-src * 'unsafe-inline' 'unsafe-eval' data: blob:; " +
-        "script-src * 'unsafe-inline' 'unsafe-eval'; " +
-        "connect-src * ws: wss: http: https:; " +
-        "media-src * blob: data:; " +
-        "frame-src *;"
-    );
-    
-    // Важно для Render
-    res.header('Permissions-Policy', 'camera=*, microphone=*, display-capture=*');
-    
-    next();
-});
 // WebSocket events
 io.on('connection', (socket) => {
     console.log('✅ User connected:', socket.id);
@@ -2861,23 +2838,7 @@ io.on('connection', (socket) => {
             cb(verifiedUsers);
         }
     });
-const server = app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Server running on port ${PORT}`);
-});
 
-const io = require('socket.io')(server, {
-    cors: {
-        origin: "*",
-        methods: ["GET", "POST"],
-        credentials: true,
-        allowedHeaders: ["*"]
-    },
-    transports: ['websocket', 'polling'], // Важно для Render
-    pingTimeout: 60000, // Увеличиваем для Render
-    pingInterval: 25000,
-    allowEIO3: true,
-    maxHttpBufferSize: 1e8
-});
     socket.on('user_verification_changed', (data) => {
         console.log('🔄 User verification changed via socket:', data);
         io.emit('user_verification_changed', data);
@@ -3177,21 +3138,19 @@ const io = require('socket.io')(server, {
         }
     });
 
-  socket.on('webrtc_offer', (data) => {
-    console.log(`📤 WebRTC offer от ${socket.username} к ${data.targetUser}`);
-    
-    const targetSocketId = userSockets.get(data.targetUser);
-    if (targetSocketId) {
-        // Добавляем задержку для продакшена
-        setTimeout(() => {
+    // WebRTC передача предложения (offer)
+    socket.on('webrtc_offer', (data) => {
+        console.log(`📤 WebRTC offer от ${socket.username} к ${data.targetUser}`);
+        
+        const targetSocketId = userSockets.get(data.targetUser);
+        if (targetSocketId) {
             io.to(targetSocketId).emit('webrtc_offer', {
                 callId: data.callId,
                 caller: socket.username,
                 offer: data.offer
             });
-        }, 100);
-    }
-});
+        }
+    });
 
     // WebRTC передача ответа (answer)
     socket.on('webrtc_answer', (data) => {
@@ -3206,18 +3165,17 @@ const io = require('socket.io')(server, {
         }
     });
 
- socket.on('webrtc_ice_candidate', (data) => {
-    const targetSocketId = userSockets.get(data.targetUser);
-    if (targetSocketId) {
-        // Добавляем задержку для продакшена
-        setTimeout(() => {
+    // WebRTC передача ICE кандидата
+    socket.on('webrtc_ice_candidate', (data) => {
+        const targetSocketId = userSockets.get(data.targetUser);
+        if (targetSocketId) {
             io.to(targetSocketId).emit('webrtc_ice_candidate', {
                 callId: data.callId,
                 candidate: data.candidate
             });
-        }, 50);
-    }
-});
+        }
+    });
+
     // Начало трансляции экрана
     socket.on('screen_share_started', (data) => {
         console.log(`🖥️ ${socket.username} начал трансляцию экрана в звонке ${data.callId}`);

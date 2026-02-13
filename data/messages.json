@@ -78,5 +78,15 @@
     "date": "2026-02-12T04:13:04.851Z",
     "messageType": "text",
     "fileData": null
+  },
+  {
+    "sender": "admin",
+    "receiver": "Верифицированный пользователь\n            \n        \n                            \n                            aaa",
+    "message": "tgt",
+    "timestamp": "08:01:37",
+    "type": "private",
+    "date": "2026-02-13T03:01:37.356Z",
+    "messageType": "text",
+    "fileData": null
   }
 ]
