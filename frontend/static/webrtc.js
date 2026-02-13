@@ -6,24 +6,19 @@ class WebRTCManager {
         this.callManager = callManager;
         this.peerConnections = new Map(); // Несколько соединений для конференц-звонков
         this.dataChannels = new Map(); // Каналы данных для текстовых сообщений в звонке
-     this.iceServers = [
-    { urls: 'stun:stun.l.google.com:19302' },
-    { urls: 'stun:stun1.l.google.com:19302' },
-    { urls: 'stun:stun2.l.google.com:19302' },
-    { urls: 'stun:stun3.l.google.com:19302' },
-    { urls: 'stun:stun4.l.google.com:19302' },
-    
-    // БЕСПЛАТНЫЙ TURN ОТ METERED.CA (работает отлично)
-    {
-        urls: [
-            'turn:openrelay.metered.ca:80',
-            'turn:openrelay.metered.ca:443',
-            'turn:openrelay.metered.ca:443?transport=tcp'
-        ],
-        username: 'openrelayproject',
-        credential: 'openrelayproject'
-    }
-];
+        this.iceServers = [
+            { urls: 'stun:stun.l.google.com:19302' },
+            { urls: 'stun:stun1.l.google.com:19302' },
+            { urls: 'stun:stun2.l.google.com:19302' },
+            { urls: 'stun:stun3.l.google.com:19302' },
+            { urls: 'stun:stun4.l.google.com:19302' },
+            { 
+                urls: 'turn:turn.example.com:3478',
+                username: 'user',
+                credential: 'pass'
+            }
+        ];
+        
         console.log('✅ WebRTCManager initialized');
     }
 
